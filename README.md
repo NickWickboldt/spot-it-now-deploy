@@ -48,3 +48,35 @@ Join our community of developers creating universal apps.
 
 - [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
 - [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+
+
+
+
+
+
+# Arsenios's Notes
+Here's how you log: 
+
+(in the backend)
+   import { log } from '../utils/logger.util.js';
+   log.info('user.service', 'Login attempt started for user.', { email: loginData.email });
+   log.error('user.service', 'Login failed for user.', error, userId);
+
+Available logging levels:
+   info: (source, message, meta, userId) => createLogEntry('INFO', source, message, meta, userId),
+   warn: (source, message, meta, userId) => createLogEntry('WARN', source, message, meta, userId),
+   error: (source, message, meta, userId) => createLogEntry('ERROR', source, message, meta, userId),
+   fatal: (source, message, meta, userId) => createLogEntry('FATAL', source, message, meta, userId),
+   debug: (source, message, meta, userId) => createLogEntry('DEBUG', source, message, meta, userId),
+   route: (source, message, meta, userId) => createLogEntry('ROUTE', source, message, meta, userId)
+
+
+(in the frontend)
+   import { log } from '../utils/logger';
+   log.info('User pressed the main button.', { component: 'MyComponent' });
+
+Available logging levels:
+   info: (message, meta) => createLogEntry('info', message, meta),
+   warn: (message, meta) => createLogEntry('warn', message, meta),
+   error: (message, meta) => createLogEntry('error', message, meta),
+   debug: (message, meta) => createLogEntry('debug', message, meta),
