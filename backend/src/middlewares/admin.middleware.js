@@ -1,6 +1,6 @@
 import { Admin } from '../models/admin.model.js';
-import { ApiError } from '../utils/ApiError.js';
-import { asyncHandler } from './asyncHandler.util.js';
+import { ApiError } from '../utils/ApiError.util.js';
+import { asyncHandler } from '../utils/asyncHandler.util.js';
 
 /**
  * Middleware to verify if a logged-in user is an admin with a specific permission level.

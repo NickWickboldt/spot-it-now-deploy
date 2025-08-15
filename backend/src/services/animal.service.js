@@ -1,5 +1,5 @@
 import { Animal } from '../models/animal.model.js';
-import { ApiError } from '../utils/ApiError.js';
+import { ApiError } from '../utils/ApiError.util.js';
 
 /**
  * Creates a new animal in the database.

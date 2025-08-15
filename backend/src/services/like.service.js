@@ -1,6 +1,6 @@
 import { Like } from '../models/like.model.js';
 import { Sighting } from '../models/sighting.model.js';
-import { ApiError } from '../utils/ApiError.js';
+import { ApiError } from '../utils/ApiError.util.js';
 
 /**
  * Toggles a like on a sighting for a given user.

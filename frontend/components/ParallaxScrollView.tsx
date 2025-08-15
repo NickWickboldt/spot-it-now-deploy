@@ -7,9 +7,9 @@ import Animated, {
     useScrollViewOffset,
 } from 'react-native-reanimated';
 
-import { ThemedView } from '@/frontend/components/ThemedView';
-import { useBottomTabOverflow } from '@/frontend/components/ui/TabBarBackground';
-import { useColorScheme } from '@/hooks/useColorScheme';
+import { ThemedView } from '../components/ThemedView';
+import { useBottomTabOverflow } from '../components/ui/TabBarBackground';
+import { useColorScheme } from '../hooks/useColorScheme';
 
 const HEADER_HEIGHT = 250;
 
@@ -28,21 +28,26 @@ export default function ParallaxScrollView({
   const scrollOffset = useScrollViewOffset(scrollRef);
   const bottom = useBottomTabOverflow();
   const headerAnimatedStyle = useAnimatedStyle(() => {
+    const translateY = interpolate(
+      scrollOffset.value,
+      [-HEADER_HEIGHT, 0, HEADER_HEIGHT],
+      [-HEADER_HEIGHT / 2, 0, HEADER_HEIGHT * 0.75]
+    );
+
+    const scale = interpolate(
+      scrollOffset.value,
+      [-HEADER_HEIGHT, 0, HEADER_HEIGHT],
+      [2, 1, 1]
+    );
+
     return {
       transform: [
-        {
-          translateY: interpolate(
-            scrollOffset.value,
-            [-HEADER_HEIGHT, 0, HEADER_HEIGHT],
-            [-HEADER_HEIGHT / 2, 0, HEADER_HEIGHT * 0.75]
-          ),
-        },
-        {
-          scale: interpolate(scrollOffset.value, [-HEADER_HEIGHT, 0, HEADER_HEIGHT], [2, 1, 1]),
-        },
+        { translateY },
+        { scale },
       ],
-    };
+    } as const;
   });
+
 
   return (
     <ThemedView style={styles.container}>

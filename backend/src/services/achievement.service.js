@@ -1,5 +1,5 @@
 import { Achievement } from '../models/achievement.model.js';
-import { ApiError } from '../utils/ApiError.js';
+import { ApiError } from '../utils/ApiError.util.js';
 
 /**
  * Creates a new achievement.

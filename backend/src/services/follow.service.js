@@ -1,6 +1,6 @@
 import { Follow } from '../models/follow.model.js';
 import { User } from '../models/user.model.js';
-import { ApiError } from '../utils/ApiError.js';
+import { ApiError } from '../utils/ApiError.util.js';
 
 /**
  * Toggles a follow relationship between two users.

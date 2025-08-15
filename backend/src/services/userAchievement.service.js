@@ -1,7 +1,7 @@
 import { UserAchievement } from '../models/userAchievement.model.js';
 import { Achievement } from '../models/achievement.model.js';
 import { User } from '../models/user.model.js';
-import { ApiError } from '../utils/ApiError.js';
+import { ApiError } from '../utils/ApiError.util.js';
 
 /**
  * Awards an achievement to a user.

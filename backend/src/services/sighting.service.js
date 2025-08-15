@@ -1,5 +1,5 @@
 import { Sighting } from '../models/sighting.model.js';
-import { ApiError } from '../utils/ApiError.js';
+import { ApiError } from '../utils/ApiError.util.js';
 
 /**
  * Creates a new sighting post.

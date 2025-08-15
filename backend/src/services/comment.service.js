@@ -1,6 +1,6 @@
 import { Comment } from '../models/comment.model.js';
 import { Sighting } from '../models/sighting.model.js';
-import { ApiError } from '../utils/ApiError.js';
+import { ApiError } from '../utils/ApiError.util.js';
 
 /**
  * Creates a new comment on a sighting.

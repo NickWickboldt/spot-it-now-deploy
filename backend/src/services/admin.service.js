@@ -1,6 +1,6 @@
 import { Admin } from '../models/admin.model.js';
 import { User } from '../models/user.model.js';
-import { ApiError } from '../utils/ApiError.js';
+import { ApiError } from '../utils/ApiError.util.js';
 
 /**
  * Creates a new admin record for a given user.

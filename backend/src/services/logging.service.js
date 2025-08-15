@@ -1,5 +1,5 @@
 import { Log } from '../models/logging.model.js';
-import { ApiError } from '../utils/ApiError.js';
+import { ApiError } from '../utils/ApiError.util.js';
 
 /**
  * Creates a new log entry in the database.
