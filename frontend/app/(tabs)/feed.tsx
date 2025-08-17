@@ -1,5 +1,5 @@
-import { View, Text, StyleSheet } from 'react-native';
-import { tabStyles } from '../../constants/TabStyles';
+import { View, Text } from 'react-native';
+import { tabStyles } from '../../constants/MainStyles';
 
 export default function FeedScreen() {
   return (

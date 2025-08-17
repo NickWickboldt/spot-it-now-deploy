@@ -1,14 +1,18 @@
+// ==================================================================
 // File: app/_layout.tsx
+// ==================================================================
 import { Stack } from 'expo-router';
+import { AuthProvider } from '../context/AuthContext';
 
 export default function RootLayout() {
   return (
-    <Stack>
-      {/* The login screen is presented here initially */}
-      <Stack.Screen name="index" options={{ headerShown: false }} />
-
-      {/* The main tab layout is also part of the stack */}
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-    </Stack>
+    <AuthProvider>
+      <Stack>
+        <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="(admin)/manage-users" options={{ presentation: 'modal', title: 'Manage Users' }} />
+        <Stack.Screen name="(admin)/create-user" options={{ presentation: 'modal', title: 'Create New User' }} />
+      </Stack>
+    </AuthProvider>
   );
 }

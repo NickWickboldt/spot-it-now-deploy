@@ -1,57 +1,46 @@
-import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { Link, useRouter } from 'expo-router';
+// ==================================================================
+// File: app/index.tsx (Login Screen)
+// ==================================================================
+import { View, Text, StyleSheet, Pressable, TextInput, ActivityIndicator } from 'react-native';
+import { useState } from 'react';
+import { useAuth } from '../context/AuthContext';
 
 export default function LoginScreen() {
-  const router = useRouter();
+  const { login, isLoading } = useAuth();
+  const [email, setEmail] = useState('admin@local.dev'); // Pre-fill for local admin
+  const [password, setPassword] = useState('password');   // Pre-fill for local admin
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>SpotItNow</Text>
-      <Text style={styles.subtitle}>Login Screen</Text>
       
-      {/* This button will navigate to the main app layout */}
-      <Pressable style={styles.button} onPress={() => router.replace('/feed')}>
-        <Text style={styles.buttonText}>Login</Text>
-      </Pressable>
+      <TextInput
+        style={styles.input}
+        placeholder="Email"
+        value={email}
+        onChangeText={setEmail}
+        keyboardType="email-address"
+        autoCapitalize="none"
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="Password"
+        value={password}
+        onChangeText={setPassword}
+        secureTextEntry
+      />
 
-      {/* Alternatively, you can use the <Link> component.
-        'replace' is used to prevent the user from going back to the login screen.
-      */}
-      {/* <Link href="/feed" asChild replace>
-        <Pressable style={styles.button}>
-          <Text style={styles.buttonText}>Login with Link</Text>
-        </Pressable>
-      </Link> */}
+      <Pressable style={styles.button} onPress={() => login({ email, password })} disabled={isLoading}>
+        {isLoading ? <ActivityIndicator color="white" /> : <Text style={styles.buttonText}>Login</Text>}
+      </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-  },
-  title: {
-    fontSize: 48,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 24,
-    color: '#666',
-    marginBottom: 40,
-  },
-  button: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 30,
-    paddingVertical: 15,
-    borderRadius: 10,
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: '600',
-  },
+  container: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f5f5' },
+  title: { fontSize: 48, fontWeight: 'bold', marginBottom: 40 },
+  input: { width: '80%', height: 50, backgroundColor: 'white', borderRadius: 10, paddingHorizontal: 15, marginBottom: 15, borderWidth: 1, borderColor: '#ddd' },
+  button: { backgroundColor: '#007AFF', paddingVertical: 15, borderRadius: 10, width: '80%', alignItems: 'center' },
+  buttonText: { color: 'white', fontSize: 18, fontWeight: '600' },
 });
