@@ -22,15 +22,16 @@
     "expo-router": "~5.1.4",
     "expo-status-bar": "~2.2.3",
     "expo-symbols": "^0.4.5",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
     "react-native": "^0.79.5",
     "react-native-gesture-handler": "~2.24.0",
     "react-native-reanimated": "~3.17.4",
     "react-native-safe-area-context": "^5.4.0",
     "react-native-screens": "~4.11.1",
     "react-native-web": "^0.20.0",
-    "react-navigation": "^5.0.0"
+    "react-navigation": "^5.0.0",
+    "expo-camera": "~16.1.11"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
@@ -38,6 +39,9 @@
     "eslint": "^8.57.0",
     "eslint-config-expo": "~9.2.0",
     "typescript": "~5.8.3"
+  },
+  "overrides": {
+    "react": "19.0.0"
   },
   "private": true
 }
