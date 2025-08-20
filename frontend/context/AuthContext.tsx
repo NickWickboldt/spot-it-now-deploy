@@ -1,11 +1,11 @@
 // ==================================================================
 // File: context/AuthContext.tsx
 // ==================================================================
-import React, { createContext, useState, useContext, useEffect } from 'react';
-import { apiLoginUser } from '../api/auth';
 import { useRouter, useSegments } from "expo-router";
-import { setAuthToken } from '../api/client';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Platform } from 'react-native';
+import { apiLoginUser } from '../api/auth';
+import { setAuthToken } from '../api/client';
 // AsyncStorage is used on native platforms to persist the token between sessions
 let AsyncStorage: any = null;
 if (Platform.OS !== 'web') {
@@ -102,9 +102,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     try {
       const response = await apiLoginUser(credentials);
-      const { user: userData, accessToken } = response.data;
-      
-      userData.role = userData.email.includes('admin') ? 'admin' : 'user';
+      const { user: userData, accessToken, refreshToken, role } = response.data;
+      console.log(userData)
+      console.log(role)
+      // Prefer role provided by backend (set by admin lookup); fall back to email check
+      if (!userData.role) {
+        userData.role = role
+      }
 
       setToken(accessToken);
       setAuthToken(accessToken);

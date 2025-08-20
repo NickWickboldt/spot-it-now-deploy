@@ -4,6 +4,7 @@ const getAllUsers = asyncHandler(async (req, res) => {
   const users = await userService.getAllUsers();
   return res.status(200).json(new ApiResponse(200, users, "All users fetched successfully"));
 });
+import { Admin } from "../models/admin.model.js";
 import { userService } from "../services/user.service.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.util.js";
@@ -19,8 +20,24 @@ const registerUser = asyncHandler(async (req, res) => {
 
 const loginUser = asyncHandler(async (req, res) => {
   const { loggedInUser, accessToken, refreshToken } = await userService.loginUser(req.body);
+  // Determine if the logged in user has an admin record and annotate the returned user
+  let role = 'user';
+  try {
+    const adminRecord = await Admin.findOne({ user: loggedInUser._id });
+    console.log(adminRecord)
+    
+    if (adminRecord) {
+      // attach a role property for the client to consume
+      role = 'admin';
+    } else {
+      role = 'user';
+    }
+  } catch (e) {
+    // If admin lookup fails, default to user
+    role = 'user';
+  }
   const options = { httpOnly: true, secure: process.env.NODE_ENV === 'production' };
-  return res.status(200).cookie("accessToken", accessToken, options).cookie("refreshToken", refreshToken, options).json(new ApiResponse(200, { user: loggedInUser, accessToken, refreshToken }, "User logged In Successfully"));
+  return res.status(200).cookie("accessToken", accessToken, options).cookie("refreshToken", refreshToken, options).json(new ApiResponse(200, { user: loggedInUser, accessToken, refreshToken, role }, "User logged In Successfully"));
 });
 
 const logoutUser = asyncHandler(async (req, res) => {
