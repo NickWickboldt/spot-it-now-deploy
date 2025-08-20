@@ -96,6 +96,7 @@ const deleteUser = async (userId) => {
   }
 };
 
+
 /**
  * Gets a single field from a user's document.
  * @param {string} userId - The ID of the user.
@@ -108,6 +109,15 @@ const getUserField = async (userId, fieldName) => {
         throw new ApiError(404, "User not found");
     }
     return user[fieldName];
+};
+
+/**
+ * Fetches all users from the database.
+ * @returns {Promise<User[]>} Array of user objects without password and refreshToken.
+ */
+const getAllUsers = async () => {
+  const users = await User.find().select('-password -refreshToken');
+  return users;
 };
 
 /**
@@ -138,4 +148,5 @@ export const userService = {
   deleteUser,
   getUserField,
   updateUserField,
+  getAllUsers,
 };

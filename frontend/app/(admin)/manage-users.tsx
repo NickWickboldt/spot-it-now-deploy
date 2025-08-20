@@ -14,7 +14,7 @@ export default function ManageUsersScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const fetchUsers = async () => {
-    if (!token || token === 'local-admin-fake-token') {
+    if (!token) {
         setError("Cannot fetch users with local admin credentials. Please use a real admin account.");
         setIsLoading(false);
         return;

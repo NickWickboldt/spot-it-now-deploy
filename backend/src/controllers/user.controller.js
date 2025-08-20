@@ -1,3 +1,9 @@
+// --- Get All Users ---
+
+const getAllUsers = asyncHandler(async (req, res) => {
+  const users = await userService.getAllUsers();
+  return res.status(200).json(new ApiResponse(200, users, "All users fetched successfully"));
+});
 import { userService } from "../services/user.service.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.util.js";
@@ -107,6 +113,20 @@ const setUserExperiencePoints = asyncHandler(async (req, res) => {
 
 
 export {
-  deleteUserAccount, getCurrentUser, getUserBio, getUserEmail, getUserExperiencePoints, getUserProfilePicture, getUserUsername, loginUser,
-  logoutUser, registerUser, setUserBio, setUserEmail, setUserExperiencePoints, setUserProfilePicture, setUserUsername, updateUserDetails
+  deleteUserAccount, getAllUsers, getCurrentUser,
+  getUserBio,
+  getUserEmail,
+  getUserExperiencePoints,
+  getUserProfilePicture,
+  getUserUsername,
+  loginUser,
+  logoutUser,
+  registerUser,
+  setUserBio,
+  setUserEmail,
+  setUserExperiencePoints,
+  setUserProfilePicture,
+  setUserUsername,
+  updateUserDetails
 };
+

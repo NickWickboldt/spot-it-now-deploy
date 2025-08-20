@@ -1,21 +1,20 @@
 import { Router } from 'express';
 import {
-  registerUser,
-  loginUser,
-  logoutUser,
-  getCurrentUser,
-  updateUserDetails,
   deleteUserAccount,
-  getUserUsername,
-  getUserEmail,
-  getUserProfilePicture,
+  getAllUsers,
+  getCurrentUser,
   getUserBio,
   getUserExperiencePoints,
-  setUserUsername,
+  getUserProfilePicture,
+  getUserUsername,
+  loginUser,
+  logoutUser,
+  registerUser,
+  setUserBio,
   setUserEmail,
   setUserProfilePicture,
-  setUserBio,
-  setUserExperiencePoints,
+  setUserUsername,
+  updateUserDetails
 } from '../controllers/user.controller.js';
 import { verifyJWT } from '../middlewares/auth.middleware.js';
 
@@ -35,6 +34,7 @@ router.route('/me').delete(verifyJWT, deleteUserAccount);
 
 // --- Public Getter Routes ---
 // These allow anyone to get basic, non-sensitive info about a user.
+router.route('/').get(getAllUsers);
 router.route('/:userId/username').get(getUserUsername);
 router.route('/:userId/profile-picture').get(getUserProfilePicture);
 router.route('/:userId/bio').get(getUserBio);
