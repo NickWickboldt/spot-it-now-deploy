@@ -10,12 +10,21 @@ import { asyncHandler } from "../utils/asyncHandler.util.js";
  */
 export const verifyJWT = asyncHandler(async (req, _, next) => {
   try {
+    // Debug: log incoming auth header and cookies to help diagnose 401s
+    // NOTE: This is temporary debugging output. Remove or redact in production.
+    try {
+      console.log('[verifyJWT] Incoming Authorization header:', req.header('Authorization'));
+      console.log('[verifyJWT] Incoming cookies:', req.cookies);
+    } catch (logErr) {
+      // swallow logging errors
+    }
     // 1. Extract the token from the user's cookies or Authorization header.
     const token =
       req.cookies?.accessToken ||
       req.header("Authorization")?.replace("Bearer ", "");
 
     if (!token) {
+      console.log('[verifyJWT] No token found on request');
       throw new ApiError(401, "Unauthorized request");
     }
 
@@ -38,7 +47,8 @@ export const verifyJWT = asyncHandler(async (req, _, next) => {
     req.user = user;
     next(); // Pass control to the next middleware or controller.
   } catch (error) {
-    // Handle specific JWT errors like expiration.
-    throw new ApiError(401, error?.message || "Invalid access token");
+  // Handle specific JWT errors like expiration.
+  console.error('[verifyJWT] Token verification failed:', error?.message || error);
+  throw new ApiError(401, error?.message || "Invalid access token");
   }
 });

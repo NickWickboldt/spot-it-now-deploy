@@ -6,7 +6,7 @@ import { Platform } from 'react-native';
 // 1. Web -> use window.location
 // 2. Expo -> read the debuggerHost from expo-constants manifest to extract dev machine IP
 // 3. Fallback -> localhost:8000
-let BASE_URL = 'http://localhost:8000/api/v1';
+export let BASE_URL = 'http://localhost:8000/api/v1';
 
 const computeBaseUrl = () => {
   console.log(Platform.OS);
@@ -24,17 +24,27 @@ const computeBaseUrl = () => {
 
 BASE_URL = computeBaseUrl();
 
+// In-memory auth token used by fetch utilities. Call `setAuthToken` after login/logout.
+let AUTH_TOKEN: string | null = null;
+
+export const setAuthToken = (token: string | null | undefined) => {
+  AUTH_TOKEN = token || null;
+};
+
 export const setBaseUrl = (url: string) => {
   BASE_URL = url;
 };
 
 export const fetchWithAuth = async (endpoint: string, token?: string, options: RequestInit = {}) => {
+  // prefer explicit token argument, fall back to the globally set AUTH_TOKEN
+  const effectiveToken = token || AUTH_TOKEN;
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...((options.headers as Record<string, string>) || {}),
   };
 
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  if (effectiveToken) headers['Authorization'] = `Bearer ${effectiveToken}`;
 
   // Log request details
   console.log('[API REQUEST]', {
@@ -55,15 +65,28 @@ export const fetchWithAuth = async (endpoint: string, token?: string, options: R
     });
 
     if (!response.ok) {
-      // Try to parse error body if present
-      let errorData: any = { message: 'API request failed' };
+      // Try to read and log the response body so we can diagnose 401/403 issues.
+      let textBody = '';
       try {
-        errorData = await response.json();
+        textBody = await response.text();
       } catch (e) {
-        // ignore parse errors
+        // ignore
       }
-      console.error('[API ERROR]', errorData);
-      throw new Error(errorData.message || `Request failed with status ${response.status}`);
+
+      let errorMessage = `Request failed with status ${response.status}`;
+      try {
+        const parsed = JSON.parse(textBody);
+        console.error('[API ERROR - parsed]', parsed);
+        errorMessage = parsed?.message || errorMessage;
+      } catch (e) {
+        console.error('[API ERROR - text]', textBody);
+        // if there's plain text, use it in the message
+        if (textBody) errorMessage = textBody;
+      }
+
+      // Include Authorization header in the console to verify token presence (redact in production)
+      console.log('[API ERROR CONTEXT]', { url: `${BASE_URL}${endpoint}`, status: response.status, headers });
+      throw new Error(errorMessage);
     }
 
     // Handle cases where the response body might be empty (e.g., DELETE requests)

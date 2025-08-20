@@ -1,13 +1,13 @@
 import { Router } from 'express';
 import {
-  promoteUserToAdmin,
-  removeAdminPrivileges,
+  changeAdminPermissionLevel,
   getAdminDetails,
   getAllAdmins,
-  changeAdminPermissionLevel,
+  promoteUserToAdmin,
+  removeAdminPrivileges,
 } from '../controllers/admin.controller.js';
-import { verifyJWT } from '../middlewares/auth.middleware.js';
 import { verifyAdmin } from '../middlewares/admin.middleware.js';
+import { verifyJWT } from '../middlewares/auth.middleware.js';
 
 const router = Router();
 

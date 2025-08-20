@@ -111,9 +111,39 @@ const setUserExperiencePoints = asyncHandler(async (req, res) => {
     return res.status(200).json(new ApiResponse(200, updatedUser, "Experience points updated successfully"));
 });
 
+// --- Admin Actions (operate on arbitrary users) ---
+
+const adminGetUserById = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  const user = await userService.getUserById(userId);
+  return res.status(200).json(new ApiResponse(200, user, 'User fetched successfully'));
+});
+
+const adminUpdateUser = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  const updatedUser = await userService.updateUser(userId, req.body);
+  return res.status(200).json(new ApiResponse(200, updatedUser, 'User updated successfully'));
+});
+
+const adminDeleteUser = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  await userService.deleteUser(userId);
+  return res.status(200).json(new ApiResponse(200, {}, 'User deleted successfully'));
+});
+
+const adminForceLogoutUser = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  await userService.logoutUser(userId);
+  return res.status(200).json(new ApiResponse(200, {}, 'User forcefully logged out'));
+});
+
 
 export {
-  deleteUserAccount, getAllUsers, getCurrentUser,
+  adminDeleteUser,
+  adminForceLogoutUser,
+  // admin exports
+  adminGetUserById,
+  adminUpdateUser, deleteUserAccount, getAllUsers, getCurrentUser,
   getUserBio,
   getUserEmail,
   getUserExperiencePoints,

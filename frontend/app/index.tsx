@@ -30,7 +30,7 @@ export default function LoginScreen() {
         secureTextEntry
       />
 
-      <Pressable style={styles.button} onPress={() => login({ email, password })} disabled={isLoading}>
+      <Pressable style={styles.button} onPress={() => login({ 'username':email, password })} disabled={isLoading}>
         {isLoading ? <ActivityIndicator color="white" /> : <Text style={styles.buttonText}>Login</Text>}
       </Pressable>
     </View>

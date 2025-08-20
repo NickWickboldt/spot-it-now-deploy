@@ -1,6 +1,6 @@
-import { asyncHandler } from '../utils/asyncHandler.util.js';
-import { ApiResponse } from '../utils/ApiResponse.js';
 import { adminService } from '../services/admin.service.js';
+import { ApiResponse } from '../utils/ApiResponse.js';
+import { asyncHandler } from '../utils/asyncHandler.util.js';
 
 /**
  * Controller to promote a regular user to an admin.
@@ -58,9 +58,8 @@ const changeAdminPermissionLevel = asyncHandler(async (req, res) => {
 });
 
 export {
-  promoteUserToAdmin,
-  removeAdminPrivileges,
-  getAdminDetails,
-  getAllAdmins,
-  changeAdminPermissionLevel,
+  changeAdminPermissionLevel, getAdminDetails,
+  getAllAdmins, promoteUserToAdmin,
+  removeAdminPrivileges
 };
+

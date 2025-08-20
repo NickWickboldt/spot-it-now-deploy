@@ -1,5 +1,9 @@
 import { Router } from 'express';
 import {
+  adminDeleteUser,
+  adminForceLogoutUser,
+  adminGetUserById,
+  adminUpdateUser,
   deleteUserAccount,
   getAllUsers,
   getCurrentUser,
@@ -16,6 +20,7 @@ import {
   setUserUsername,
   updateUserDetails
 } from '../controllers/user.controller.js';
+import { verifyAdmin } from '../middlewares/admin.middleware.js';
 import { verifyJWT } from '../middlewares/auth.middleware.js';
 
 const router = Router();
@@ -51,5 +56,14 @@ router.route('/me/profile-picture').patch(verifyJWT, setUserProfilePicture);
 router.route('/me/bio').patch(verifyJWT, setUserBio);
 // Note: Experience points should likely be updated by game logic, not directly by the user.
 // router.route('/me/experience').patch(verifyJWT, setUserExperiencePoints);
+
+// --- Admin Management Routes ---
+// Admins can operate on arbitrary users
+router.route('/:userId')
+  .get(verifyJWT, verifyAdmin(), adminGetUserById)
+  .patch(verifyJWT, verifyAdmin(), adminUpdateUser)
+  .delete(verifyJWT, verifyAdmin(), adminDeleteUser);
+
+router.route('/:userId/force-logout').post(verifyJWT, verifyAdmin(), adminForceLogoutUser);
 
 export default router;

@@ -29,11 +29,11 @@ const registerUser = async (userData) => {
  * @returns {Promise<{loggedInUser: User, accessToken: string, refreshToken: string}>}
  */
 const loginUser = async (loginData) => {
-  const { email, username, password } = loginData;
-  if (!username && !email) {
+  const { username, password } = loginData;
+  if (!username) {
     throw new ApiError(400, "Username or email is required");
   }
-  const user = await User.findOne({ $or: [{ username }, { email }] });
+  const user = await User.findOne({ username });
   if (!user) {
     throw new ApiError(404, "User not found");
   }

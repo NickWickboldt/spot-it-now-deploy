@@ -87,3 +87,28 @@ export const apiSetUserBio = async (token: string, bio: string) => {
   });
 };
 
+// --- Admin management helpers (require admin token) ---
+export const apiAdminGetUser = async (token: string, userId: string) => {
+  return fetchWithAuth(`/users/${userId}`, token);
+};
+
+export const apiAdminUpdateUser = async (token: string, userId: string, updateData: any) => {
+  return fetchWithAuth(`/users/${userId}`, token, { method: 'PATCH', body: JSON.stringify(updateData) });
+};
+
+export const apiAdminDeleteUser = async (token: string, userId: string) => {
+  return fetchWithAuth(`/users/${userId}`, token, { method: 'DELETE' });
+};
+
+export const apiAdminForceLogoutUser = async (token: string, userId: string) => {
+  return fetchWithAuth(`/users/${userId}/force-logout`, token, { method: 'POST' });
+};
+
+// Promote a regular user to an admin (requires super-admin token)
+export const apiAdminPromoteUser = async (token: string, userId: string, permissionLevel = 1) => {
+  return fetchWithAuth('/admins/promote', token, {
+    method: 'POST',
+    body: JSON.stringify({ userId, permissionLevel }),
+  });
+};
+
