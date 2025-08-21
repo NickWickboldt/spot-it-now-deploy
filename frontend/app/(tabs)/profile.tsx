@@ -76,7 +76,7 @@ const profileStyles = StyleSheet.create({
   adminContainer: { width: '100%', padding: 20, backgroundColor: '#fff0f0', borderRadius: 10, marginBottom: 20 },
   adminTitle: { fontSize: 22, fontWeight: 'bold', marginBottom: 15, textAlign: 'center', color: '#D0021B' },
   button: { backgroundColor: '#007AFF', padding: 15, borderRadius: 10, width: '100%', alignItems: 'center', marginBottom: 10 },
-  buttonText: { color: 'white', fontSize: 16, fontWeight: '600', marginBottom: 20 },
+  buttonText: { color: 'white', fontSize: 16, fontWeight: '600' },
   destructiveButton: { backgroundColor: '#FF3B30' },
-  logoutButton: { marginTop: 'auto', backgroundColor: '#666' },
+  logoutButton: { marginTop: 'auto', backgroundColor: '#666', marginBottom: 150 },
 });
