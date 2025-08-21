@@ -1,4 +1,5 @@
 import { StyleSheet } from "react-native";
+import { Colors } from "./Colors";
 
 
 
@@ -8,11 +9,8 @@ export const tabStyles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        
-    },
-    title: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        marginBottom: '1rem',
+        paddingTop:40,
+        paddingHorizontal: 8,
+        backgroundColor:Colors.light.shadow, // Light background color
     },
 });

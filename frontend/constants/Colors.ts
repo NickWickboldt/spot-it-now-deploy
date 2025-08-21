@@ -8,17 +8,27 @@ const tintColorDark = '#fff';
 
 export const Colors = {
   light: {
-    mainText: '#2A5a82',
-    text:'#000',
-    background: '#D2E2F0',
-    tint: tintColorLight,
-    btnColor: '#2A5a82',
-    btnText:'#fff'
+    primaryGreen: '#40743dff',
+    secondaryGreen: '#7FA37C',
+    softBeige: '#FAFAF5',
+    darkNeutral: '#2A2A2A',
+    accent: '#F6C177', // Example nature-inspired accent (sunset gold)
+    mainText: '#2A2A2A',
+    background: '#FAFAF5',
+    cardBackground: '#F8F7F2',
+    buttonText: '#40743dff',
+    shadow: '#d4e6b4ff',
   },
   dark: {
-    text: '#ECEDEE',
-    mainText: '#2A5a82',
-    background: '#151718',
-    tint: tintColorDark,
+    primaryGreen: '#3A5E3B',
+    secondaryGreen: '#7FA37C',
+    softBeige: '#F8F7F2',
+    darkNeutral: '#333333',
+    accent: '#F6C177',
+    mainText: '#FAFAF5',
+    background: '#333333',
+    cardBackground: '#2A2A2A',
+    buttonText: '#FAFAF5',
+    shadow: '#7FA37C',
   },
 };
