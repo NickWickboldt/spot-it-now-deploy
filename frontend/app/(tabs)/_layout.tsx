@@ -1,17 +1,19 @@
 import React from 'react';
-import { View, Text, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
-import { Tabs, useRouter } from 'expo-router';
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
+import { Tabs } from 'expo-router';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import Svg, { Path } from 'react-native-svg';
 import { Colors } from '../../constants/Colors';
+// Assuming you have a Colors file, otherwise replace with your colors
 
-const TAB_ICONS = [
-  { name: 'feed', icon: 'file-text', label: 'Sightings' },      // FontAwesome "file-text" for posts
-  { name: 'spotit', icon: 'camera', label: 'Post', isCenter: true },
-  { name: 'profile', icon: 'user', label: 'Profile' },      // FontAwesome "user" for profile
-];
 
 const { width } = Dimensions.get('window');
+
+const TAB_ICONS = [
+  { name: 'feed', icon: 'file-text', label: 'Sightings' },
+  { name: 'spotit', icon: 'camera', label: 'Post', isCenter: true },
+  { name: 'profile', icon: 'user', label: 'Profile' },
+];
 
 function CustomTabBar({ state, navigation }) {
   return (
@@ -38,11 +40,26 @@ function CustomTabBar({ state, navigation }) {
       <View style={styles.tabRow}>
         {TAB_ICONS.map((tab, idx) => {
           const focused = state.index === idx;
+
           if (tab.isCenter) {
+            // --- MODIFIED LOGIC FOR CENTER BUTTON ---
+            const spotitRoute = state.routes.find(r => r.name === 'spotit');
+            const takePictureFn = spotitRoute?.params?.takePicture;
+            
+            const handlePress = () => {
+              if (focused && typeof takePictureFn === 'function') {
+                // If we are already on the camera screen, take the picture
+                takePictureFn();
+              } else {
+                // Otherwise, navigate to the camera screen
+                navigation.navigate(tab.name);
+              }
+            };
+
             return (
               <View key={tab.name} style={styles.centerTabContainer}>
                 <TouchableOpacity
-                  onPress={() => navigation.navigate(tab.name)}
+                  onPress={handlePress} // Use the new handler logic
                   activeOpacity={0.7}
                   style={styles.centerIconBg}
                 >
@@ -52,6 +69,8 @@ function CustomTabBar({ state, navigation }) {
               </View>
             );
           }
+          // --- END MODIFIED LOGIC ---
+
           return (
             <TouchableOpacity
               key={tab.name}
@@ -82,80 +101,70 @@ function CustomTabBar({ state, navigation }) {
 
 export default function TabLayout() {
   return (
-    <Tabs tabBar={props => <CustomTabBar {...props} />}>
-      <Tabs.Screen name="feed" options={{ headerShown: false }} />
+    <Tabs tabBar={props => <CustomTabBar {...props} />} screenOptions={{
+      // Hiding the header for the spotit screen in the layout itself
+      headerShown: false 
+    }}>
+      <Tabs.Screen name="feed" />
       <Tabs.Screen name="spotit" />
       <Tabs.Screen name="profile" />
     </Tabs>
   );
 }
 
+// Add some basic styles if they aren't imported from elsewhere
 const styles = StyleSheet.create({
   tabBarWrapper: {
     position: 'absolute',
-    left: 0,
-    right: 0,
     bottom: 0,
+    width: '100%',
     height: 80,
-    width: width,
     alignItems: 'center',
-    justifyContent: 'center',
   },
   curveSvg: {
     position: 'absolute',
     top: 0,
-    left: 0,
-    zIndex: 0,
-    width: width,
   },
   tabRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    width: width,
-    height: 60,
-    paddingHorizontal: 0,
-    zIndex: 1,
+    justifyContent: 'space-around',
+    alignItems: 'flex-start',
+    width: '100%',
+    height: '100%',
   },
   tabItem: {
-    alignItems: 'center',
-    justifyContent: 'flex-end',
     flex: 1,
-    marginBottom: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 10, 
+    height: 60,
   },
   tabLabel: {
     fontSize: 12,
-    marginTop: 2,
-    fontWeight: '500',
+    marginTop: 4,
   },
   centerTabContainer: {
+    flex: 1,
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    width: 80,
-    marginBottom: 8,
+    justifyContent: 'flex-start',
   },
   centerIconBg: {
     width: 64,
     height: 64,
     borderRadius: 32,
-    alignItems: 'center',
+    backgroundColor: Colors.light.primaryGreen,
     justifyContent: 'center',
-    elevation: 8,
-    shadowColor: Colors.light.shadow,
-    shadowOpacity: 0.22,
-    shadowRadius: 14,
-    borderWidth: 4,
-    borderColor: Colors.light.softBeige,
-    position: 'absolute',
-    top: -64,
-    alignSelf: 'center',
-    backgroundColor: Colors.light.shadow,
+    alignItems: 'center',
+    transform: [{ translateY: -20 }],
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
   },
   centerTabLabel: {
-    fontSize: 16,
-    marginTop: 20,
-    fontWeight: '500',
+    fontSize: 12,
     color: Colors.light.darkNeutral,
-    textAlign: 'center',
+    transform: [{ translateY: -15 }],
   },
 });
