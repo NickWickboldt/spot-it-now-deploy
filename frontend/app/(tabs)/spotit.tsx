@@ -93,42 +93,9 @@ export default function SpotItScreen() {
 
 // ... your styles remain the same
 const styles = StyleSheet.create({
-<<<<<<< Updated upstream
-  container: {
-    flex: 1,
-  },
-  camera: {
-    flex: 1,
-  },
-  controls: {
-    flex: 1,
-    backgroundColor: "transparent",
-    justifyContent: "flex-end",
-    alignItems: "center",
-    marginBottom: 30,
-  },
-  button: {
-    backgroundColor: "rgba(0,0,0,0.6)",
-    padding: 15,
-    borderRadius: 50,
-    marginBottom: 150
-  },
-  buttonText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "bold",
-  },
-  centered: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-});
-=======
   container: { flex: 1 },
   camera: { flex: 1 },
   button: { backgroundColor: "rgba(0,0,0,0.6)", padding: 15, borderRadius: 50 },
   buttonText: { color: "#fff", fontSize: 18, fontWeight: "bold" },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
 });
->>>>>>> Stashed changes
