@@ -104,15 +104,72 @@ const findSightingsNear = async (longitude, latitude, maxDistanceInMeters = 1000
 };
 
 /**
+ * Returns all sightings (admin use).
+ * @returns {Promise<Sighting[]>}
+ */
+const getAllSightings = async () => {
+  return await Sighting.find({}).sort({ createdAt: -1 });
+};
+
+/**
+ * Returns paginated sightings with optional text search.
+ * @param {object} options { page, pageSize, q }
+ */
+const getSightingsPage = async ({ page = 1, pageSize = 20, q = '' } = {}) => {
+  const skip = (page - 1) * pageSize;
+  const filter = {};
+  if (q && q.trim()) {
+    const regex = new RegExp(q.trim(), 'i');
+    // Search caption or user username (requires populate later) or animal commonName
+    filter.$or = [{ caption: regex }];
+  }
+
+  const [items, total] = await Promise.all([
+    Sighting.find(filter).sort({ createdAt: -1 }).skip(skip).limit(pageSize).populate('user', 'username profilePictureUrl').populate('animal', 'commonName scientificName'),
+    Sighting.countDocuments(filter),
+  ]);
+
+  return { items, total, page, pageSize };
+};
+
+/**
+ * Returns most recent sightings in pages (public feed).
+ * @param {{page?: number, pageSize?: number}} options
+ */
+const getRecentSightingsPage = async ({ page = 1, pageSize = 20 } = {}) => {
+  const skip = (page - 1) * pageSize;
+  const [items, total] = await Promise.all([
+    Sighting.find({}).sort({ createdAt: -1 }).skip(skip).limit(pageSize).populate('user', 'username profilePictureUrl').populate('animal', 'commonName'),
+    Sighting.countDocuments({}),
+  ]);
+  return { items, total, page, pageSize };
+};
+
+/**
  * Updates one or more specific fields for a sighting.
  * @param {string} sightingId - The ID of the sighting to update.
  * @param {object} fieldsToUpdate - An object with the key-value pairs to update.
  * @returns {Promise<Sighting>} The updated sighting object.
  */
 const updateSightingField = async (sightingId, fieldsToUpdate) => {
+  // Defensive: if frontend sends empty string to clear animal, coerce to null so Mongoose
+  // doesn't attempt to cast an empty string to ObjectId (which throws a CastError).
+  const update = { ...fieldsToUpdate };
+  if (Object.prototype.hasOwnProperty.call(update, 'animal')) {
+    // treat empty string or all-whitespace as null
+    if (update.animal === '' || (typeof update.animal === 'string' && update.animal.trim() === '')) {
+      update.animal = null;
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(update, 'aiIdentification')) {
+    if (update.aiIdentification === '' || (typeof update.aiIdentification === 'string' && update.aiIdentification.trim() === '')) {
+      update.aiIdentification = null;
+    }
+  }
+
   const sighting = await Sighting.findByIdAndUpdate(
     sightingId,
-    { $set: fieldsToUpdate },
+    { $set: update },
     { new: true }
   );
   if (!sighting) {
@@ -167,4 +224,6 @@ export const sightingService = {
   updateSightingField,
   addMediaUrlToSighting,
   removeMediaUrlFromSighting,
+  getSightingsPage
+  ,getRecentSightingsPage
 };

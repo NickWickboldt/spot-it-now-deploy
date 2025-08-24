@@ -1,6 +1,6 @@
-import mongoose, { Schema } from 'mongoose';
-import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+import mongoose, { Schema } from 'mongoose';
 
 // Define the schema for the User model
 const userSchema = new Schema(
@@ -31,6 +31,19 @@ const userSchema = new Schema(
     bio: {
       type: String,
       default: '',
+    },
+    longitude: {
+      type: Number,
+      default: null,
+    },
+    latitude: {
+      type: Number,
+      default: null,
+    },
+    radius: {
+      // radius in miles as an integer
+      type: Number,
+      default: 0,
     },
     experiencePoints: {
       type: Number,

@@ -1,6 +1,6 @@
-import { asyncHandler } from '../utils/asyncHandler.util.js';
-import { ApiResponse } from '../utils/ApiResponse.js';
 import { sightingService } from '../services/sighting.service.js';
+import { ApiResponse } from '../utils/ApiResponse.js';
+import { asyncHandler } from '../utils/asyncHandler.util.js';
 
 /**
  * Controller to create a new sighting post.
@@ -74,6 +74,29 @@ const findSightingsNear = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Public controller to fetch recent sightings (paginated) for the feed.
+ * Query params: page, pageSize
+ */
+const getRecentSightings = asyncHandler(async (req, res) => {
+  const page = parseInt(req.query.page) || 1;
+  const pageSize = parseInt(req.query.pageSize) || 10;
+  const result = await sightingService.getRecentSightingsPage({ page, pageSize });
+  return res.status(200).json(new ApiResponse(200, result, 'Recent sightings page fetched successfully'));
+});
+
+/**
+ * Admin controller to fetch paginated sightings with optional search.
+ * Query params: page, pageSize, q
+ */
+const getAllSightings = asyncHandler(async (req, res) => {
+  const page = parseInt(req.query.page) || 1;
+  const pageSize = parseInt(req.query.pageSize) || 20;
+  const q = req.query.q || '';
+  const result = await sightingService.getSightingsPage({ page, pageSize, q });
+  return res.status(200).json(new ApiResponse(200, result, 'Sightings page fetched successfully'));
+});
+
+/**
  * Controller to update a specific field in a sighting.
  */
 const updateSightingField = asyncHandler(async (req, res) => {
@@ -109,13 +132,9 @@ const removeMediaUrlFromSighting = asyncHandler(async (req, res) => {
 });
 
 export {
-  createSighting,
-  deleteSighting,
-  getSightingById,
-  getSightingsByUser,
-  getSightingsByAnimal,
-  findSightingsNear,
-  updateSightingField,
-  addMediaUrlToSighting,
-  removeMediaUrlFromSighting,
+  addMediaUrlToSighting, createSighting,
+  deleteSighting, findSightingsNear,
+  // admin
+  getAllSightings, getRecentSightings, getSightingById, getSightingsByAnimal, getSightingsByUser, removeMediaUrlFromSighting, updateSightingField
 };
+

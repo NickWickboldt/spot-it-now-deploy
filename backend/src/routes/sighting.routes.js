@@ -1,15 +1,18 @@
 import { Router } from 'express';
 import {
+  addMediaUrlToSighting,
   createSighting,
   deleteSighting,
-  getSightingById,
-  getSightingsByUser,
-  getSightingsByAnimal,
   findSightingsNear,
-  updateSightingField,
-  addMediaUrlToSighting,
+  getAllSightings,
+  getSightingById,
+  getSightingsByAnimal,
+  getSightingsByUser,
   removeMediaUrlFromSighting,
+  updateSightingField,
+  getRecentSightings
 } from '../controllers/sighting.controller.js';
+import { verifyAdmin } from '../middlewares/admin.middleware.js';
 import { verifyJWT } from '../middlewares/auth.middleware.js';
 
 const router = Router();
@@ -19,7 +22,13 @@ const router = Router();
 router.route('/near').get(findSightingsNear); // e.g., /near?long=-96.8&lat=32.7
 router.route('/by-user/:userId').get(getSightingsByUser);
 router.route('/by-animal/:animalId').get(getSightingsByAnimal);
+// public recent feed (paginated) - define before parameterized routes so 'recent' is not
+// interpreted as a sightingId by the `/:sightingId` route.
+router.route('/recent').get(getRecentSightings);
 router.route('/:sightingId').get(getSightingById);
+
+// Admin: list all sightings
+router.route('/').get(verifyJWT, verifyAdmin(1), getAllSightings);
 
 
 // --- Secured Routes ---

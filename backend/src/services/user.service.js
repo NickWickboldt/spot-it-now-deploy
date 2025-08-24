@@ -1,3 +1,4 @@
+import { Admin } from '../models/admin.model.js';
 import { User } from '../models/user.model.js';
 import { ApiError } from '../utils/ApiError.util.js';
 
@@ -71,14 +72,44 @@ const getUserById = async (userId) => {
 };
 
 /**
+ * Returns role string ('admin'|'user') for a given userId by checking Admin table.
+ */
+const getRoleForUser = async (userId) => {
+  try {
+    const adminRecord = await Admin.findOne({ user: userId });
+    return adminRecord ? 'admin' : 'user';
+  } catch (e) {
+    return 'user';
+  }
+};
+
+/**
+ * Returns a user object (without password/refreshToken) annotated with role.
+ */
+const getUserWithRoleById = async (userId) => {
+  const user = await User.findById(userId).select('-password -refreshToken');
+  if (!user) {
+    throw new ApiError(404, 'User not found');
+  }
+  const role = await getRoleForUser(userId);
+  const userObj = user.toObject ? user.toObject() : { ...user };
+  userObj.role = role;
+  return userObj;
+};
+
+/**
  * Updates multiple user details at once.
  * @param {string} userId - The ID of the user to update.
  * @param {object} updateData - An object containing the fields to update.
  * @returns {Promise<User>} The updated user object.
  */
 const updateUser = async (userId, updateData) => {
-  const { username, bio, profilePictureUrl } = updateData;
-  const user = await User.findByIdAndUpdate(userId, { $set: { username, bio, profilePictureUrl } }, { new: true }).select('-password -refreshToken');
+  const { username, email, profilePictureUrl, bio, experiencePoints, longitude, latitude, radius } = updateData;
+  const user = await User.findByIdAndUpdate(
+    userId,
+    { $set: { username, bio, profilePictureUrl, email, experiencePoints, longitude, latitude, radius } },
+    { new: true }
+  ).select('-password -refreshToken');
   if (!user) {
     throw new ApiError(404, 'User not found');
   }
@@ -117,7 +148,48 @@ const getUserField = async (userId, fieldName) => {
  */
 const getAllUsers = async () => {
   const users = await User.find().select('-password -refreshToken');
-  return users;
+  // Fetch admin records once and build a set for fast lookup
+  const admins = await Admin.find().select('user');
+  const adminSet = new Set(admins.map(a => String(a.user)));
+
+  // Annotate each user with role
+  const annotated = users.map(u => {
+    const userObj = u.toObject ? u.toObject() : { ...u };
+    userObj.role = adminSet.has(String(u._id)) ? 'admin' : 'user';
+    return userObj;
+  });
+  return annotated;
+};
+
+/**
+ * Returns a paginated list of users with optional search.
+ * @param {{page?: number, pageSize?: number, q?: string}} options
+ */
+const getUsersPage = async ({ page = 1, pageSize = 20, q = '' } = {}) => {
+  const filter = {};
+  if (q && q.trim() !== '') {
+    const re = new RegExp(q.trim(), 'i');
+    filter.$or = [{ username: re }, { email: re }];
+  }
+
+  const total = await User.countDocuments(filter);
+  const skip = Math.max(0, (Number(page) - 1) * Number(pageSize));
+  const users = await User.find(filter)
+    .select('-password -refreshToken')
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(Number(pageSize));
+
+  const admins = await Admin.find().select('user');
+  const adminSet = new Set(admins.map(a => String(a.user)));
+
+  const annotated = users.map(u => {
+    const userObj = u.toObject ? u.toObject() : { ...u };
+    userObj.role = adminSet.has(String(u._id)) ? 'admin' : 'user';
+    return userObj;
+  });
+
+  return { items: annotated, total, page: Number(page), pageSize: Number(pageSize) };
 };
 
 /**
@@ -144,9 +216,12 @@ export const userService = {
   loginUser,
   logoutUser,
   getUserById,
+  getUserWithRoleById,
+  getRoleForUser,
   updateUser,
   deleteUser,
   getUserField,
   updateUserField,
   getAllUsers,
+  getUsersPage
 };

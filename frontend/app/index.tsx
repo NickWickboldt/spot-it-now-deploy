@@ -5,8 +5,8 @@ import { Colors } from '../constants/Colors';
 
 export default function LoginScreen() {
   const { login, isLoading } = useAuth();
-  const [email, setEmail] = useState('zack');
-  const [password, setPassword] = useState('zackle123*');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
   return (
     <View style={styles.container}>

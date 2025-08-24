@@ -17,7 +17,7 @@ router.use(verifyJWT);
 // --- Super Admin Routes ---
 // These routes require the highest permission level (e.g., level 2)
 // Only a Super Admin can promote a user or remove admin privileges.
-router.route('/promote').post(verifyAdmin(2), promoteUserToAdmin);
+router.route('/promote').post(verifyAdmin(1), promoteUserToAdmin);
 router.route('/:adminId/demote').delete(verifyAdmin(2), removeAdminPrivileges);
 router.route('/:adminId/permission').patch(verifyAdmin(2), changeAdminPermissionLevel);
 

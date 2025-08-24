@@ -6,6 +6,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 import { apiLoginUser } from '../api/auth';
 import { setAuthToken } from '../api/client';
+import { apiGetCurrentUser } from '../api/user';
 // AsyncStorage is used on native platforms to persist the token between sessions
 let AsyncStorage: any = null;
 if (Platform.OS !== 'web') {
@@ -24,6 +25,7 @@ interface AuthContextType {
   token: string | null;
   login: (credentials: any) => Promise<void>;
   logout: () => void;
+  refreshUser: () => Promise<void>;
   isLoading: boolean;
 }
 
@@ -130,6 +132,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
+  const refreshUser = async () => {
+    if (!token) return;
+    try {
+      const resp = await apiGetCurrentUser(token);
+      if (resp && resp.data) setUser(resp.data);
+    } catch (e) {
+      console.warn('Failed to refresh user', e);
+    }
+  };
+
   const logout = () => {
     setToken(null);
     setUser(null);
@@ -146,7 +158,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, isLoading }}>
+  <AuthContext.Provider value={{ user, token, login, logout, isLoading, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

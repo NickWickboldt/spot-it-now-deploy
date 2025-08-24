@@ -1,15 +1,25 @@
-// --- Get All Users ---
-
-const getAllUsers = asyncHandler(async (req, res) => {
-  const users = await userService.getAllUsers();
-  return res.status(200).json(new ApiResponse(200, users, "All users fetched successfully"));
-});
-import { Admin } from "../models/admin.model.js";
 import { userService } from "../services/user.service.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.util.js";
 
 // --- Auth Controllers ---
+
+// --- Get All Users ---
+
+const getAllUsers = asyncHandler(async (req, res) => {
+  // Support optional pagination and search for admin UIs via query params
+  const { page, pageSize, q } = req.query || {};
+  if (page || pageSize || q) {
+    // Use paginated service
+    const pageNum = page ? Number(page) : 1;
+    const sizeNum = pageSize ? Number(pageSize) : 20;
+    const result = await userService.getUsersPage({ page: pageNum, pageSize: sizeNum, q: q ? String(q) : '' });
+    return res.status(200).json(new ApiResponse(200, result, 'Users page fetched successfully'));
+  }
+
+  const users = await userService.getAllUsers();
+  return res.status(200).json(new ApiResponse(200, users, "All users fetched successfully"));
+});
 
 const registerUser = asyncHandler(async (req, res) => {
   const createdUser = await userService.registerUser(req.body);
@@ -20,20 +30,11 @@ const registerUser = asyncHandler(async (req, res) => {
 
 const loginUser = asyncHandler(async (req, res) => {
   const { loggedInUser, accessToken, refreshToken } = await userService.loginUser(req.body);
-  // Determine if the logged in user has an admin record and annotate the returned user
+  // Determine role using the userService helper
   let role = 'user';
   try {
-    const adminRecord = await Admin.findOne({ user: loggedInUser._id });
-    console.log(adminRecord)
-    
-    if (adminRecord) {
-      // attach a role property for the client to consume
-      role = 'admin';
-    } else {
-      role = 'user';
-    }
+    role = await userService.getRoleForUser(loggedInUser._id);
   } catch (e) {
-    // If admin lookup fails, default to user
     role = 'user';
   }
   const options = { httpOnly: true, secure: process.env.NODE_ENV === 'production' };
@@ -50,7 +51,9 @@ const logoutUser = asyncHandler(async (req, res) => {
 // --- General User CRUD ---
 
 const getCurrentUser = asyncHandler(async (req, res) => {
-  return res.status(200).json(new ApiResponse(200, req.user, "User profile fetched successfully"));
+  // Use service helper to fetch user with role
+  const userWithRole = await userService.getUserWithRoleById(req.user._id);
+  return res.status(200).json(new ApiResponse(200, userWithRole, "User profile fetched successfully"));
 });
 
 const updateUserDetails = asyncHandler(async (req, res) => {
@@ -138,7 +141,9 @@ const adminGetUserById = asyncHandler(async (req, res) => {
 
 const adminUpdateUser = asyncHandler(async (req, res) => {
   const { userId } = req.params;
+  console.log('Admin updating user:', userId, 'with data:', req.body);
   const updatedUser = await userService.updateUser(userId, req.body);
+  console.log('Updated user:', updatedUser);
   return res.status(200).json(new ApiResponse(200, updatedUser, 'User updated successfully'));
 });
 

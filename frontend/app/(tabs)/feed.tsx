@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
-import { View, Text, FlatList, Image, TouchableOpacity, StyleSheet, Dimensions, Modal } from 'react-native';
-import { tabStyles } from '../../constants/MainStyles';
-import { apiGetSightingsNear } from '../../api/sighting';
-import { Colors } from '../../constants/Colors';
-import Icon from 'react-native-vector-icons/FontAwesome';
+import { Dimensions, FlatList, Image, Modal, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
-import { RefreshControl } from 'react-native';
+import Icon from 'react-native-vector-icons/FontAwesome';
+import { apiGetRecentSightings } from '../../api/sighting';
+import { Colors } from '../../constants/Colors';
+import { tabStyles } from '../../constants/MainStyles';
 
 const { width } = Dimensions.get('window');
 
@@ -16,19 +15,30 @@ export default function FeedScreen() {
   const [selectedSighting, setSelectedSighting] = useState(null);
   const [carouselIndex, setCarouselIndex] = useState({});
   const [refreshing, setRefreshing] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(10);
+  const [hasMore, setHasMore] = useState(true);
 
   useEffect(() => {
-    fetchSightings();
+    loadPage(1);
   }, []);
 
-  const fetchSightings = () => {
-    setRefreshing(true);
-    apiGetSightingsNear(-96.6974, 33.024, 10000)
-      .then(data => {
-        const sorted = [...data.data].sort(
-          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-        setSightings(sorted);
+  const loadPage = (p = 1) => {
+    if (p === 1) {
+      setRefreshing(true);
+    }
+    setLoading(true);
+    apiGetRecentSightings(p, pageSize)
+      .then((resp) => {
+        const payload = resp.data || {};
+        const items = payload.items || [];
+        if (p === 1) {
+          setSightings(items);
+        } else {
+          setSightings(prev => [...prev, ...items]);
+        }
+        setHasMore((p * pageSize) < (payload.total || 0));
+        setPage(p);
       })
       .catch(console.error)
       .finally(() => {
@@ -141,21 +151,24 @@ export default function FeedScreen() {
           Spot It Now
         </Text>
       </View>
-      {loading ? (
+      {loading && sightings.length === 0 ? (
         <Text style={{ color: Colors.light.primaryGreen }}>Loading...</Text>
       ) : (
        <FlatList
           data={sightings}
           keyExtractor={item => item._id}
           renderItem={renderItem}
+          onEndReached={() => { if (hasMore && !loading) loadPage(page + 1); }}
+          onEndReachedThreshold={0.5}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
-              onRefresh={fetchSightings}
+              onRefresh={() => loadPage(1)}
               colors={[Colors.light.primaryGreen]}
               tintColor={Colors.light.primaryGreen}
             />
           }
+          ListFooterComponent={hasMore ? <Text style={{ textAlign: 'center', padding: 8 }}>Loading more...</Text> : null}
         />
       )}
       {/* Popup menu modal */}

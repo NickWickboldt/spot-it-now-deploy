@@ -7,6 +7,14 @@ export const apiGetAllUsers = async (token: string) => {
   return fetchWithAuth('/users', token); 
 };
 
+export const apiAdminGetAllUsers = async (token: string, page = 1, pageSize = 20, q = '') => {
+  const params = new URLSearchParams();
+  params.append('page', String(page));
+  params.append('pageSize', String(pageSize));
+  if (q && q.trim() !== '') params.append('q', q.trim());
+  return fetchWithAuth(`/users?${params.toString()}`, token);
+};
+
 // You will need a '/users/register' or similar endpoint in your backend for this
 export const apiCreateUser = async (token: string, userData: any) => {
     return fetchWithAuth('/users/register', token, {

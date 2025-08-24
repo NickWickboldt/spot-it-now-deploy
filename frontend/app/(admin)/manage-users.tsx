@@ -4,7 +4,7 @@
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Button, FlatList, Image, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { apiAdminDeleteUser, apiAdminForceLogoutUser, apiAdminPromoteUser, apiAdminUpdateUser, apiGetAllUsers, apiGetUserBio, apiGetUserExperience, apiGetUserProfilePicture } from '../../api/admin';
+import { apiAdminDeleteUser, apiAdminForceLogoutUser, apiAdminGetAllUsers, apiAdminGetUser, apiAdminPromoteUser, apiAdminUpdateUser, apiGetUserBio, apiGetUserExperience, apiGetUserProfilePicture } from '../../api/admin';
 import { setBaseUrl } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 
@@ -12,6 +12,10 @@ export default function ManageUsersScreen() {
   const { token } = useAuth();
   const router = useRouter();
   const [users, setUsers] = useState([]);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(20);
+  const [total, setTotal] = useState(0);
+  const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -24,19 +28,51 @@ export default function ManageUsersScreen() {
   const [editProfilePictureUrl, setEditProfilePictureUrl] = useState('');
   const [editBio, setEditBio] = useState('');
   const [editExperience, setEditExperience] = useState<number | null>(null);
+  const [editLatitude, setEditLatitude] = useState<number | null>(null);
+  const [editLongitude, setEditLongitude] = useState<number | null>(null);
+  const [editRadius, setEditRadius] = useState<number | null>(null);
   // ...existing state
 
-  const fetchUsers = async () => {
+  // Sort users by earliest substring match in username or email (case-insensitive)
+  const sortUsersByQuery = (list: any[], q: string) => {
+    const ql = q.toLowerCase();
+    const score = (u: any) => {
+      const username = (u.username || '').toString().toLowerCase();
+      const email = (u.email || '').toString().toLowerCase();
+      const idxUser = username.indexOf(ql);
+      const idxEmail = email.indexOf(ql);
+      const best = Math.min(idxUser === -1 ? Infinity : idxUser, idxEmail === -1 ? Infinity : idxEmail);
+      return best === Infinity ? Number.MAX_SAFE_INTEGER : best;
+    };
+    return [...list].sort((a, b) => {
+      const sa = score(a);
+      const sb = score(b);
+      if (sa !== sb) return sa - sb;
+      return (a.username || '').localeCompare(b.username || '');
+    });
+  };
+
+  const fetchUsers = async (opts: { page?: number; q?: string } = {}) => {
     if (!token) {
         setError("Cannot fetch users with local admin credentials. Please use a real admin account.");
         setIsLoading(false);
         return;
     };
+    const p = opts.page ?? page;
+    const q = opts.q ?? query;
     try {
       setError(null);
-      const response = await apiGetAllUsers(token);
-      // API returns ApiResponse shape { status, data, message }
-      setUsers(response.data || []); 
+      const response = await apiAdminGetAllUsers(token, p, pageSize, q);
+      // response.data is either { items, total, page, pageSize } or legacy array
+      const payload = response.data;
+      if (Array.isArray(payload)) {
+        setUsers(payload);
+        setTotal(payload.length);
+      } else {
+        setUsers(payload.items || []);
+        setTotal(payload.total || 0);
+        setPage(payload.page || p);
+      }
     } catch (e: any) {
       setError(e.message || 'Failed to fetch users.');
     } finally {
@@ -56,8 +92,20 @@ export default function ManageUsersScreen() {
       setEditProfilePictureUrl(base.profilePictureUrl || '');
       setEditBio(base.bio || '');
       setEditExperience(base.experiencePoints ?? null);
+      setEditLatitude(base.latitude ?? null);
+      setEditLongitude(base.longitude ?? null);
+      setEditRadius(base.radius ?? null);
     }
     try {
+      // Try to fetch full user record (includes latitude/longitude/radius)
+      let fullUser: any = null;
+      try {
+        const fullResp = await apiAdminGetUser(token as string, userId);
+        fullUser = fullResp.data || null;
+      } catch (e) {
+        // ignore — we'll still fetch individual pieces below
+        fullUser = null;
+      }
       const [picResp, bioResp, expResp] = await Promise.all([
         apiGetUserProfilePicture(userId),
         apiGetUserBio(userId),
@@ -67,11 +115,17 @@ export default function ManageUsersScreen() {
         profilePictureUrl: picResp.data?.profilePictureUrl || null,
         bio: bioResp.data?.bio || null,
         experiencePoints: expResp.data?.experiencePoints || 0,
+        latitude: fullUser?.latitude ?? base?.latitude ?? null,
+        longitude: fullUser?.longitude ?? base?.longitude ?? null,
+        radius: fullUser?.radius ?? base?.radius ?? null,
       });
       if (!base) {
         setEditProfilePictureUrl(picResp.data?.profilePictureUrl || '');
         setEditBio(bioResp.data?.bio || '');
         setEditExperience(expResp.data?.experiencePoints ?? null);
+        setEditLatitude(fullUser?.latitude ?? null);
+        setEditLongitude(fullUser?.longitude ?? null);
+        setEditRadius(fullUser?.radius ?? null);
       }
     } catch (err: any) {
       Alert.alert('Error', err.message || 'Failed to load user details');
@@ -104,7 +158,7 @@ export default function ManageUsersScreen() {
       // ignore
     }
 
-    fetchUsers();
+  fetchUsers({ page: 1 });
   }, [token]);
 
   const onRefresh = () => {
@@ -129,6 +183,24 @@ export default function ManageUsersScreen() {
         <Pressable style={manageUsersStyles.headerButton} onPress={() => { setIsLoading(true); fetchUsers(); }}>
           <Text style={{ color: 'white' }}>Refresh</Text>
         </Pressable>
+        <View style={{ flex: 1, marginLeft: 12 }}>
+          <TextInput
+            placeholder="Search users..."
+            value={query}
+            onChangeText={(t) => {
+              setQuery(t);
+              const trimmed = t?.trim?.() || '';
+              if (trimmed === '') {
+                setIsLoading(true);
+                setPage(1);
+                fetchUsers({ page: 1 });
+                return;
+              }
+              setUsers((prev: any[]) => sortUsersByQuery(prev, trimmed));
+            }}
+            style={[manageUsersStyles.input, { backgroundColor: 'white' }]}
+          />
+        </View>
       </View>
 
       <FlatList
@@ -138,7 +210,7 @@ export default function ManageUsersScreen() {
           <View style={manageUsersStyles.userItem}>
             <Pressable onPress={() => openUserDetails(item._id, item)} style={{ flex: 1 }}>
               <View>
-                <Text style={manageUsersStyles.username}>{item.username}</Text>
+                <Text style={manageUsersStyles.username}>{item.username} {item.role}</Text>
                 <Text style={manageUsersStyles.email}>{item.email}</Text>
               </View>
             </Pressable>
@@ -176,6 +248,16 @@ export default function ManageUsersScreen() {
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
       />
 
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 10, alignItems: 'center' }}>
+        <Pressable disabled={page <= 1} onPress={() => setPage(Math.max(1, page - 1))} style={[manageUsersStyles.smallButton, { opacity: page <= 1 ? 0.4 : 1 }]}>
+                    <Text>Prev</Text>
+                  </Pressable>
+                  <Text>Page {page} • {total} items</Text>
+                  <Pressable disabled={page * pageSize >= total} onPress={() => setPage(page + 1)} style={[manageUsersStyles.smallButton, { opacity: page * pageSize >= total ? 0.4 : 1 }]}>
+                    <Text>Next</Text>
+                  </Pressable>
+      </View>
+
       <Modal visible={!!selectedUserId} animationType="slide" onRequestClose={() => { setSelectedUserId(null); setIsEditMode(false); }}>
         <ScrollView contentContainerStyle={{ padding: 20 }}>
           <Button title="Close" onPress={() => { setSelectedUserId(null); setIsEditMode(false); }} />
@@ -199,6 +281,12 @@ export default function ManageUsersScreen() {
                   <Text style={{ color: '#666', marginBottom: 10 }}>{editEmail || 'Email'}</Text>
                   <Text style={{ fontSize: 18, fontWeight: '600' }}>Bio</Text>
                   <Text style={{ marginVertical: 10 }}>{selectedUserDetails.bio || editBio || 'No bio'}</Text>
+                  <Text style={{ fontSize: 18, fontWeight: '600' }}>Latitude</Text>
+                  <Text style={{ marginVertical: 10 }}>{selectedUserDetails.latitude ?? 'N/A'}</Text>
+                  <Text style={{ fontSize: 18, fontWeight: '600' }}>Longitude</Text>
+                  <Text style={{ marginVertical: 10 }}>{selectedUserDetails.longitude ?? 'N/A'}</Text>
+                  <Text style={{ fontSize: 18, fontWeight: '600' }}>Radius (miles)</Text>
+                  <Text style={{ marginVertical: 10 }}>{selectedUserDetails.radius ?? 'N/A'}</Text>
                   <Text style={{ fontSize: 18, fontWeight: '600' }}>Experience</Text>
                   <Text style={{ marginVertical: 10 }}>{selectedUserDetails.experiencePoints ?? editExperience ?? 0}</Text>
                 </View>
@@ -216,6 +304,12 @@ export default function ManageUsersScreen() {
                   <TextInput style={[manageUsersStyles.input, { height: 90 }]} value={editBio} onChangeText={setEditBio} multiline />
                   <Text style={{ marginTop: 10 }}>Experience Points</Text>
                   <TextInput style={manageUsersStyles.input} value={editExperience?.toString() || ''} onChangeText={(t) => setEditExperience(t ? parseInt(t, 10) : null)} keyboardType="numeric" />
+                  <Text style={{ marginTop: 10 }}>Latitude</Text>
+                  <TextInput style={manageUsersStyles.input} value={editLatitude?.toString() || ''} onChangeText={(t) => setEditLatitude(t ? Number(t) : null)} keyboardType="numeric" />
+                  <Text style={{ marginTop: 10 }}>Longitude</Text>
+                  <TextInput style={manageUsersStyles.input} value={editLongitude?.toString() || ''} onChangeText={(t) => setEditLongitude(t ? Number(t) : null)} keyboardType="numeric" />
+                  <Text style={{ marginTop: 10 }}>Radius (miles)</Text>
+                  <TextInput style={manageUsersStyles.input} value={editRadius?.toString() || ''} onChangeText={(t) => setEditRadius(t ? parseInt(t, 10) : null)} keyboardType="numeric" />
                 </View>
               )}
 
@@ -229,12 +323,30 @@ export default function ManageUsersScreen() {
                     if (!token) { Alert.alert('Unauthorized'); return; }
                     try {
                       setIsDetailsLoading(true);
+
+                      // Validate admin-edited geo fields
+                      if (editLatitude !== null && (Number.isNaN(editLatitude) || editLatitude < -90 || editLatitude > 90)) {
+                        Alert.alert('Validation Error', 'Latitude must be a number between -90 and 90');
+                        return;
+                      }
+                      if (editLongitude !== null && (Number.isNaN(editLongitude) || editLongitude < -180 || editLongitude > 180)) {
+                        Alert.alert('Validation Error', 'Longitude must be a number between -180 and 180');
+                        return;
+                      }
+                      if (editRadius !== null && (Number.isNaN(editRadius) || editRadius < 0 || !Number.isInteger(editRadius))) {
+                        Alert.alert('Validation Error', 'Radius must be a non-negative integer');
+                        return;
+                      }
+
                       const updateData: any = {
                         username: editUsername,
                         email: editEmail,
                         profilePictureUrl: editProfilePictureUrl,
                         bio: editBio,
                         experiencePoints: editExperience,
+                        latitude: editLatitude,
+                        longitude: editLongitude,
+                        radius: editRadius,
                       };
                       await apiAdminUpdateUser(token, selectedUserId as string, updateData);
                       await fetchUsers();
