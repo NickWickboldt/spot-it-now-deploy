@@ -630,7 +630,7 @@ formContainer: {
   },
     uploadButton: {
     position: 'absolute',
-    bottom: 100,
+    bottom: 125,
     left: 30,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
     width: 60,

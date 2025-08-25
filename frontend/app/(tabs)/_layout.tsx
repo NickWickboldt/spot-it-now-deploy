@@ -20,40 +20,18 @@ const TAB_ICONS = [
 function CustomTabBar({ state, navigation }) {
   return (
     <View style={styles.tabBarWrapper}>
-      <Svg
-        width={width}
-        height={80}
-        style={styles.curveSvg}
-        viewBox={`0 0 ${width} 80`}
-      >
-        <Path
-          d={`
-            M0,0 
-            H${width / 2 - 40} 
-            Q${width / 2},60 ${width / 2 + 40},0 
-            H${width} 
-            V80 
-            H0 
-            Z
-          `}
-          fill={Colors.light.softBeige}
-        />
-      </Svg>
       <View style={styles.tabRow}>
         {TAB_ICONS.map((tab, idx) => {
           const focused = state.index === idx;
 
           if (tab.isCenter) {
-            // --- MODIFIED LOGIC FOR CENTER BUTTON ---
             const spotitRoute = state.routes.find(r => r.name === 'spotit');
             const takePictureFn = spotitRoute?.params?.takePicture;
-            
+
             const handlePress = () => {
               if (focused && typeof takePictureFn === 'function') {
-                // If we are already on the camera screen, take the picture
                 takePictureFn();
               } else {
-                // Otherwise, navigate to the camera screen
                 navigation.navigate(tab.name);
               }
             };
@@ -61,7 +39,7 @@ function CustomTabBar({ state, navigation }) {
             return (
               <View key={tab.name} style={styles.centerTabContainer}>
                 <TouchableOpacity
-                  onPress={handlePress} // Use the new handler logic
+                  onPress={handlePress}
                   activeOpacity={0.7}
                   style={styles.centerIconBg}
                 >
@@ -71,7 +49,6 @@ function CustomTabBar({ state, navigation }) {
               </View>
             );
           }
-          // --- END MODIFIED LOGIC ---
 
           return (
             <TouchableOpacity
@@ -104,8 +81,7 @@ function CustomTabBar({ state, navigation }) {
 export default function TabLayout() {
   return (
     <Tabs tabBar={props => <CustomTabBar {...props} />} screenOptions={{
-      // Hiding the header for the spotit screen in the layout itself
-      headerShown: false 
+      headerShown: false
     }}>
       <Tabs.Screen name="feed" />
       <Tabs.Screen name="spotit" />
@@ -114,23 +90,26 @@ export default function TabLayout() {
   );
 }
 
-// Add some basic styles if they aren't imported from elsewhere
 const styles = StyleSheet.create({
   tabBarWrapper: {
     position: 'absolute',
     bottom: 0,
     width: '100%',
-    height: 80,
+    height: 120,
+    backgroundColor: Colors.light.softBeige,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    shadowColor: Colors.light.shadow,
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 8,
     alignItems: 'center',
-  },
-  curveSvg: {
-    position: 'absolute',
-    top: 0,
+    justifyContent: 'center',
   },
   tabRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     width: '100%',
     height: '100%',
   },
@@ -138,8 +117,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 10, 
-    height: 60,
+    height: 80,
   },
   tabLabel: {
     fontSize: 12,
@@ -148,25 +126,27 @@ const styles = StyleSheet.create({
   centerTabContainer: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'flex-start',
+    justifyContent: 'center',
   },
   centerIconBg: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: Colors.light.primaryGreen,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: Colors.light.shadow,
     justifyContent: 'center',
     alignItems: 'center',
-    transform: [{ translateY: -20 }],
     elevation: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.18,
     shadowRadius: 3.84,
+    color: '#fff',               // <-- raise above tab bar
+    zIndex: 2,
   },
   centerTabLabel: {
     fontSize: 12,
     color: Colors.light.darkNeutral,
-    transform: [{ translateY: -15 }],
+    marginTop: 4,
+    textAlign: 'center',
   },
 });

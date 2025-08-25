@@ -61,6 +61,10 @@ const sightingSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    userName: {
+      type: String,
+      required: true,
+    },
   },
   // The `timestamps` option automatically adds `createdAt` and `updatedAt` fields
   {

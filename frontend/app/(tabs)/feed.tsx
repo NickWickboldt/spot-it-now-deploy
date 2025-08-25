@@ -101,7 +101,7 @@ export default function FeedScreen() {
           style={styles.avatar}
         />
         <View style={{ flex: 1 }}>
-          <Text style={styles.username}>{item.username || 'Unknown'}</Text>
+          <Text style={styles.username}>{item.userName || 'Unknown'}</Text>
           <Text style={styles.time}>{getRelativeTime(item.createdAt)}</Text>
         </View>
         <TouchableOpacity onPress={() => handleMenuOpen(item)}>
