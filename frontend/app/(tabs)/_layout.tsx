@@ -4,6 +4,8 @@ import { Tabs } from 'expo-router';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import Svg, { Path } from 'react-native-svg';
 import { Colors } from '../../constants/Colors';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+
 // Assuming you have a Colors file, otherwise replace with your colors
 
 

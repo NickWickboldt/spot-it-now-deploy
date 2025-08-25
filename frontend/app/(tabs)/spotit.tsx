@@ -1,12 +1,37 @@
 import React, { useState, useRef, useEffect, useCallback } from "react"; // 1. Import useCallback
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Modal, ScrollView, Image, TextInput, Switch } from "react-native";
 import { useNavigation } from 'expo-router';
 import { CameraView, CameraType, useCameraPermissions, CameraCapturedPicture } from "expo-camera";
 import * as FileSystem from 'expo-file-system';
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import ConfirmationModal from "../../components/ConfirmationModal";
+import { PinchGestureHandler, State } from 'react-native-gesture-handler';
+import { useAuth } from '../../context/AuthContext';
+import { apiCreateSighting } from '../../api/sighting';
+import * as Location from 'expo-location';
+import * as ImagePicker from 'expo-image-picker';
+import { MaterialIcons } from '@expo/vector-icons';
 
-const API_KEY = "AIzaSyBxr0esLPJcDVEML5T6B5ilg7kcFp0jCig";
+
+const API_KEY = "AIzaSyCZOLCu2c-fTsGqN2oy2Gl_hSPaFTq2V30";
 const genAI = new GoogleGenerativeAI(API_KEY);
+
+
+interface SightingForm {
+  caption: string;
+  isPrivate: boolean;
+  mediaUrls: string[];
+  latitude: number | null;
+  longitude: number | null;
+}
+
+type AnalysisResult = {
+  type: string,
+  animal: string;
+  species: string;
+  confidence: number;
+  reasoning: string;
+};
 
 async function fileToGenerativePart(uri: string, mimeType: string) {
   const base64ImageData = await FileSystem.readAsStringAsync(uri, {
@@ -24,51 +49,419 @@ export default function SpotItScreen() {
   const [facing, setFacing] = useState<CameraType>("back");
   const [permission, requestPermission] = useCameraPermissions();
   const [isProcessing, setIsProcessing] = useState(false);
+  
+  const [modalVisible, setModalVisible] = useState(false)
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
+
+
+  const [zoom, setZoom] = useState(0);
   const cameraRef = useRef<CameraView>(null);
   
   const navigation = useNavigation();
 
-  // 2. Wrap the takePicture function in useCallback
+
+  const baseZoom = useRef(0);
+
+
+  const { token } = useAuth();
+  const [showSightingForm, setShowSightingForm] = useState(false);
+  const [sightingForm, setSightingForm] = useState<SightingForm>({
+    caption: '',
+    isPrivate: false,
+    mediaUrls: [],
+    latitude: null,
+    longitude: null,
+  });
+
+
+    const requestMediaLibraryPermission = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'We need access to your photos to upload images');
+      return false;
+    }
+    return true;
+  };
+  const getCurrentLocation = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'Location permission is required to post sightings.');
+        return null;
+      }
+
+      const location = await Location.getCurrentPositionAsync({});
+      return {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude
+      };
+    } catch (error) {
+      console.error('Error getting location:', error);
+      Alert.alert('Error', 'Could not get your current location');
+      return null;
+    }
+  };
+
+  const onPinchHandlerStateChange = (event) => {
+  if (event.nativeEvent.oldState === State.ACTIVE) {
+    const { scale } = event.nativeEvent;
+    
+    console.log(`Gesture Ended! Scale: ${scale.toFixed(2)}, Last Zoom: ${baseZoom.current.toFixed(2)}`);
+    const SENSITIVITY = 5;
+    const newZoom = baseZoom.current + (scale - 1) / SENSITIVITY;
+
+    const clampedZoom = Math.max(0, Math.min(newZoom, 1));
+    
+    console.log(`New Clamped Zoom: ${clampedZoom.toFixed(2)}`);
+
+    setZoom(clampedZoom);
+    baseZoom.current = clampedZoom;
+  }
+};
+
+
+
+    const analyzeImage = async (uri: string, modelName: string, prompt: string): Promise<AnalysisResult | null> => {
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const imagePart = await fileToGenerativePart(uri, "image/jpeg");
+        const result = await model.generateContent([prompt, imagePart]);
+        const responseText = result.response.text();
+        console.log(`Gemini Raw Response (${modelName}):`, responseText);
+        
+        const cleanedResponse = responseText.replace(/```json|```/g, '').trim();
+        return JSON.parse(cleanedResponse);
+      } catch (e) {
+        console.error(`Error during analysis with ${modelName}:`, e);
+        Alert.alert("Analysis Error", "Could not get a valid response from the AI model.");
+        return null;
+      }
+    };
+
+
+    // Add with other functions in SpotItScreen
+const handleUploadImage = async () => {
+  const hasPermission = await requestMediaLibraryPermission();
+  if (!hasPermission) return;
+
+  try {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.9,
+      allowsEditing: true,
+      aspect: [4, 3],
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setPhotoUri(result.assets[0].uri);
+      // Analyze the selected image
+      setIsProcessing(true);
+
+      const prompt = `
+      Analyze the image and provide your output in a single, clean JSON object.
+
+      **JSON Key Definitions and Structure:**
+      - **"type"**: A broad category like 'Bird', 'Mammal', 'Insect', 'Reptile'.
+      - **"animal"**: The specific common name of the animal, e.g., 'Bald Eagle', 'Grizzly Bear'.
+      - **"species"**: The scientific (Latin) name, enclosed in parentheses, e.g., '(Haliaeetus leucocephalus)'.
+      - **"confidence"**: Your confidence in the identification from 0-100, be as exact as possible try to really nail down the score.
+      - **"reasoning"**: A brief justification for your identification.
+
+      **Example Output:**
+      If the image contained a clear picture of a Lilac-breasted Roller, your output should be formatted EXACTLY like this:
+      {
+        "type": "Bird",
+        "animal": "Lilac-breasted Roller",
+        "species": "Coracias caudatus",
+        "confidence": 98,
+        "reasoning": "The image shows a bird with vibrant, multi-colored plumage including a lilac throat and blue belly, which are key identifiers."
+      }
+
+      **No Animal Case:**
+      If no animal is present, return this exact JSON:
+      {
+        "type": "N/A",
+        "animal": "None",
+        "species": "N/A",
+        "confidence": 0,
+        "reasoning": "No animal could be clearly identified in the image."
+      }
+      `;
+
+      const analysis = await analyzeImage(result.assets[0].uri, 'gemini-1.5-flash', prompt);
+      const HIGH_CONFIDENCE_THRESHOLD = 55
+      const LOW_CONFIDENCE_THRESHOLD = 10
+      if (!analysis) {
+        throw new Error("Analysis returned null.");
+      }
+      
+      if (analysis.confidence >= HIGH_CONFIDENCE_THRESHOLD) {
+        setAnalysisResult(analysis);
+        setModalVisible(true);
+      } else if (analysis.confidence >= LOW_CONFIDENCE_THRESHOLD) {
+        Alert.alert(
+          "Not a Clear Sighting",
+          `We think we saw a ${analysis.animal}, but we're not very confident. Would you like to try a more powerful analysis?`,
+          [
+            {
+              text: "Try Advanced Analysis",
+              onPress: () => handleOverride(result.assets[0].uri),
+            },
+            {
+              text: "Cancel",
+              style: "cancel",
+            },
+          ]
+        );
+      } else {
+        Alert.alert("Nothing Spotted", "We couldn't identify an animal in this picture.");
+      }
+    }
+  } catch (error) {
+    console.error("Error uploading image:", error);
+    Alert.alert("Error", "Failed to process the selected image");
+  } finally {
+    setIsProcessing(false);
+  }
+};
+
+const handleOverride = useCallback(async (uri?: string) => {
+    // Determine which URI to use. The one passed directly is preferred.
+    const uriToAnalyze = uri || photoUri;
+
+    // --- START OF DEBUGGING ---
+    console.log("handleOverride: URI passed as argument:", uri);
+    console.log("handleOverride: photoUri from state:", photoUri);
+    console.log("handleOverride: Final URI being used for analysis:", uriToAnalyze);
+
+    if (!uriToAnalyze) {
+      Alert.alert("Error", "No photo available to re-analyze. The URI is missing.");
+      setIsProcessing(false); // Make sure to stop processing
+      return;
+    }
+    // --- END OF DEBUGGING ---
+
+    // Close the main modal if it's open.
+    setModalVisible(false);
+    setIsProcessing(true);
+
+    try {
+      console.log("User requested override. Using gemini-2.5-flash.");
+
+      const promptForPro = `
+        Re-analyze this image with a higher level of scrutiny. A previous, faster analysis was either incorrect or had very low confidence.
+        Look for more subtle details, consider less common species, or provide your best possible identification even if confidence is lower.
+        Keep the reasoning to about 3 sentences.
+
+        Example:
+        If the image contained a slightly blurry picture of a Lilac-breasted Roller, your output should be formatted EXACTLY like this:
+        {
+          "type": "Bird",
+          "animal": "Lilac-breasted Roller",
+          "species": "Coracias caudatus",
+          "confidence": 74,
+          "reasoning": "The image shows a bird with vibrant, multi-colored plumage including a lilac throat and blue belly, which are key identifiers, even though the image is slightly blurry."
+        }
+
+        Provide your output in the exact same JSON format as before, with keys: "type", "animal", "species", "confidence", "reasoning".
+      `;
+
+      // Add logging for ALL parameters right before the call
+      console.log("Calling analyzeImage with:", {
+        uri: uriToAnalyze,
+        model: 'gemini-2.5-flash',
+        promptLength: promptForPro.length // Log length to ensure prompt is not empty
+      });
+
+      const newAnalysis = await analyzeImage(uriToAnalyze, 'gemini-2.5-flash', promptForPro);
+
+      if (newAnalysis && newAnalysis.animal.toLowerCase() !== 'none') {
+        setAnalysisResult(newAnalysis);
+        setModalVisible(true);
+      } else {
+        Alert.alert("Still Unsure", "Sorry, even our advanced analysis couldn't identify an animal in this image.");
+      }
+    } catch (error) {
+      console.error("Error during override analysis:", error);
+      Alert.alert("Error", "Something went wrong during the advanced analysis.");
+    } finally {
+      setIsProcessing(false);
+    }
+}, [photoUri, analyzeImage]); // Keep dependencies as they are relevant to the logic
+
+
   const takePicture = useCallback(async () => {
-    // The function needs to know the current value of isProcessing, so we check it here
+    // Check if we are already processing or if the camera is not ready
     if (isProcessing || !cameraRef.current) {
       return;
     }
-    setIsProcessing(true); // This will trigger a re-render
+    setIsProcessing(true);
     
     try {
-      const photo: CameraCapturedPicture = await cameraRef.current.takePictureAsync({ quality: 0.7 });
+      // 1. Take the picture
+      const photo: CameraCapturedPicture = await cameraRef.current.takePictureAsync({ quality: 0.9 });
       console.log("Photo taken:", photo.uri);
-      Alert.alert("Analyzing...", "Let's see what you found!");
 
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-      const prompt = "Identify the main animal in this picture. Be as exact as possible, list the species if possible. If there is no clear animal, or if it is a person, respond with 'None'. Please format it as so: {animal name, (Exact species)}, dont include parenthesis or curly braces.";
-      const imagePart = await fileToGenerativePart(photo.uri, "image/jpeg");
 
-      const result = await model.generateContent([prompt, imagePart]);
-      const response = await result.response;
-      const animalName = response.text().trim();
-      console.log("Gemini Response:", animalName);
-      
-      if (animalName.toLowerCase() !== 'none' && animalName.length > 2) {
-        Alert.alert("Spotted!", `You found a ${animalName}!`);
-      } else {
+
+      setPhotoUri(photo.uri)
+      const prompt = `
+      Analyze the image and provide your output in a single, clean JSON object.
+
+      **JSON Key Definitions and Structure:**
+      - **"type"**: A broad category like 'Bird', 'Mammal', 'Insect', 'Reptile'.
+      - **"animal"**: The specific common name of the animal, e.g., 'Bald Eagle', 'Grizzly Bear'.
+      - **"species"**: The scientific (Latin) name, enclosed in parentheses, e.g., '(Haliaeetus leucocephalus)'.
+      - **"confidence"**: Your confidence in the identification from 0-100, be as exact as possible try to really nail down the score.
+      - **"reasoning"**: A brief justification for your identification.
+
+      **Example Output:**
+      If the image contained a clear picture of a Lilac-breasted Roller, your output should be formatted EXACTLY like this:
+      {
+        "type": "Bird",
+        "animal": "Lilac-breasted Roller",
+        "species": "Coracias caudatus",
+        "confidence": 98,
+        "reasoning": "The image shows a bird with vibrant, multi-colored plumage including a lilac throat and blue belly, which are key identifiers."
+      }
+
+      **No Animal Case:**
+      If no animal is present, return this exact JSON:
+      {
+        "type": "N/A",
+        "animal": "None",
+        "species": "N/A",
+        "confidence": 0,
+        "reasoning": "No animal could be clearly identified in the image."
+      }
+      `;
+
+      const analysis = await analyzeImage(photo.uri, 'gemini-1.5-flash', prompt);
+      const HIGH_CONFIDENCE_THRESHOLD = 55;
+      const LOW_CONFIDENCE_THRESHOLD = 10;
+
+      if (!analysis){
+        throw new Error("Analysis returned null.");
+      }
+      if (analysis.confidence >= HIGH_CONFIDENCE_THRESHOLD){
+        setAnalysisResult(analysis);
+        setModalVisible(true);
+      }   
+
+      else if (analysis.confidence >= LOW_CONFIDENCE_THRESHOLD){
+          Alert.alert(
+          "Not a Clear Sighting",
+          `We think we saw a ${analysis.animal}, but we're not very confident. Would you like to try a more powerful analysis or retake the photo?`,
+          [
+            {
+              text: "Try Advanced Analysis",
+              onPress: () => handleOverride(photo.uri),
+            },
+            {
+              text: "Retake Photo",
+              style: "cancel",
+              onPress: () => setPhotoUri(null), // Clear the URI on retake
+            },
+          ]
+        );
+      }
+    
+      else {
         Alert.alert("Nothing Spotted", "We couldn't identify an animal in the picture. Try again!");
       }
-    } catch (error) {
-      console.error("Error analyzing image with Gemini:", error);
+
+   } catch (error) {
+      console.error("Error in takePicture function:", error);
       Alert.alert("Error", "Something went wrong while trying to analyze the image.");
     } finally {
       setIsProcessing(false);
     }
-  }, [isProcessing, cameraRef]); // The function will only be re-created if isProcessing or cameraRef changes
+  }, [isProcessing, cameraRef,]);
 
+  
   useEffect(() => {
-    // Now that takePicture is stable, this effect will not cause an infinite loop.
-    // @ts-ignore
+
     navigation.setParams({ takePicture: takePicture });
   }, [navigation, takePicture]);
 
+  const handleConfirm = async () => {
+    console.log("User confirmed:", analysisResult?.animal);
+    setModalVisible(false);
+    
+    if (photoUri) {
+      // Get location when user confirms
+      const location = await getCurrentLocation();
+      if (!location) {
+        Alert.alert('Error', 'Location is required to post a sighting');
+        return;
+      }
+
+      setSightingForm(prev => ({
+        ...prev,
+        mediaUrls: [photoUri],
+        caption: `Spotted a ${analysisResult?.animal}!`,
+        latitude: location.latitude,
+        longitude: location.longitude
+      }));
+      setShowSightingForm(true);
+    }
+  };
+
+  // Add this new function to handle form submission
+  const handleSubmitSighting = async () => {
+  if (!token) {
+    Alert.alert("Error", "You must be logged in to post a sighting");
+    return;
+  }
+
+  if (!sightingForm.latitude || !sightingForm.longitude) {
+    Alert.alert("Error", "Location information is required");
+    return;
+  }
+
+  try {
+    const sightingData = {
+      ...sightingForm,
+      animal: analysisResult?.species || '',
+      aiIdentification: {
+        type: analysisResult?.type,
+        animal: analysisResult?.animal,
+        species: analysisResult?.species,
+        confidence: analysisResult?.confidence
+      },
+      latitude: sightingForm.latitude,
+      longitude: sightingForm.longitude
+    };
+
+    await apiCreateSighting(token, sightingData);
+    Alert.alert("Success", "Sighting posted successfully!");
+    // Reset states and navigate back
+    setShowSightingForm(false);
+    setSightingForm({
+      caption: '',
+      isPrivate: false,
+      mediaUrls: [],
+      latitude: null,
+      longitude: null
+    });
+    setPhotoUri(null);
+    setAnalysisResult(null);
+  } catch (error) {
+    console.error("Error posting sighting:", error);
+    Alert.alert("Error", "Failed to post sighting");
+  }
+  };
+
+  const handleRetake = () => {
+    console.log("User wants to retake.");
+    setModalVisible(false);
+    setAnalysisResult(null); // Clear previous result
+  };
+
+ 
+  
   if (!permission) {
     return <View style={styles.centered}><Text>Requesting camera permission...</Text></View>;
   }
@@ -84,18 +477,175 @@ export default function SpotItScreen() {
     );
   }
 
-  return (
+return (
+  <PinchGestureHandler onHandlerStateChange={onPinchHandlerStateChange}>
     <View style={styles.container}>
-      <CameraView style={styles.camera} facing={facing} ref={cameraRef} />
+      <CameraView style={styles.camera} facing={facing} ref={cameraRef} zoom={zoom} />
+      
+      {/* Move the upload button outside and directly in the main container */}
+      <TouchableOpacity 
+        style={styles.uploadButton}
+        onPress={handleUploadImage}
+      >
+        <MaterialIcons name="photo-library" size={32} color="white" />
+      </TouchableOpacity>
+
+      <Modal
+          visible={showSightingForm}
+          animationType="slide"
+          onRequestClose={() => setShowSightingForm(false)}
+        >
+          <ScrollView contentContainerStyle={styles.formContainer}>
+            <Text style={styles.formTitle}>Post Sighting</Text>
+            
+            {photoUri && (
+              <Image 
+                source={{ uri: photoUri }} 
+                style={styles.previewImage}
+              />
+            )}
+
+            <Text style={styles.label}>Caption</Text>
+            <TextInput
+              value={sightingForm.caption}
+              onChangeText={(text) => setSightingForm(prev => ({ ...prev, caption: text }))}
+              style={styles.input}
+              multiline
+            />
+
+            <View style={styles.privateContainer}>
+              <Text style={styles.label}>Private Sighting</Text>
+              <Switch
+                value={sightingForm.isPrivate}
+                onValueChange={(value) => setSightingForm(prev => ({ ...prev, isPrivate: value }))}
+              />
+            </View>
+
+            <View style={styles.buttonContainer}>
+              <TouchableOpacity 
+                style={[styles.button, styles.submitButton]}
+                onPress={handleSubmitSighting}
+              >
+                <Text style={styles.buttonText}>Post Sighting</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.button, styles.cancelButton]}
+                onPress={() => setShowSightingForm(false)}
+              >
+                <Text style={styles.buttonText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </Modal>
+      {/* Show a loading spinner while processing */}
+      {isProcessing && (
+        <View style={styles.processingOverlay}>
+          <ActivityIndicator size="large" color="#fff" />
+          <Text style={styles.processingText}>Analyzing...</Text>
+        </View>
+      )}
+
+      {/* Render the Modal component */}
+      <ConfirmationModal
+        isVisible={modalVisible}
+        analysisResult={analysisResult}
+        onConfirm={handleConfirm}
+        onRetake={handleRetake}
+         onOverride={() => handleOverride(photoUri)}
+      />
     </View>
+    </PinchGestureHandler>
   );
 }
 
-// ... your styles remain the same
+// --- NEW: Added styles for the processing overlay ---
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  camera: { flex: 1 },
+ container: { 
+    flex: 1,
+    position: 'relative'
+  },
+  camera: { 
+    flex: 1,
+    position: 'relative'
+  },
   button: { backgroundColor: "rgba(0,0,0,0.6)", padding: 15, borderRadius: 50 },
-  buttonText: { color: "#fff", fontSize: 18, fontWeight: "bold" },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
+  processingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  processingText: {
+    marginTop: 10,
+    color: '#fff',
+    fontSize: 16,
+  },
+formContainer: {
+    padding: 20,
+  },
+  formTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 20,
+  },
+  previewImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 8,
+    marginBottom: 20,
+  },
+  label: {
+    fontSize: 16,
+    marginBottom: 8,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    minHeight: 100,
+  },
+  privateContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  buttonContainer: {
+    gap: 10,
+  },
+  submitButton: {
+    backgroundColor: '#007AFF',
+  },
+  cancelButton: {
+    backgroundColor: '#FF3B30',
+  },
+  buttonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+    uploadButton: {
+    position: 'absolute',
+    bottom: 100,
+    left: 30,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 999, // Ensure it's above other elements
+    elevation: 5, // For Android
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
 });

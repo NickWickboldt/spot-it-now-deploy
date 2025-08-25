@@ -35,7 +35,9 @@
     "react-native-svg": "^15.12.1",
     "react-native-vector-icons": "^10.3.0",
     "react-native-web": "^0.20.0",
-    "react-navigation": "^5.0.0"
+    "react-navigation": "^5.0.0",
+    "expo-location": "~18.1.6",
+    "expo-image-picker": "~16.1.4"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
