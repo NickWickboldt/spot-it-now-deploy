@@ -7,20 +7,27 @@ import { ApiError } from '../utils/ApiError.util.js';
  * @param {object} sightingData - The data for the new sighting.
  * @returns {Promise<Sighting>} The created sighting object.
  */
-const createSighting = async (userId, sightingData) => {
-  const { mediaUrls, latitude, longitude, caption, isPrivate } = sightingData;
+const createSighting = async (userId, userName, sightingData) => {
+  const { mediaUrls, latitude, longitude, caption, isPrivate } = sightingData || {};
 
-  if (!mediaUrls || !latitude || !longitude) {
+  const mediaUrlsValid = Array.isArray(mediaUrls) && mediaUrls.length > 0 && mediaUrls.every(u => typeof u === 'string' && u.trim().length > 0);
+  const latNum = latitude !== undefined && latitude !== null ? Number(latitude) : null;
+  const longNum = longitude !== undefined && longitude !== null ? Number(longitude) : null;
+  const coordsValid = latNum !== null && longNum !== null && !Number.isNaN(latNum) && !Number.isNaN(longNum);
+
+  if (!mediaUrlsValid || !coordsValid) {
+    console.warn('[sightingService.createSighting] validation failed (mediaUrls/coords missing)');
     throw new ApiError(400, 'Media URLs and location coordinates are required.');
   }
 
   const location = {
     type: 'Point',
-    coordinates: [longitude, latitude], // GeoJSON format: [longitude, latitude]
+    coordinates: [longNum, latNum], // GeoJSON format: [longitude, latitude]
   };
 
   const sighting = await Sighting.create({
     user: userId,
+    userName,
     mediaUrls,
     location,
     caption,

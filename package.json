@@ -1,0 +1,12 @@
+{
+  "name": "spotitnow",
+  "private": true,
+  "scripts": {
+    "dev:frontend": "cd frontend && npx expo start -c",
+    "dev:backend": "cd backend && node src/server.js",
+    "dev": "concurrently --raw \"npm run dev:frontend\" \"npm run dev:backend\""
+    },
+  "devDependencies": {
+    "concurrently": "^8.0.0"
+  }
+}
