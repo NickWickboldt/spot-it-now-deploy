@@ -8,12 +8,11 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 // Assuming you have a Colors file, otherwise replace with your colors
 
-
-const { width } = Dimensions.get('window');
-
 const TAB_ICONS = [
   { name: 'feed', icon: 'file-text', label: 'Sightings' },
+  { name: 'map', icon: 'map', label: 'Map' },
   { name: 'spotit', icon: 'camera', label: 'Post', isCenter: true },
+  { name: 'index', icon: 'book', label: 'Index' },
   { name: 'profile', icon: 'user', label: 'Profile' },
 ];
 
@@ -84,8 +83,10 @@ export default function TabLayout() {
       headerShown: false
     }}>
       <Tabs.Screen name="feed" />
+      <Tabs.Screen name="map" />
       <Tabs.Screen name="spotit" />
       <Tabs.Screen name="profile" />
+      <Tabs.Screen name="index"/>
     </Tabs>
   );
 }

@@ -65,6 +65,10 @@ const sightingSchema = new Schema(
       type: String,
       required: true,
     },
+    likes: {
+      type: Number,
+      default: 0,
+    }
   },
   // The `timestamps` option automatically adds `createdAt` and `updatedAt` fields
   {
