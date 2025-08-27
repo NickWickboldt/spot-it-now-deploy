@@ -1,20 +1,72 @@
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, Text, View, Modal } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, Text, View, Modal, FlatList } from 'react-native';
 import { apiDeleteUserAccount } from '../../api/user';
+import { apiGetSightingsByUser } from '../../api/sighting'; // Assuming a Sighting type is exported
 import { useAuth } from '../../context/AuthContext';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { profileStyles } from '../../constants/ProfileStyles';
+import FullWidthImage from '../../components/FullWidthImage';
+
+type Sighting = {
+  _id: string;
+  caption: string;
+  createdAt: string; // Changed from timestamp
+  mediaUrls: string[];
+  userName: string;
+  // Add other fields from your response if you need them
+};
+
+type ApiResponse = {
+  data: Sighting[];
+  message: string;
+  statusCode: number;
+  success: boolean;
+};
 
 export default function ProfileScreen(): React.JSX.Element | null {
   const { user, token, logout } = useAuth();
   const router = useRouter();
   const [menuVisible, setMenuVisible] = useState<boolean>(false);
 
+  const [sightings, setSightings] = useState<Sighting[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
   if (!user) {
     // If the user is null, show a loading indicator
     return <View style={profileStyles.container}><ActivityIndicator /></View>;
   }
+
+  useEffect(() => {
+    if (user?._id) {
+      const fetchSightings = async () => {
+        try {
+          // --- FIX IS HERE: Access the .data property ---
+          const response: ApiResponse = await apiGetSightingsByUser(user._id);
+          if (response && response.data) {
+            setSightings(response.data);
+          }
+        } catch (error) {
+          console.error("Failed to fetch sightings:", error);
+          alert("Could not load your sightings.");
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      fetchSightings();
+    } else {
+      setIsLoading(false);
+    }
+  }, [user?._id]);
+
+  const renderSightingGridItem = ({ item }: { item: Sighting }) => (
+    <Pressable style={profileStyles.sightingGridItem}>
+      <Image
+        source={{ uri: item.mediaUrls[0] }}
+        style={profileStyles.sightingGridImage}
+      />
+    </Pressable>
+  );
 
   const handleDeleteAccount = (): void => {
     setMenuVisible(false); // Close menu before showing alert
@@ -56,23 +108,38 @@ export default function ProfileScreen(): React.JSX.Element | null {
       </View>
 
       <ScrollView style={profileStyles.profileContainer}>
-        <View style={profileStyles.infoContainer}>
-          {user.profilePictureUrl ? (
-            <Image
-              source={{ uri: user.profilePictureUrl }}
-              style={profileStyles.avatar}
-            />
-          ) : (
-            <View style={[profileStyles.avatar, { backgroundColor: "#ddd", alignItems: "center", justifyContent: "center" }]}>
-              <Text>No Image</Text>
-            </View>
-          )}
-          <View style={profileStyles.rightContainer}>
-            <Text style={profileStyles.userInfo}>{user.username}</Text>
-            <Text style={profileStyles.userInfo}>Bio: {user.bio || "N/A"}</Text>
-            <Text style={profileStyles.userInfo}>Experience Points: {user.experiencePoints}</Text>
-          </View>
-        </View>
+        <FlatList
+          ListHeaderComponent={
+            <>
+              <View style={profileStyles.infoContainer}>
+                {user.profilePictureUrl ? (
+                  <Image
+                    source={{ uri: user.profilePictureUrl }}
+                    style={profileStyles.avatar}
+                  />
+                ) : (
+                  <View style={[profileStyles.avatar, { backgroundColor: "#ddd", alignItems: "center", justifyContent: "center" }]}>
+                    <Text>No Image</Text>
+                  </View>
+                )}
+                <View style={profileStyles.rightContainer}>
+                  <Text style={profileStyles.userInfo}>{user.username}</Text>
+                  <Text style={profileStyles.userInfo}>Bio: {user.bio || "N/A"}</Text>
+                  <Text style={profileStyles.userInfo}>Experience Points: {user.experiencePoints}</Text>
+                </View>
+              </View>
+            </>
+          }
+          data={sightings}
+          renderItem={renderSightingGridItem}
+          keyExtractor={(item) => item._id}
+          numColumns={3} // This creates the 3-column grid
+          ListEmptyComponent={
+            !isLoading ? <Text style={profileStyles.emptyListText}>No sightings with images found.</Text> : null
+          }
+        />
+
+        {isLoading && <ActivityIndicator style={{ marginTop: 20 }} />}
 
       </ScrollView>
 

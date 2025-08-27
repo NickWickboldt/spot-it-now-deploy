@@ -1,5 +1,11 @@
-import { StyleSheet } from "react-native";
+import { StyleSheet, Dimensions  } from "react-native";
 import { Colors } from "./Colors";
+
+
+const { width } = Dimensions.get('window');
+const numColumns = 3;
+// Calculate the size of each item, including a small gap between them
+const itemSize = (width) / numColumns; // 15 is the container padding
 
 
 export const profileStyles = StyleSheet.create({
@@ -14,7 +20,7 @@ export const profileStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        paddingTop:30,
+        paddingTop: 30,
         paddingHorizontal: 20,
     },
     screenTitle: {
@@ -24,8 +30,8 @@ export const profileStyles = StyleSheet.create({
         width: '100%',
         paddingBottom: 10,
     },
-    profileContainer: { width: '100%' },
-    infoContainer: { width: '100%', padding: 10, backgroundColor: 'white', marginBottom: 10, display: 'flex', alignItems: 'center', flexDirection: 'row' },
+    profileContainer: { width: '100%', backgroundColor: Colors.light.cardBackground },
+    infoContainer: { width: '100%', padding: 10, backgroundColor: 'white', display: 'flex', alignItems: 'center', flexDirection: 'row' },
     rightContainer: { display: 'flex', flexDirection: 'column', marginLeft: 20, flex: 1 },
     userInfo: { fontSize: 18, marginBottom: 10 },
     avatar: { width: 120, height: 120, borderRadius: 60, marginBottom: 10 },
@@ -46,7 +52,7 @@ export const profileStyles = StyleSheet.create({
     destructiveButton: { backgroundColor: '#FF3B30' },
     logoutButton: { marginTop: 'auto', backgroundColor: '#666', marginBottom: 150 },
     logoutFloating: { position: 'absolute', right: 20, bottom: 90, backgroundColor: '#666', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 24, elevation: 4 },
-    
+
     menuOverlay: {
         flex: 1,
         backgroundColor: 'rgba(0,0,0,0.2)',
@@ -67,5 +73,26 @@ export const profileStyles = StyleSheet.create({
         fontSize: 16,
         color: '#333',
         textAlign: 'center',
+    },
+    emptyListText: {
+        textAlign: 'center',
+        color: '#666',
+        marginTop: 20,
+        fontSize: 16,
+    },
+    sightingGridItem: {
+      width: itemSize,
+      height: itemSize, // Make it a square
+      padding: 1,
+      backgroundColor:Colors.light.cardBackground
+    },
+    sightingGridImage: {
+      width: '100%',
+      height: '100%',
+      borderRadius: 4, // Optional: for slightly rounded corners
+    },
+    sightingContainer: {
+      marginVertical: 10, // Adds space above and below each image
+      backgroundColor: Colors.light.background, // Ensures no strange background colors
     },
 });
