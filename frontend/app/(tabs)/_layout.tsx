@@ -1,12 +1,8 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Tabs } from 'expo-router';
 import Icon from 'react-native-vector-icons/FontAwesome';
-import Svg, { Path } from 'react-native-svg';
 import { Colors } from '../../constants/Colors';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-
-// Assuming you have a Colors file, otherwise replace with your colors
 
 const TAB_ICONS = [
   { name: 'feed', icon: 'file-text', label: 'Sightings' },
@@ -85,8 +81,8 @@ export default function TabLayout() {
       <Tabs.Screen name="feed" />
       <Tabs.Screen name="map" />
       <Tabs.Screen name="spotit" />
-      <Tabs.Screen name="profile" />
       <Tabs.Screen name="index"/>
+      <Tabs.Screen name="profile" />
     </Tabs>
   );
 }

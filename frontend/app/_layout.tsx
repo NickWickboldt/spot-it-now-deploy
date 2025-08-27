@@ -13,6 +13,7 @@ export default function RootLayout() {
         <Stack>
           <Stack.Screen name="index" options={{ headerShown: false }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="(user)/edit_profile" options={{ headerShown: false }} />
           <Stack.Screen name="(admin)/manage-users" options={{ presentation: 'modal', title: 'Manage Users' }} />
           <Stack.Screen name="(admin)/create-user" options={{ presentation: 'modal', title: 'Create New User' }} />
         </Stack>

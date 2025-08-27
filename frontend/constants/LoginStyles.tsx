@@ -4,9 +4,10 @@ import { Colors } from "./Colors";
 export const LoginScreenStyles = StyleSheet.create({
     container: {
         flex: 1,
-        justifyContent: 'center',
+        justifyContent: 'flex-start',
         alignItems: 'center',
         backgroundColor: Colors.light.background,
+        paddingTop: 130,
     },
     logo: {
         width: 300,
