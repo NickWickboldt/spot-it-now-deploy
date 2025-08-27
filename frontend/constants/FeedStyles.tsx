@@ -9,6 +9,22 @@ export const FeedScreenStyles = StyleSheet.create({
         paddingTop: 40,
         backgroundColor: Colors.light.background, // Light background color
     },
+    header: {
+        width: '100%',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 20,
+        marginVertical: 10,
+    },
+    sideContainer: {
+        flex: 1, // Takes up 1 part of the available space
+        justifyContent: 'center',
+    },
+    centerContainer: {
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
     screenTitle: {
         fontSize: 28,
         color: Colors.light.primaryGreen,

@@ -59,8 +59,11 @@ export default function ProfileScreen(): React.JSX.Element | null {
     }
   }, [user?._id]);
 
-  const renderSightingGridItem = ({ item }: { item: Sighting }) => (
-    <Pressable style={profileStyles.sightingGridItem}>
+  const renderSightingGridItem = ({ item, index }: { item: Sighting; index: number }) => (
+    <Pressable
+      style={profileStyles.sightingGridItem}
+      onPress={() => handleSightingPress(index)}
+    >
       <Image
         source={{ uri: item.mediaUrls[0] }}
         style={profileStyles.sightingGridImage}
@@ -91,6 +94,17 @@ export default function ProfileScreen(): React.JSX.Element | null {
         },
       ]
     );
+  };
+
+  const handleSightingPress = (index: number): void => {
+    router.push({
+      pathname: '/(user)/user_sighting',
+      params: {
+        sightings: JSON.stringify(sightings),
+        // Pass the index instead of the ID
+        initialIndex: index.toString(),
+      },
+    });
   };
 
   const handleEdit = (): void => {
