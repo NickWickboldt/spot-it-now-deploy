@@ -8,7 +8,7 @@ import { ApiError } from '../utils/ApiError.util.js';
  * @returns {Promise<Sighting>} The created sighting object.
  */
 const createSighting = async (userId, userName, sightingData) => {
-  const { mediaUrls, latitude, longitude, caption, isPrivate } = sightingData || {};
+  const { mediaUrls, latitude, longitude, caption, isPrivate, identification } = sightingData || {};
 
   const mediaUrlsValid = Array.isArray(mediaUrls) && mediaUrls.length > 0 && mediaUrls.every(u => typeof u === 'string' && u.trim().length > 0);
   const latNum = latitude !== undefined && latitude !== null ? Number(latitude) : null;
@@ -32,6 +32,7 @@ const createSighting = async (userId, userName, sightingData) => {
     location,
     caption,
     isPrivate,
+    identification: identification || null,
   });
 
   return sighting;
@@ -171,6 +172,11 @@ const updateSightingField = async (sightingId, fieldsToUpdate) => {
   if (Object.prototype.hasOwnProperty.call(update, 'aiIdentification')) {
     if (update.aiIdentification === '' || (typeof update.aiIdentification === 'string' && update.aiIdentification.trim() === '')) {
       update.aiIdentification = null;
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(update, 'identification')) {
+    if (!update.identification || typeof update.identification !== 'object') {
+      update.identification = null;
     }
   }
 

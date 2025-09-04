@@ -69,6 +69,14 @@ const sightingSchema = new Schema(
       type: Number,
       default: 0,
     }
+    ,
+    // Structured identification (replaces caption parsing logic on client)
+    identification: {
+      source: { type: String, enum: ['AI', 'USER', 'COMMUNITY'], default: null },
+      commonName: { type: String, trim: true },
+      scientificName: { type: String, trim: true },
+      confidence: { type: Number }
+    }
   },
   // The `timestamps` option automatically adds `createdAt` and `updatedAt` fields
   {

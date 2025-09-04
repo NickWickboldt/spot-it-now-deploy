@@ -1,16 +1,16 @@
-import React, { useState, useRef, useEffect, useCallback } from "react"; // 1. Import useCallback
-import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Modal, ScrollView, Image, TextInput, Switch } from "react-native";
-import { useNavigation } from 'expo-router';
-import { CameraView, CameraType, useCameraPermissions, CameraCapturedPicture } from "expo-camera";
-import * as FileSystem from 'expo-file-system';
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import ConfirmationModal from "../../components/ConfirmationModal";
-import { PinchGestureHandler, State } from 'react-native-gesture-handler';
-import { useAuth } from '../../context/AuthContext';
-import { apiCreateSighting } from '../../api/sighting';
-import * as Location from 'expo-location';
-import * as ImagePicker from 'expo-image-picker';
 import { MaterialIcons } from '@expo/vector-icons';
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { CameraCapturedPicture, CameraType, CameraView, useCameraPermissions } from "expo-camera";
+import * as FileSystem from 'expo-file-system';
+import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
+import { useNavigation } from 'expo-router';
+import React, { useCallback, useEffect, useRef, useState } from "react"; // 1. Import useCallback
+import { ActivityIndicator, Alert, Image, Modal, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { PinchGestureHandler, State } from 'react-native-gesture-handler';
+import { apiCreateSighting } from '../../api/sighting';
+import ConfirmationModal from "../../components/ConfirmationModal";
+import { useAuth } from '../../context/AuthContext';
 
 
 const API_KEY = "AIzaSyCZOLCu2c-fTsGqN2oy2Gl_hSPaFTq2V30";
@@ -23,6 +23,12 @@ interface SightingForm {
   mediaUrls: string[];
   latitude: number | null;
   longitude: number | null;
+  identification?: {
+    source: 'AI' | 'USER';
+    commonName: string;
+    scientificName?: string;
+    confidence?: number;
+  };
 }
 
 type AnalysisResult = {
@@ -74,6 +80,16 @@ export default function SpotItScreen() {
     latitude: null,
     longitude: null,
   });
+  // New: manual / ambiguous identification states
+  const [showAmbiguousModal, setShowAmbiguousModal] = useState(false);
+  const [showManualInputModal, setShowManualInputModal] = useState(false);
+  const [manualCommonName, setManualCommonName] = useState('');
+  const [manualScientificName, setManualScientificName] = useState('');
+
+  const resetManualInputs = () => {
+    setManualCommonName('');
+    setManualScientificName('');
+  };
 
 
     const requestMediaLibraryPermission = async () => {
@@ -192,7 +208,7 @@ const handleUploadImage = async () => {
 
       const analysis = await analyzeImage(result.assets[0].uri, 'gemini-1.5-flash', prompt);
       const HIGH_CONFIDENCE_THRESHOLD = 55
-      const LOW_CONFIDENCE_THRESHOLD = 10
+      const LOW_CONFIDENCE_THRESHOLD = 0
       if (!analysis) {
         throw new Error("Analysis returned null.");
       }
@@ -277,11 +293,18 @@ const handleOverride = useCallback(async (uri?: string) => {
 
       const newAnalysis = await analyzeImage(uriToAnalyze, 'gemini-2.5-flash', promptForPro);
 
-      if (newAnalysis && newAnalysis.animal.toLowerCase() !== 'none') {
-        setAnalysisResult(newAnalysis);
-        setModalVisible(true);
+      if (!newAnalysis) {
+        Alert.alert('Error', 'Advanced analysis failed.');
       } else {
-        Alert.alert("Still Unsure", "Sorry, even our advanced analysis couldn't identify an animal in this image.");
+        // Always route through ambiguous modal so user can manually enter.
+        setAnalysisResult(newAnalysis.animal.toLowerCase() === 'none' ? {
+          type: newAnalysis.type || 'N/A',
+          animal: 'Unknown',
+          species: 'N/A',
+          confidence: newAnalysis.confidence ?? 0,
+          reasoning: newAnalysis.reasoning || 'Model could not confidently identify an animal.'
+        } : newAnalysis);
+        setShowAmbiguousModal(true);
       }
     } catch (error) {
       console.error("Error during override analysis:", error);
@@ -340,7 +363,7 @@ const handleOverride = useCallback(async (uri?: string) => {
 
       const analysis = await analyzeImage(photo.uri, 'gemini-1.5-flash', prompt);
       const HIGH_CONFIDENCE_THRESHOLD = 55;
-      const LOW_CONFIDENCE_THRESHOLD = 10;
+      const LOW_CONFIDENCE_THRESHOLD = 0;
 
       if (!analysis){
         throw new Error("Analysis returned null.");
@@ -350,7 +373,7 @@ const handleOverride = useCallback(async (uri?: string) => {
         setModalVisible(true);
       }   
 
-      else if (analysis.confidence >= LOW_CONFIDENCE_THRESHOLD){
+      else {
           Alert.alert(
           "Not a Clear Sighting",
           `We think we saw a ${analysis.animal}, but we're not very confident. Would you like to try a more powerful analysis or retake the photo?`,
@@ -368,9 +391,7 @@ const handleOverride = useCallback(async (uri?: string) => {
         );
       }
     
-      else {
-        Alert.alert("Nothing Spotted", "We couldn't identify an animal in the picture. Try again!");
-      }
+
 
    } catch (error) {
       console.error("Error in takePicture function:", error);
@@ -424,15 +445,15 @@ const handleOverride = useCallback(async (uri?: string) => {
   try {
     const sightingData = {
       ...sightingForm,
-      animal: analysisResult?.species || '',
-      aiIdentification: {
-        type: analysisResult?.type,
-        animal: analysisResult?.animal,
-        species: analysisResult?.species,
-        confidence: analysisResult?.confidence
-      },
       latitude: sightingForm.latitude,
-      longitude: sightingForm.longitude
+      longitude: sightingForm.longitude,
+      // If manual identification already set on the form, keep it. Otherwise derive from analysisResult.
+      identification: sightingForm.identification ?? (analysisResult ? {
+        source: 'AI',
+        commonName: analysisResult.animal,
+        scientificName: analysisResult.species,
+        confidence: analysisResult.confidence
+      } : undefined)
     };
 
     await apiCreateSighting(token, sightingData);
@@ -456,8 +477,55 @@ const handleOverride = useCallback(async (uri?: string) => {
 
   const handleRetake = () => {
     console.log("User wants to retake.");
-    setModalVisible(false);
-    setAnalysisResult(null); // Clear previous result
+  setModalVisible(false);
+  setShowAmbiguousModal(false);
+  setShowManualInputModal(false);
+  setShowSightingForm(false);
+  setAnalysisResult(null); // Clear previous result
+  setManualCommonName('');
+  setManualScientificName('');
+  setPhotoUri(null); // Clear current photo so camera is ready
+  };
+
+  // Accept ambiguous low-confidence AI guess
+  const handleAcceptAmbiguous = async () => {
+    setShowAmbiguousModal(false);
+    // Reuse existing confirm flow
+    await handleConfirm();
+  };
+
+  // Open manual input form
+  const handleManualFromAmbiguous = () => {
+    setShowAmbiguousModal(false);
+    resetManualInputs();
+    setShowManualInputModal(true);
+  };
+
+  const submitManualIdentification = async () => {
+    if (!manualCommonName.trim()) {
+      Alert.alert('Missing', 'Please enter at least a common name.');
+      return;
+    }
+    setShowManualInputModal(false);
+    // Prepare form with manual caption & image
+    if (photoUri) {
+      const location = await getCurrentLocation();
+      if (!location) return;
+      setSightingForm(prev => ({
+        ...prev,
+        mediaUrls: [photoUri],
+        caption: manualCommonName, // free caption; identification stored separately
+        latitude: location.latitude,
+        longitude: location.longitude,
+        identification: {
+          source: 'USER',
+          commonName: manualCommonName,
+          scientificName: manualScientificName || undefined,
+          confidence: undefined
+        } as any
+      }));
+      setShowSightingForm(true);
+    }
   };
 
  
@@ -554,6 +622,60 @@ return (
         onRetake={handleRetake}
          onOverride={() => handleOverride(photoUri)}
       />
+      {/* Ambiguous Modal */}
+      <Modal visible={showAmbiguousModal} transparent animationType="fade" onRequestClose={() => setShowAmbiguousModal(false)}>
+        <View style={ambiguousStyles.backdrop}>
+          <View style={ambiguousStyles.card}>
+            <Text style={ambiguousStyles.title}>Low Confidence</Text>
+            {analysisResult && (
+              <Text style={ambiguousStyles.text}>
+                Best guess: {analysisResult.animal} ({analysisResult.species}) at {analysisResult.confidence}% confidence.
+              </Text>
+            )}
+            <TouchableOpacity style={[ambiguousStyles.btn, ambiguousStyles.accept]} onPress={handleAcceptAmbiguous}>
+              <Text style={ambiguousStyles.btnText}>Yes that's it</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[ambiguousStyles.btn, ambiguousStyles.manual]} onPress={handleManualFromAmbiguous}>
+              <Text style={ambiguousStyles.btnText}>No, manual input</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[ambiguousStyles.btn, ambiguousStyles.retake]} onPress={handleRetake}>
+              <Text style={ambiguousStyles.btnText}>Retake</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+      {/* Manual Input Modal */}
+      <Modal visible={showManualInputModal} transparent animationType="slide" onRequestClose={() => setShowManualInputModal(false)}>
+        <View style={manualStyles.backdrop}>
+          <View style={manualStyles.sheet}>
+            <Text style={manualStyles.header}>Manual Identification</Text>
+            <Text style={manualStyles.label}>Common Name</Text>
+            <TextInput
+              value={manualCommonName}
+              onChangeText={setManualCommonName}
+              placeholder="e.g. White-tailed Deer"
+              style={manualStyles.input}
+              autoCapitalize="words"
+            />
+            <Text style={manualStyles.label}>Scientific Name (optional)</Text>
+            <TextInput
+              value={manualScientificName}
+              onChangeText={setManualScientificName}
+              placeholder="e.g. Odocoileus virginianus"
+              style={manualStyles.input}
+              autoCapitalize="none"
+            />
+            <View style={manualStyles.row}>
+              <TouchableOpacity style={[manualStyles.btn, manualStyles.cancel]} onPress={() => setShowManualInputModal(false)}>
+                <Text style={manualStyles.btnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[manualStyles.btn, manualStyles.submit]} onPress={submitManualIdentification}>
+                <Text style={manualStyles.btnText}>Use This</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
     </PinchGestureHandler>
   );
@@ -648,4 +770,31 @@ formContainer: {
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
   },
+});
+
+// Styles for ambiguous modal
+const ambiguousStyles = StyleSheet.create({
+  backdrop: { flex:1, backgroundColor:'rgba(0,0,0,0.6)', justifyContent:'center', alignItems:'center' },
+  card: { width:'85%', backgroundColor:'#fff', borderRadius:16, padding:22 },
+  title: { fontSize:22, fontWeight:'700', marginBottom:10 },
+  text: { fontSize:15, marginBottom:18, lineHeight:20 },
+  btn: { paddingVertical:12, borderRadius:10, marginBottom:10, alignItems:'center' },
+  accept: { backgroundColor:'#2d8cff' },
+  manual: { backgroundColor:'#ff9f1c' },
+  retake: { backgroundColor:'#ff3b30' },
+  btnText: { color:'#fff', fontWeight:'600', fontSize:15 }
+});
+
+// Styles for manual input modal
+const manualStyles = StyleSheet.create({
+  backdrop: { flex:1, backgroundColor:'rgba(0,0,0,0.65)', justifyContent:'flex-end' },
+  sheet: { backgroundColor:'#fff', padding:20, borderTopLeftRadius:20, borderTopRightRadius:20 },
+  header: { fontSize:20, fontWeight:'700', marginBottom:12 },
+  label: { fontSize:14, fontWeight:'600', marginTop:10, marginBottom:4 },
+  input: { borderWidth:1, borderColor:'#ddd', borderRadius:8, padding:10, fontSize:14 },
+  row: { flexDirection:'row', justifyContent:'space-between', marginTop:18 },
+  btn: { flex:1, padding:14, borderRadius:10, alignItems:'center' },
+  cancel: { backgroundColor:'#999', marginRight:8 },
+  submit: { backgroundColor:'#007AFF', marginLeft:8 },
+  btnText: { color:'#fff', fontWeight:'600' }
 });

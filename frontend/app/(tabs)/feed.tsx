@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Dimensions, FlatList, Image, Modal, RefreshControl, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, FlatList, Image, Modal, Platform, RefreshControl, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { apiGetRecentSightings } from '../../api/sighting';
@@ -8,7 +8,22 @@ import { FeedScreenStyles } from '../../constants/FeedStyles';
 
 const { width } = Dimensions.get('window');
 
+// Simple Coming Soon placeholder for non-Discover tabs
+const ComingSoonScreen = () => (
+  <View style={comingSoonStyles.container}>
+    <StatusBar barStyle="light-content" />
+    <Icon name="rocket" size={80} color="#fff" style={comingSoonStyles.icon} />
+    <Text style={comingSoonStyles.title}>Coming Soon!</Text>
+    <Text style={comingSoonStyles.subtitle}>We're working hard to bring you something amazing.</Text>
+    <Text style={comingSoonStyles.subtitle}>Stay tuned!</Text>
+  </View>
+);
+
+const TABS = ['Community', 'Following','Local','Discover'] as const;
+type TabKey = typeof TABS[number];
+
 export default function FeedScreen() {
+  const [activeTab, setActiveTab] = useState<TabKey>('Discover');
   const [sightings, setSightings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [menuVisible, setMenuVisible] = useState(false);
@@ -186,30 +201,61 @@ export default function FeedScreen() {
     </View>
   );
 
+  // Derive a base status padding; on iOS StatusBar.currentHeight is often undefined so we add a manual safe area offset
+  const baseStatus = Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0;
+  const iosExtra = Platform.OS === 'ios' ? 20 : 0; // additional space for notch/dynamic island
+  const statusPad = baseStatus + iosExtra;
+  // Increase the vertical offset so the tab bar sits further below notches/dynamic island
+  const extraOffset = 36; // previously 12
+  const tabBarHeight = 38; // slightly slimmer
   return (
     <View style={FeedScreenStyles.container}>
-      <Text style={FeedScreenStyles.screenTitle}>
-        Spot It Now
-      </Text>
-      {loading && sightings.length === 0 ? (
-        <Text style={{ color: Colors.light.primaryGreen }}>Loading...</Text>
+      <StatusBar barStyle="light-content" />
+
+      {/* TikTok-style absolute tabs */}
+  <View style={[tabStyles.absoluteBar, { top: statusPad + extraOffset }]}> 
+        {TABS.map(tab => {
+          const active = tab === activeTab;
+          return (
+            <TouchableOpacity
+              key={tab}
+              style={tabStyles.absTabItem}
+              onPress={() => setActiveTab(tab)}
+              activeOpacity={0.75}
+            >
+              <Text style={[tabStyles.absTabText, active && tabStyles.absTabTextActive]} numberOfLines={1}>{tab}</Text>
+              {active && <View style={tabStyles.absIndicator} />}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {activeTab === 'Discover' ? (
+        loading && sightings.length === 0 ? (
+          <Text style={{ color: Colors.light.primaryGreen, paddingTop: tabBarHeight + statusPad + extraOffset + 8 }}>Loading...</Text>
+        ) : (
+          <FlatList
+            data={sightings}
+            keyExtractor={item => item._id}
+            renderItem={renderItem}
+            onEndReached={() => { if (hasMore && !loading) loadPage(page + 1); }}
+            onEndReachedThreshold={0.5}
+            contentContainerStyle={{ paddingTop: tabBarHeight + statusPad + extraOffset + 8, paddingBottom: 32 }}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={() => loadPage(1)}
+                colors={[Colors.light.primaryGreen]}
+                tintColor={Colors.light.primaryGreen}
+              />
+            }
+            ListFooterComponent={hasMore ? <Text style={{ textAlign: 'center', padding: 8 }}>Loading more...</Text> : null}
+          />
+        )
       ) : (
-        <FlatList
-          data={sightings}
-          keyExtractor={item => item._id}
-          renderItem={renderItem}
-          onEndReached={() => { if (hasMore && !loading) loadPage(page + 1); }}
-          onEndReachedThreshold={0.5}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => loadPage(1)}
-              colors={[Colors.light.primaryGreen]}
-              tintColor={Colors.light.primaryGreen}
-            />
-          }
-          ListFooterComponent={hasMore ? <Text style={{ textAlign: 'center', padding: 8 }}>Loading more...</Text> : null}
-        />
+  <View style={{ flex:1, paddingTop: tabBarHeight + statusPad + extraOffset }}>
+          <ComingSoonScreen />
+        </View>
       )}
       {/* Popup menu modal */}
       <Modal
@@ -235,3 +281,47 @@ export default function FeedScreen() {
     </View>
   );
 }
+
+const tabStyles = StyleSheet.create({
+  // New absolute bar mimicking TikTok top tabs
+  absoluteBar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+    zIndex: 20,
+  },
+  absTabItem: {
+    paddingHorizontal: 14,
+    paddingTop: 4,
+    paddingBottom: 6,
+    alignItems: 'center',
+  },
+  absTabText: {
+  color: '#888',
+  fontSize: 16,
+  fontWeight: '600',
+  letterSpacing: 0.3,
+  },
+  absTabTextActive: {
+  color: '#fff',
+  fontWeight: '700',
+  },
+  absIndicator: {
+  marginTop: 3,
+  height: 2,
+  width: 18,
+  borderRadius: 2,
+  backgroundColor: Colors.light.primaryGreen,
+  },
+});
+
+const comingSoonStyles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#121214', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20 },
+  icon: { marginBottom: 30 },
+  title: { fontSize: 36, fontWeight: 'bold', color: '#fff', textAlign: 'center', marginBottom: 15 },
+  subtitle: { fontSize: 18, color: '#a1a1a6', textAlign: 'center', lineHeight: 26 },
+});
