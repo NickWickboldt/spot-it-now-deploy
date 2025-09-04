@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { log } from '../utils/logger.util.js';
 
 /**
  * Establishes a connection to the MongoDB database.
@@ -15,10 +16,10 @@ const connectDB = async () => {
     const connectionInstance = await mongoose.connect(`${process.env.MONGODB_URI}/${process.env.DB_NAME}`);
 
     // Log a success message with the host name if the connection is successful.
-    console.log(`\n MongoDB connected !! DB HOST: ${connectionInstance.connection.host}`);
+    log.info('backend-db', 'MongoDB connected', { host: connectionInstance.connection.host });
   } catch (error) {
     // Log an error message and exit the process if the connection fails.
-    console.error("MONGODB connection FAILED: ", error);
+    log.fatal('backend-db', 'MongoDB connection failed', { error: error?.message || error });
     process.exit(1); // Exit with a non-zero status code to indicate an error.
   }
 };

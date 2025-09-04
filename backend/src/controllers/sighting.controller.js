@@ -1,6 +1,7 @@
 import { sightingService } from '../services/sighting.service.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.util.js';
+import { log } from '../utils/logger.util.js';
 
 /**
  * Controller to create a new sighting post.
@@ -8,9 +9,9 @@ import { asyncHandler } from '../utils/asyncHandler.util.js';
 const createSighting = asyncHandler(async (req, res) => {
   // The user's ID is attached to the request by the verifyJWT middleware
   const userId = req.user._id;
-  console.log('[createSighting] req.user =', req.user);
-  console.log('HELOOOOO')
+  log.route('sighting-controller', 'Create sighting request', { userId, bodyKeys: Object.keys(req.body || {}) }, userId);
   const newSighting = await sightingService.createSighting(userId, req.user.username, req.body, );
+  log.info('sighting-controller', 'Create sighting success', { sightingId: newSighting._id }, userId);
   return res
     .status(201)
     .json(new ApiResponse(201, newSighting, 'Sighting created successfully'));

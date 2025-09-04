@@ -43,4 +43,12 @@ const loggingSchema = new Schema(
   }
 );
 
+// TTL index for log retention. Deletes documents after LOG_TTL_DAYS.
+// Defaults to 30 days if not specified.
+const days = Number(process.env.LOG_TTL_DAYS || 30);
+const expireAfterSeconds = Number.isFinite(days) && days > 0 ? days * 24 * 60 * 60 : 30 * 24 * 60 * 60;
+loggingSchema.index({ createdAt: 1 }, { expireAfterSeconds });
+// Helpful index for admin queries
+loggingSchema.index({ level: 1, source: 1, createdAt: -1 });
+
 export const Log = mongoose.model('Log', loggingSchema);

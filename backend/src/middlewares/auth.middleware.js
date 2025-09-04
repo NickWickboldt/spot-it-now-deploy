@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import { User } from "../models/user.model.js";
 import { ApiError } from "../utils/ApiError.util.js";
 import { asyncHandler } from "../utils/asyncHandler.util.js";
+import { log } from "../utils/logger.util.js";
 
 /**
  * Middleware to verify a user's JSON Web Token (JWT).
@@ -11,7 +12,9 @@ import { asyncHandler } from "../utils/asyncHandler.util.js";
 export const verifyJWT = asyncHandler(async (req, _, next) => {
   try {
     try {
-      console.log('[verifyJWT] Incoming Authorization header:', req.header('Authorization'));
+      log.debug('auth-middleware', 'Incoming Authorization header', {
+        authHeader: req.header('Authorization')
+      });
     } catch (logErr) {
       // swallow logging errors
     }
@@ -20,7 +23,7 @@ export const verifyJWT = asyncHandler(async (req, _, next) => {
       req.header("Authorization")?.replace("Bearer ", "");
 
     if (!token) {
-      console.log('[verifyJWT] No token found on request');
+      log.warn('auth-middleware', 'No token found on request', { path: req.originalUrl, method: req.method });
       throw new ApiError(401, "Unauthorized request");
     }
 
@@ -38,7 +41,7 @@ export const verifyJWT = asyncHandler(async (req, _, next) => {
     next(); 
   } catch (error) {
 
-  console.error('[verifyJWT] Token verification failed:', error?.message || error);
+  log.error('auth-middleware', 'Token verification failed', { error: error?.message || error, path: req.originalUrl });
   throw new ApiError(401, error?.message || "Invalid access token");
   }
 });

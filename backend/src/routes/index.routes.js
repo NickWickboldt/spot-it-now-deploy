@@ -10,6 +10,7 @@ import sightingRouter from './sighting.routes.js';
 import userRouter from './user.routes.js';
 import userAchievementRouter from './userAchievement.routes.js';
 import loggingRouter from './logging.routes.js';
+import uploadRouter from './upload.routes.js';
 
 const router = Router();
 
@@ -25,5 +26,6 @@ router.use('/achievements', achievementRouter);
 router.use('/userAchievements', userAchievementRouter);
 router.use('/notifications', notificationRouter);
 router.use('/loggings', loggingRouter);
+router.use('/uploads', uploadRouter);
 
 export default router;

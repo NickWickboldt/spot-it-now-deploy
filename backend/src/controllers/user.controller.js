@@ -1,6 +1,7 @@
 import { userService } from "../services/user.service.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.util.js";
+import { log } from "../utils/logger.util.js";
 
 // --- Auth Controllers ---
 
@@ -141,9 +142,9 @@ const adminGetUserById = asyncHandler(async (req, res) => {
 
 const adminUpdateUser = asyncHandler(async (req, res) => {
   const { userId } = req.params;
-  console.log('Admin updating user:', userId, 'with data:', req.body);
+  log.route('user-controller', 'Admin updating user', { userId, bodyKeys: Object.keys(req.body || {}) }, req.user?._id);
   const updatedUser = await userService.updateUser(userId, req.body);
-  console.log('Updated user:', updatedUser);
+  log.info('user-controller', 'Admin updated user', { userId, updated: !!updatedUser });
   return res.status(200).json(new ApiResponse(200, updatedUser, 'User updated successfully'));
 });
 

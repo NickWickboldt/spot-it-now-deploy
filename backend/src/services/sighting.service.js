@@ -1,5 +1,6 @@
 import { Sighting } from '../models/sighting.model.js';
 import { ApiError } from '../utils/ApiError.util.js';
+import { log } from '../utils/logger.util.js';
 
 /**
  * Creates a new sighting post.
@@ -16,7 +17,7 @@ const createSighting = async (userId, userName, sightingData) => {
   const coordsValid = latNum !== null && longNum !== null && !Number.isNaN(latNum) && !Number.isNaN(longNum);
 
   if (!mediaUrlsValid || !coordsValid) {
-    console.warn('[sightingService.createSighting] validation failed (mediaUrls/coords missing)');
+    log.warn('sighting-service', 'Validation failed for createSighting', { mediaUrlsValid, coordsValid });
     throw new ApiError(400, 'Media URLs and location coordinates are required.');
   }
 
@@ -35,6 +36,7 @@ const createSighting = async (userId, userName, sightingData) => {
     identification: identification || null,
   });
 
+  log.info('sighting-service', 'Sighting created', { sightingId: sighting._id, userId });
   return sighting;
 };
 

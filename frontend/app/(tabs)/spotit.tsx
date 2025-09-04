@@ -9,6 +9,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react"; // 1. I
 import { ActivityIndicator, Alert, Image, Modal, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { PinchGestureHandler, State } from 'react-native-gesture-handler';
 import { apiCreateSighting } from '../../api/sighting';
+import { isRemoteUrl, uploadToCloudinarySigned } from '../../api/upload';
 import ConfirmationModal from "../../components/ConfirmationModal";
 import { useAuth } from '../../context/AuthContext';
 
@@ -443,8 +444,20 @@ const handleOverride = useCallback(async (uri?: string) => {
   }
 
   try {
+    // Ensure media are uploaded to Cloudinary
+    const uploadedUrls: string[] = [];
+    for (const uri of sightingForm.mediaUrls || []) {
+      if (isRemoteUrl(uri)) {
+        uploadedUrls.push(uri);
+      } else if (uri) {
+        const up = await uploadToCloudinarySigned(uri, token, 'image');
+        uploadedUrls.push(up.secure_url);
+      }
+    }
+
     const sightingData = {
       ...sightingForm,
+      mediaUrls: uploadedUrls,
       latitude: sightingForm.latitude,
       longitude: sightingForm.longitude,
       // If manual identification already set on the form, keep it. Otherwise derive from analysisResult.
