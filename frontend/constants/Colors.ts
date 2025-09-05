@@ -12,7 +12,7 @@ export const Colors = {
     cardBackground: '#F8F7F2',
     itemBackground: '#F8F7F2',
     buttonText: '#40743dff',
-    shadow: '#d4e6b4ff',
+    shadow: '#d4e6b4',
   },
   dark: {
     primaryGreen: '#3A5E3B',
