@@ -26,6 +26,11 @@ const createComment = async (sightingId, userId, commentText) => {
     commentText,
   });
 
+  // increment denormalized comments counter on the sighting
+  try {
+    await Sighting.findByIdAndUpdate(sightingId, { $inc: { comments: 1 } });
+  } catch {}
+
   return comment;
 };
 
@@ -47,7 +52,7 @@ const updateComment = async (commentId, userId, newCommentText) => {
   }
 
   // Check if the user is the owner of the comment
-  if (comment.user.toString() !== userId) {
+  if (comment.user.toString() !== String(userId)) {
     throw new ApiError(403, 'You are not authorized to edit this comment.');
   }
 
@@ -70,11 +75,15 @@ const deleteComment = async (commentId, userId, isAdmin = false) => {
   }
 
   // Allow deletion only if the user is the owner or an admin
-  if (comment.user.toString() !== userId && !isAdmin) {
+  if (comment.user.toString() !== String(userId) && !isAdmin) {
     throw new ApiError(403, 'You are not authorized to delete this comment.');
   }
 
   await Comment.findByIdAndDelete(commentId);
+  // decrement denormalized comments counter on the sighting
+  try {
+    await Sighting.findByIdAndUpdate(comment.sighting, { $inc: { comments: -1 } });
+  } catch {}
 };
 
 /**

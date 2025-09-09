@@ -70,6 +70,12 @@ const sightingSchema = new Schema(
       default: 0,
     }
     ,
+    // Denormalized comments count for quick feed display
+    comments: {
+      type: Number,
+      default: 0,
+    }
+    ,
     // Structured identification (replaces caption parsing logic on client)
     identification: {
       source: { type: String, enum: ['AI', 'USER', 'COMMUNITY'], default: null },

@@ -22,3 +22,20 @@ export const apiDeleteUserAccount = async (token: string) => {
     method: 'DELETE',
   });
 };
+
+// Public getters for another user's basic profile fields
+export const apiGetUsernameByUserId = async (userId: string) => {
+  return fetchWithAuth(`/users/${userId}/username`, '', { method: 'GET' });
+};
+
+export const apiGetProfilePictureByUserId = async (userId: string) => {
+  return fetchWithAuth(`/users/${userId}/profile-picture`, '', { method: 'GET' });
+};
+
+export const apiGetBioByUserId = async (userId: string) => {
+  return fetchWithAuth(`/users/${userId}/bio`, '', { method: 'GET' });
+};
+
+export const apiGetExperienceByUserId = async (userId: string) => {
+  return fetchWithAuth(`/users/${userId}/experience`, '', { method: 'GET' });
+};

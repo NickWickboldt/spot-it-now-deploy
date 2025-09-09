@@ -24,6 +24,8 @@ const toggleLike = async (sightingId, userId) => {
   if (existingLike) {
     // If like exists, remove it
     await Like.findByIdAndDelete(existingLike._id);
+    // decrement denormalized counter on Sighting
+    await Sighting.findByIdAndUpdate(sightingId, { $inc: { likes: -1 } });
     return { liked: false }; // The user no longer likes this post
   } else {
     // If like does not exist, create it
@@ -31,6 +33,8 @@ const toggleLike = async (sightingId, userId) => {
       sighting: sightingId,
       user: userId,
     });
+    // increment denormalized counter on Sighting
+    await Sighting.findByIdAndUpdate(sightingId, { $inc: { likes: 1 } });
     return { liked: true }; // The user now likes this post
   }
 };

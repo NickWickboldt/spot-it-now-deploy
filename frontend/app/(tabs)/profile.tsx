@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import React, { useState, useEffect } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, Text, View, Modal, FlatList } from 'react-native';
+import { ActivityIndicator, Alert, Image, Pressable, Text, View, Modal, FlatList } from 'react-native';
 import { apiDeleteUserAccount } from '../../api/user';
 import { apiGetSightingsByUser } from '../../api/sighting'; // Assuming a Sighting type is exported
 import { useAuth } from '../../context/AuthContext';
@@ -121,41 +121,36 @@ export default function ProfileScreen(): React.JSX.Element | null {
         </Pressable>
       </View>
 
-      <ScrollView style={profileStyles.profileContainer}>
-        <FlatList
-          ListHeaderComponent={
-            <>
-              <View style={profileStyles.infoContainer}>
-                {user.profilePictureUrl ? (
-                  <Image
-                    source={{ uri: user.profilePictureUrl }}
-                    style={profileStyles.avatar}
-                  />
-                ) : (
-                  <View style={[profileStyles.avatar, { backgroundColor: "#ddd", alignItems: "center", justifyContent: "center" }]}>
-                    <Text>No Image</Text>
-                  </View>
-                )}
-                <View style={profileStyles.rightContainer}>
-                  <Text style={profileStyles.userInfo}>{user.username}</Text>
-                  <Text style={profileStyles.userInfo}>Bio: {user.bio || "N/A"}</Text>
-                  <Text style={profileStyles.userInfo}>Experience Points: {user.experiencePoints}</Text>
-                </View>
+      <FlatList
+        style={profileStyles.profileContainer}
+        ListHeaderComponent={
+          <View style={profileStyles.infoContainer}>
+            {user.profilePictureUrl ? (
+              <Image
+                source={{ uri: user.profilePictureUrl }}
+                style={profileStyles.avatar}
+              />
+            ) : (
+              <View style={[profileStyles.avatar, { backgroundColor: "#ddd", alignItems: "center", justifyContent: "center" }]}>
+                <Text>No Image</Text>
               </View>
-            </>
-          }
-          data={sightings}
-          renderItem={renderSightingGridItem}
-          keyExtractor={(item) => item._id}
-          numColumns={3} // This creates the 3-column grid
-          ListEmptyComponent={
-            !isLoading ? <Text style={profileStyles.emptyListText}>No sightings with images found.</Text> : null
-          }
-        />
-
-        {isLoading && <ActivityIndicator style={{ marginTop: 20 }} />}
-
-      </ScrollView>
+            )}
+            <View style={profileStyles.rightContainer}>
+              <Text style={profileStyles.userInfo}>{user.username}</Text>
+              <Text style={profileStyles.userInfo}>Bio: {user.bio || "N/A"}</Text>
+              <Text style={profileStyles.userInfo}>Experience Points: {user.experiencePoints}</Text>
+            </View>
+          </View>
+        }
+        data={sightings}
+        renderItem={renderSightingGridItem}
+        keyExtractor={(item) => item._id}
+        numColumns={3}
+        ListEmptyComponent={
+          isLoading ? <ActivityIndicator style={{ marginTop: 20 }} /> : <Text style={profileStyles.emptyListText}>No sightings with images found.</Text>
+        }
+        contentContainerStyle={{ paddingBottom: 16 }}
+      />
 
       <Modal
         visible={menuVisible}

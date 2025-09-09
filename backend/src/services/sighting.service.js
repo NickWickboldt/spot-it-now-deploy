@@ -1,4 +1,6 @@
 import { Sighting } from '../models/sighting.model.js';
+import { Comment } from '../models/comment.model.js';
+import { Like } from '../models/like.model.js';
 import { ApiError } from '../utils/ApiError.util.js';
 import { log } from '../utils/logger.util.js';
 
@@ -149,9 +151,54 @@ const getSightingsPage = async ({ page = 1, pageSize = 20, q = '' } = {}) => {
 const getRecentSightingsPage = async ({ page = 1, pageSize = 20 } = {}) => {
   const skip = (page - 1) * pageSize;
   const [items, total] = await Promise.all([
-    Sighting.find({}).sort({ createdAt: -1 }).skip(skip).limit(pageSize).populate('user', 'username profilePictureUrl').populate('animal', 'commonName'),
+    Sighting.find({})
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(pageSize)
+      .populate('user', 'username profilePictureUrl')
+      .populate('animal', 'commonName')
+      .lean(),
     Sighting.countDocuments({}),
   ]);
+
+  // Ensure comment counts are present and accurate for the page items.
+  // Use aggregation to compute counts for these sighting IDs, then merge.
+  try {
+    const ids = items.map((doc) => doc._id);
+    const counts = await Comment.aggregate([
+      { $match: { sighting: { $in: ids } } },
+      { $group: { _id: '$sighting', count: { $sum: 1 } } },
+    ]);
+    const map = new Map(counts.map((c) => [String(c._id), c.count]));
+    items.forEach((doc) => {
+      const key = String(doc._id);
+      const aggCount = map.get(key) || 0;
+      // Prefer denormalized value if present and positive; otherwise use aggregation count
+      const denorm = typeof doc.comments === 'number' ? doc.comments : 0;
+      doc.comments = denorm > 0 ? denorm : aggCount;
+    });
+  } catch (e) {
+    // If aggregation fails, silently ignore to keep feed working
+  }
+
+  // Ensure like counts are present for legacy data as well
+  try {
+    const ids = items.map((doc) => doc._id);
+    const likeCounts = await Like.aggregate([
+      { $match: { sighting: { $in: ids } } },
+      { $group: { _id: '$sighting', count: { $sum: 1 } } },
+    ]);
+    const likeMap = new Map(likeCounts.map((c) => [String(c._id), c.count]));
+    items.forEach((doc) => {
+      const key = String(doc._id);
+      const aggCount = likeMap.get(key) || 0;
+      const denorm = typeof doc.likes === 'number' ? doc.likes : 0;
+      doc.likes = denorm > 0 ? denorm : aggCount;
+    });
+  } catch (e) {
+    // ignore
+  }
+
   return { items, total, page, pageSize };
 };
 

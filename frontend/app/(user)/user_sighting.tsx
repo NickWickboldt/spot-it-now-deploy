@@ -1,9 +1,11 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, FlatList, Image, Pressable, TouchableOpacity, ScrollView, Dimensions, Modal } from 'react-native';
+import { View, Text, FlatList, Image, Pressable, TouchableOpacity, ScrollView, Dimensions, Modal, Animated, Easing } from 'react-native';
 import { FeedScreenStyles } from '../../constants/FeedStyles';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { Colors } from '../../constants/Colors';
+import { useAuth } from '../../context/AuthContext';
+import { apiToggleSightingLike } from '../../api/like';
 
 // Define the Sighting type again here so the component is self-contained
 type Sighting = {
@@ -11,6 +13,9 @@ type Sighting = {
     caption: string;
     createdAt: string;
     mediaUrls: string[];
+    userName?: string;
+    userProfilePictureUrl?: string;
+    likes?: number;
 };
 
 const ITEM_HEIGHT = 400;
@@ -20,9 +25,28 @@ const { width } = Dimensions.get('window');
 
 export default function UserSightingScreen() {
     const router = useRouter();
+    const { token } = useAuth();
     const [menuVisible, setMenuVisible] = useState(false);
-    const [selectedSighting, setSelectedSighting] = useState(null);
-    const [carouselIndex, setCarouselIndex] = useState({});
+    const [selectedSighting, setSelectedSighting] = useState<Sighting | null>(null);
+    const [carouselIndex, setCarouselIndex] = useState<Record<string, number>>({});
+    const [likedMap, setLikedMap] = useState<Record<string, boolean>>({});
+    const [likesCountMap, setLikesCountMap] = useState<Record<string, number>>({});
+    const scaleMapRef = useRef<Record<string, Animated.Value>>({});
+
+    const getScale = (id: string) => {
+        if (!scaleMapRef.current[id]) {
+            scaleMapRef.current[id] = new Animated.Value(1);
+        }
+        return scaleMapRef.current[id];
+    };
+
+    const pulseHeart = (id: string) => {
+        const scale = getScale(id);
+        Animated.sequence([
+            Animated.timing(scale, { toValue: 1.2, duration: 120, useNativeDriver: true, easing: Easing.out(Easing.quad) }),
+            Animated.spring(scale, { toValue: 1, friction: 4, useNativeDriver: true }),
+        ]).start();
+    };
     // Get the new 'initialIndex' parameter
     const { sightings: sightingsJson, initialIndex } = useLocalSearchParams<{ sightings: string; initialIndex: string }>();
 
@@ -48,7 +72,7 @@ export default function UserSightingScreen() {
         }
     }, [initialIndex]);
 
-    const handleMenuOpen = (item) => {
+    const handleMenuOpen = (item: Sighting) => {
         setSelectedSighting(item);
         setMenuVisible(true);
     };
@@ -96,7 +120,7 @@ export default function UserSightingScreen() {
         return 'just now';
     }
 
-    const renderImages = (mediaUrls, sightingId) => {
+    const renderImages = (mediaUrls: string[], sightingId: string) => {
         if (!mediaUrls || mediaUrls.length === 0) return null;
         if (mediaUrls.length === 1) {
             return (
@@ -170,10 +194,15 @@ export default function UserSightingScreen() {
             )}
             <Text style={FeedScreenStyles.cardCaption}>{item.caption}</Text>
             <View style={FeedScreenStyles.cardActions}>
-                <TouchableOpacity style={FeedScreenStyles.cardActionBtn}>
-                    {item.likes > 0 && <Text style={{ marginRight: 10, color: Colors.light.primaryGreen }}>{item.likes || 0}</Text>}
-
-                    <Icon name="heart" size={18} color={Colors.light.buttonText} />
+                <TouchableOpacity style={FeedScreenStyles.cardActionBtn} onPress={() => handleToggleLike(item)} activeOpacity={0.8}>
+                    {((likesCountMap[item._id] ?? Number(item.likes ?? 0)) > 0) && (
+                        <Text style={{ marginRight: 10, color: Colors.light.primaryGreen }}>
+                            {likesCountMap[item._id] ?? Number(item.likes ?? 0)}
+                        </Text>
+                    )}
+                    <Animated.View style={{ transform: [{ scale: getScale(item._id) }] }}>
+                        <Icon name={likedMap[item._id] ? 'heart' : 'heart-o'} size={18} color={likedMap[item._id] ? '#e0245e' : Colors.light.buttonText} />
+                    </Animated.View>
                 </TouchableOpacity>
                 <View style={{ flexDirection: 'row', marginLeft: 'auto' }}>
                     <TouchableOpacity style={FeedScreenStyles.cardActionBtn}>
@@ -187,6 +216,43 @@ export default function UserSightingScreen() {
             </View>
         </View>
     );
+
+    const handleToggleLike = async (item: any) => {
+        const sightingId = item._id;
+        if (!sightingId) return;
+        if (!token || token === 'local-admin-fake-token') {
+            alert('Please log in to like posts.');
+            return;
+        }
+        const currentlyLiked = !!likedMap[sightingId];
+        setLikedMap(prev => ({ ...prev, [sightingId]: !currentlyLiked }));
+        // update count optimistically within the array data we passed in; since it's local state, mutate via set
+        // allSightings is constant; we rely on FlatList item reference, so best to manage a separate state if needed
+        // update count optimistically
+        setLikesCountMap(prev => ({
+            ...prev,
+            [sightingId]: Math.max(0, (prev[sightingId] ?? Number(item.likes ?? 0)) + (currentlyLiked ? -1 : 1))
+        }));
+        try {
+            const resp = await apiToggleSightingLike(token, sightingId);
+            const serverLiked = !!resp?.data?.liked;
+            if (serverLiked !== !currentlyLiked) {
+                setLikedMap(prev => ({ ...prev, [sightingId]: serverLiked }));
+                setLikesCountMap(prev => ({
+                    ...prev,
+                    [sightingId]: Math.max(0, (prev[sightingId] ?? Number(item.likes ?? 0)) + (serverLiked ? 1 : -1))
+                }));
+            }
+        } catch (e) {
+            setLikedMap(prev => ({ ...prev, [sightingId]: currentlyLiked }));
+            setLikesCountMap(prev => ({
+                ...prev,
+                [sightingId]: Math.max(0, (prev[sightingId] ?? Number(item.likes ?? 0)) + (currentlyLiked ? 1 : -1))
+            }));
+            console.error('Failed to toggle like', e);
+        }
+        pulseHeart(sightingId);
+    };
 
     // This optimization helps FlatList scroll smoothly to any item without
     // needing to render all the items in between.
