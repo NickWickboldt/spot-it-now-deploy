@@ -1,14 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
-import { Dimensions, FlatList, Image, Modal, Platform, RefreshControl, StatusBar, StyleSheet, Text, TouchableOpacity, View, Animated, Easing, TextInput, Alert } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, Animated, Dimensions, Easing, FlatList, Image, Modal, Platform, RefreshControl, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import Icon from 'react-native-vector-icons/FontAwesome';
-import { apiGetRecentSightings } from '../../api/sighting';
+import { apiCreateComment, apiDeleteComment, apiGetCommentsForSighting, apiUpdateComment } from '../../api/comment';
+import { apiAdminDeleteSighting } from '../../api/sighting';
+import { apiGetLikedSightingsByUser, apiToggleSightingLike } from '../../api/like';
+import { apiGetFollowingRecentSightings, apiGetRecentSightings } from '../../api/sighting';
 import { Colors } from '../../constants/Colors';
 import { FeedScreenStyles } from '../../constants/FeedStyles';
-import { useRouter } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
-import { apiGetLikedSightingsByUser, apiToggleSightingLike } from '../../api/like';
-import { apiCreateComment, apiDeleteComment, apiGetCommentsForSighting, apiUpdateComment } from '../../api/comment';
 
 const { width } = Dimensions.get('window');
 
@@ -65,15 +66,28 @@ export default function FeedScreen() {
   };
 
   useEffect(() => {
-    loadPage(1);
-  }, []);
+    // Load the first page whenever the active tab changes (Discover/Following)
+    if (activeTab === 'Discover' || activeTab === 'Following') {
+      loadPage(1);
+    }
+  }, [activeTab]);
 
-  const loadPage = (p = 1) => {
+  const loadPage = useCallback((p = 1) => {
     if (p === 1) {
       setRefreshing(true);
     }
     setLoading(true);
-    apiGetRecentSightings(p, pageSize)
+    const fetcher = async () => {
+      if (activeTab === 'Following') {
+        // Require a valid auth token for following feed
+        if (!token || token === 'local-admin-fake-token') {
+          return { data: { items: [], total: 0 } } as any;
+        }
+        return apiGetFollowingRecentSightings(token, p, pageSize);
+      }
+      return apiGetRecentSightings(p, pageSize);
+    };
+    fetcher()
       .then(async (resp) => {
         const payload = resp.data || {};
         const items = payload.items || [];
@@ -109,7 +123,7 @@ export default function FeedScreen() {
         setLoading(false);
         setRefreshing(false);
       });
-  };
+  }, [activeTab, token, user?._id, pageSize]);
 
   const handleMenuOpen = (item) => {
     setSelectedSighting(item);
@@ -148,6 +162,30 @@ export default function FeedScreen() {
   const handleMenuClose = () => {
     setMenuVisible(false);
     setSelectedSighting(null);
+  };
+
+  const handleDeleteSelected = async () => {
+    const item = selectedSighting;
+    if (!item || !item._id) return;
+    if (!token || token === 'local-admin-fake-token') {
+      alert('Please log in to delete your post.');
+      return;
+    }
+    Alert.alert('Delete post', 'Are you sure you want to delete this post?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive', onPress: async () => {
+          try {
+            await apiAdminDeleteSighting(token, item._id);
+            setSightings(prev => prev.filter(s => s._id !== item._id));
+            handleMenuClose();
+          } catch (e) {
+            console.error('Failed to delete sighting', e);
+            alert('Could not delete this post.');
+          }
+        }
+      }
+    ]);
   };
 
 const loadCommentsFor = async (sightingId: string) => {
@@ -509,10 +547,15 @@ const loadCommentsFor = async (sightingId: string) => {
         })}
       </View>
 
-      {activeTab === 'Discover' ? (
+      {(activeTab === 'Discover' || activeTab === 'Following') ? (
         loading && sightings.length === 0 ? (
           <Text style={{ color: Colors.light.primaryGreen, paddingTop: tabBarHeight + statusPad + extraOffset + 8 }}>Loading...</Text>
         ) : (
+          (activeTab === 'Following' && (!token || token === 'local-admin-fake-token') && sightings.length === 0) ? (
+            <View style={{ flex: 1, alignItems: 'center', paddingTop: tabBarHeight + statusPad + extraOffset + 32 }}>
+              <Text style={{ color: '#aaa' }}>Log in to see posts from people you follow.</Text>
+            </View>
+          ) : (
           <FlatList
             data={sightings}
             keyExtractor={item => item._id}
@@ -530,6 +573,7 @@ const loadCommentsFor = async (sightingId: string) => {
             }
             ListFooterComponent={hasMore ? <Text style={{ textAlign: 'center', padding: 8 }}>Loading more...</Text> : null}
           />
+          )
         )
       ) : (
   <View style={{ flex:1, paddingTop: tabBarHeight + statusPad + extraOffset }}>
@@ -543,19 +587,37 @@ const loadCommentsFor = async (sightingId: string) => {
         animationType="fade"
         onRequestClose={handleMenuClose}
       >
-        <TouchableOpacity style={FeedScreenStyles.menuOverlay} onPress={handleMenuClose} activeOpacity={1}>
+        <View style={FeedScreenStyles.menuOverlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFillObject as any}
+            activeOpacity={1}
+            onPress={handleMenuClose}
+          />
           <View style={FeedScreenStyles.menuContainer}>
-            <TouchableOpacity style={FeedScreenStyles.menuItem} onPress={() => { /* TODO: hook up report */ handleMenuClose(); }}>
-              <Text style={FeedScreenStyles.menuText}>Report</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={FeedScreenStyles.menuItem} onPress={() => { /* TODO: hook up share */ handleMenuClose(); }}>
-              <Text style={FeedScreenStyles.menuText}>Share</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={FeedScreenStyles.menuItem} onPress={handleMenuClose}>
-              <Text style={FeedScreenStyles.menuText}>Cancel</Text>
-            </TouchableOpacity>
+            {(() => {
+              const ownerId = typeof selectedSighting?.user === 'string' ? selectedSighting?.user : selectedSighting?.user?._id;
+              const isOwner = ownerId && user?._id && String(ownerId) === String(user._id);
+              return (
+                <>
+                  {isOwner && (
+                    <TouchableOpacity style={FeedScreenStyles.menuItem} onPress={handleDeleteSelected}>
+                      <Text style={[FeedScreenStyles.menuText, { color: '#f55' }]}>Delete</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity style={FeedScreenStyles.menuItem} onPress={() => { /* TODO: hook up report */ handleMenuClose(); }}>
+                    <Text style={FeedScreenStyles.menuText}>Report</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={FeedScreenStyles.menuItem} onPress={() => { /* TODO: hook up share */ handleMenuClose(); }}>
+                    <Text style={FeedScreenStyles.menuText}>Share</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={FeedScreenStyles.menuItem} onPress={handleMenuClose}>
+                    <Text style={FeedScreenStyles.menuText}>Cancel</Text>
+                  </TouchableOpacity>
+                </>
+              );
+            })()}
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
 
     </View>

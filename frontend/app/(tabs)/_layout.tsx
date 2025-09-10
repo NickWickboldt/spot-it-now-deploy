@@ -1,6 +1,6 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Tabs } from 'expo-router';
+import React from 'react';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { Colors } from '../../constants/Colors';
 
@@ -8,7 +8,7 @@ const TAB_ICONS = [
   { name: 'feed', icon: 'file-text', label: 'Sightings' },
   { name: 'map', icon: 'map', label: 'Map' },
   { name: 'spotit', icon: 'camera', label: 'Post', isCenter: true },
-  { name: 'index', icon: 'book', label: 'Index' },
+  { name: 'animal_index', icon: 'book', label: 'Index' },
   { name: 'profile', icon: 'user', label: 'Profile' },
 ];
 
@@ -75,13 +75,17 @@ function CustomTabBar({ state, navigation }) {
 
 export default function TabLayout() {
   return (
-    <Tabs tabBar={props => <CustomTabBar {...props} />} screenOptions={{
-      headerShown: false
-    }}>
+    <Tabs 
+      tabBar={props => <CustomTabBar {...props} />} 
+      screenOptions={{
+        headerShown: false
+      }}
+      initialRouteName="feed"
+    >
       <Tabs.Screen name="feed" />
       <Tabs.Screen name="map" />
       <Tabs.Screen name="spotit" />
-      <Tabs.Screen name="index"/>
+      <Tabs.Screen name="animal_index"/>
       <Tabs.Screen name="profile" />
     </Tabs>
   );

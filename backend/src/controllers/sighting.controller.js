@@ -43,14 +43,25 @@ const getSightingById = asyncHandler(async (req, res) => {
 });
 
 /**
- * Controller to get all sightings for a specific user.
+ * Controller to get public sightings for a specific user (excludes private).
  */
 const getSightingsByUser = asyncHandler(async (req, res) => {
   const { userId } = req.params;
   const sightings = await sightingService.getSightingsByUser(userId);
   return res
     .status(200)
-    .json(new ApiResponse(200, sightings, 'User sightings fetched successfully'));
+    .json(new ApiResponse(200, sightings, 'User public sightings fetched successfully'));
+});
+
+/**
+ * Secured controller to get the current user's own sightings, including private.
+ */
+const getMySightings = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+  const sightings = await sightingService.getSightingsByUserAll(userId);
+  return res
+    .status(200)
+    .json(new ApiResponse(200, sightings, 'My sightings fetched successfully'));
 });
 
 /**
@@ -85,6 +96,18 @@ const getRecentSightings = asyncHandler(async (req, res) => {
   const pageSize = parseInt(req.query.pageSize) || 10;
   const result = await sightingService.getRecentSightingsPage({ page, pageSize });
   return res.status(200).json(new ApiResponse(200, result, 'Recent sightings page fetched successfully'));
+});
+
+/**
+ * Secured controller to fetch recent sightings from users the current user follows.
+ * Query params: page, pageSize
+ */
+const getFollowingRecentSightings = asyncHandler(async (req, res) => {
+  const page = parseInt(req.query.page) || 1;
+  const pageSize = parseInt(req.query.pageSize) || 10;
+  const userId = req.user._id;
+  const result = await sightingService.getFollowingRecentSightingsPage({ userId, page, pageSize });
+  return res.status(200).json(new ApiResponse(200, result, 'Following sightings page fetched successfully'));
 });
 
 /**
@@ -138,6 +161,6 @@ export {
   addMediaUrlToSighting, createSighting,
   deleteSighting, findSightingsNear,
   // admin
-  getAllSightings, getRecentSightings, getSightingById, getSightingsByAnimal, getSightingsByUser, removeMediaUrlFromSighting, updateSightingField
+  getAllSightings, getRecentSightings, getFollowingRecentSightings, getSightingById, getSightingsByAnimal, getSightingsByUser, getMySightings, removeMediaUrlFromSighting, updateSightingField
 };
 

@@ -4,7 +4,7 @@ import { ActivityIndicator, FlatList, Image, Pressable, ScrollView, Text, View }
 import { profileStyles } from '../../constants/ProfileStyles';
 import { useAuth } from '../../context/AuthContext';
 import Icon from 'react-native-vector-icons/FontAwesome';
-import { apiGetSightingsByUser } from '../../api/sighting';
+import { apiGetMySightings, apiGetSightingsByUser } from '../../api/sighting';
 import {
   apiGetBioByUserId,
   apiGetExperienceByUserId,
@@ -50,12 +50,13 @@ export default function OtherUserProfile(): React.JSX.Element | null {
       setLoading(true);
       try {
         // Fire off parallel fetches for public profile info
+        const isOwner = currentUser?._id && String(currentUser._id) === String(targetUserId);
         const [u, p, b, e, s, counts, followers] = await Promise.all([
           username ? Promise.resolve({ data: { username } }) : apiGetUsernameByUserId(targetUserId),
           profilePictureUrl ? Promise.resolve({ data: { profilePictureUrl } }) : apiGetProfilePictureByUserId(targetUserId),
           apiGetBioByUserId(targetUserId),
           apiGetExperienceByUserId(targetUserId),
-          apiGetSightingsByUser(targetUserId),
+          (isOwner && token && token !== 'local-admin-fake-token') ? apiGetMySightings(token) : apiGetSightingsByUser(targetUserId),
           apiGetFollowCounts(targetUserId),
           apiGetFollowers(targetUserId),
         ]);
@@ -65,7 +66,12 @@ export default function OtherUserProfile(): React.JSX.Element | null {
         setProfilePictureUrl(p?.data?.profilePictureUrl || profilePictureUrl || '');
         setBio(b?.data?.bio || '');
         setExperiencePoints(Number(e?.data?.experiencePoints || 0));
-        setSightings(s?.data || []);
+        const raw = Array.isArray(s?.data) ? s.data : [];
+        // Ensure each sighting carries a user id for ownership checks downstream
+        setSightings(raw.map((doc: any) => ({
+          ...doc,
+          user: doc?.user ?? targetUserId,
+        })));
         setFollowersCount(Number(counts?.data?.followersCount || 0));
         setFollowingCount(Number(counts?.data?.followingCount || 0));
         // Determine if current user follows target user
@@ -99,11 +105,13 @@ export default function OtherUserProfile(): React.JSX.Element | null {
   };
 
   const handleSightingPress = (index: number) => {
+    const isOwner = currentUser?._id && String(currentUser._id) === String(targetUserId);
     router.push({
       pathname: '/(user)/user_sighting',
       params: {
         sightings: JSON.stringify(sightings),
         initialIndex: String(index),
+        isOwner: String(!!isOwner),
       },
     });
   };

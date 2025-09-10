@@ -1,12 +1,12 @@
 import { useRouter } from 'expo-router';
-import React, { useState, useEffect } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, Text, View, Modal, FlatList } from 'react-native';
-import { apiDeleteUserAccount } from '../../api/user';
-import { apiGetSightingsByUser } from '../../api/sighting'; // Assuming a Sighting type is exported
-import { useAuth } from '../../context/AuthContext';
+import React, { useEffect, useState, useCallback } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { ActivityIndicator, Alert, FlatList, Image, Modal, Pressable, Text, View } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
+import { apiGetMySightings } from '../../api/sighting'; // Use authenticated endpoint to get all sightings
+import { apiDeleteUserAccount } from '../../api/user';
 import { profileStyles } from '../../constants/ProfileStyles';
-import FullWidthImage from '../../components/FullWidthImage';
+import { useAuth } from '../../context/AuthContext';
 
 type Sighting = {
   _id: string;
@@ -32,32 +32,29 @@ export default function ProfileScreen(): React.JSX.Element | null {
   const [sightings, setSightings] = useState<Sighting[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
+  const loadMySightings = useCallback(async () => {
+    if (!user?._id || !token) { setIsLoading(false); return; }
+    try {
+      const response: ApiResponse = await apiGetMySightings(token);
+      if (response && response.data) {
+        const raw = Array.isArray(response.data) ? response.data : [];
+        setSightings(raw.map((doc: any) => ({ ...doc, user: doc?.user ?? user._id })));
+      }
+    } catch (error) {
+      console.error("Failed to fetch sightings:", error);
+      alert("Could not load your sightings.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user?._id, token]);
+
+  useEffect(() => { loadMySightings(); }, [loadMySightings]);
+  useFocusEffect(useCallback(() => { loadMySightings(); return () => {}; }, [loadMySightings]));
+
   if (!user) {
     // If the user is null, show a loading indicator
     return <View style={profileStyles.container}><ActivityIndicator /></View>;
   }
-
-  useEffect(() => {
-    if (user?._id) {
-      const fetchSightings = async () => {
-        try {
-          // --- FIX IS HERE: Access the .data property ---
-          const response: ApiResponse = await apiGetSightingsByUser(user._id);
-          if (response && response.data) {
-            setSightings(response.data);
-          }
-        } catch (error) {
-          console.error("Failed to fetch sightings:", error);
-          alert("Could not load your sightings.");
-        } finally {
-          setIsLoading(false);
-        }
-      };
-      fetchSightings();
-    } else {
-      setIsLoading(false);
-    }
-  }, [user?._id]);
 
   const renderSightingGridItem = ({ item, index }: { item: Sighting; index: number }) => (
     <Pressable
@@ -83,7 +80,7 @@ export default function ProfileScreen(): React.JSX.Element | null {
               try {
                 await apiDeleteUserAccount(token);
                 alert("Account deleted successfully.");
-                if (logout) logout();
+                logout();
               } catch (error: any) {
                 alert(String(error.message || error));
               }
@@ -103,6 +100,7 @@ export default function ProfileScreen(): React.JSX.Element | null {
         sightings: JSON.stringify(sightings),
         // Pass the index instead of the ID
         initialIndex: index.toString(),
+        isOwner: 'true',
       },
     });
   };
@@ -147,7 +145,7 @@ export default function ProfileScreen(): React.JSX.Element | null {
         keyExtractor={(item) => item._id}
         numColumns={3}
         ListEmptyComponent={
-          isLoading ? <ActivityIndicator style={{ marginTop: 20 }} /> : <Text style={profileStyles.emptyListText}>No sightings with images found.</Text>
+          isLoading ? <ActivityIndicator style={{ marginTop: 20 }} /> : <Text style={profileStyles.emptyListText}>No sightings found.</Text>
         }
         contentContainerStyle={{ paddingBottom: 16 }}
       />

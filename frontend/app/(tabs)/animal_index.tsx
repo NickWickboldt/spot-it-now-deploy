@@ -1,12 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Image, Modal, RefreshControl, ScrollView, StatusBar, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Dimensions, Image, Modal, PanResponder, ScrollView, StatusBar, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
-import { apiGetSightingsByUser } from '../../api/sighting';
-import { ANIMAL_DATA, TOTAL_ANIMALS } from '../../constants/animalData';
+import { ANIMAL_DATA } from '../../constants/animalData';
+import { modalStyles, styles } from '../../constants/animalIndexStyle';
 import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
-import { styles, modalStyles } from '../../constants/indexStyle';
-import { PanResponder, Dimensions } from 'react-native';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 

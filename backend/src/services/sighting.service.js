@@ -1,4 +1,5 @@
 import { Sighting } from '../models/sighting.model.js';
+import { Follow } from '../models/follow.model.js';
 import { Comment } from '../models/comment.model.js';
 import { Like } from '../models/like.model.js';
 import { ApiError } from '../utils/ApiError.util.js';
@@ -49,14 +50,19 @@ const createSighting = async (userId, userName, sightingData) => {
  * @param {boolean} isAdmin - Flag indicating if the user is an admin.
  */
 const deleteSighting = async (sightingId, userId, isAdmin = false) => {
-  const sighting = await Sighting.findById(sightingId);
+  const sighting = await Sighting.findById(sightingId).select('user');
 
   if (!sighting) {
     throw new ApiError(404, 'Sighting not found');
   }
 
+  const ownerId = String(sighting.user);
+  const currentId = String(userId);
+
   // Allow deletion only if the user is the owner or an admin
-  if (sighting.user.toString() !== userId && !isAdmin) {
+  if (ownerId !== currentId && !isAdmin) {
+    // add diagnostic info to server logs only
+    try { log.warn('sighting-service', 'Delete forbidden', { sightingId, ownerId, currentId, isAdmin }); } catch {}
     throw new ApiError(403, 'You are not authorized to delete this sighting.');
   }
 
@@ -82,6 +88,12 @@ const getSightingById = async (sightingId) => {
  * @returns {Promise<Sighting[]>} An array of sighting objects.
  */
 const getSightingsByUser = async (userId) => {
+  // Public-facing: only non-private posts
+  return await Sighting.find({ user: userId, isPrivate: { $ne: true } }).sort({ createdAt: -1 });
+};
+
+// Internal use for owner/admin: includes private posts
+const getSightingsByUserAll = async (userId) => {
   return await Sighting.find({ user: userId }).sort({ createdAt: -1 });
 };
 
@@ -151,14 +163,14 @@ const getSightingsPage = async ({ page = 1, pageSize = 20, q = '' } = {}) => {
 const getRecentSightingsPage = async ({ page = 1, pageSize = 20 } = {}) => {
   const skip = (page - 1) * pageSize;
   const [items, total] = await Promise.all([
-    Sighting.find({})
+    Sighting.find({ isPrivate: { $ne: true } })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(pageSize)
       .populate('user', 'username profilePictureUrl')
       .populate('animal', 'commonName')
       .lean(),
-    Sighting.countDocuments({}),
+    Sighting.countDocuments({ isPrivate: { $ne: true } }),
   ]);
 
   // Ensure comment counts are present and accurate for the page items.
@@ -281,6 +293,7 @@ export const sightingService = {
   deleteSighting,
   getSightingById,
   getSightingsByUser,
+  getSightingsByUserAll,
   getSightingsByAnimal,
   findSightingsNear,
   updateSightingField,
@@ -288,4 +301,64 @@ export const sightingService = {
   removeMediaUrlFromSighting,
   getSightingsPage
   ,getRecentSightingsPage
+  ,getFollowingRecentSightingsPage: async ({ userId, page = 1, pageSize = 20 } = {}) => {
+    const skip = (page - 1) * pageSize;
+
+    // Find all users that this user follows
+    const follows = await Follow.find({ follower: userId }).select('following');
+    const followingIds = follows.map(f => f.following);
+
+    if (!followingIds.length) {
+      return { items: [], total: 0, page, pageSize };
+    }
+
+    const [items, total] = await Promise.all([
+      Sighting.find({ user: { $in: followingIds }, isPrivate: { $ne: true } })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(pageSize)
+        .populate('user', 'username profilePictureUrl')
+        .populate('animal', 'commonName')
+        .lean(),
+      Sighting.countDocuments({ user: { $in: followingIds }, isPrivate: { $ne: true } }),
+    ]);
+
+    // Attach accurate comment counts for these items
+    try {
+      const ids = items.map((doc) => doc._id);
+      const counts = await Comment.aggregate([
+        { $match: { sighting: { $in: ids } } },
+        { $group: { _id: '$sighting', count: { $sum: 1 } } },
+      ]);
+      const map = new Map(counts.map((c) => [String(c._id), c.count]));
+      items.forEach((doc) => {
+        const key = String(doc._id);
+        const aggCount = map.get(key) || 0;
+        const denorm = typeof doc.comments === 'number' ? doc.comments : 0;
+        doc.comments = denorm > 0 ? denorm : aggCount;
+      });
+    } catch (e) {
+      // ignore to keep feed resilient
+    }
+
+    // Attach like counts as well
+    try {
+      const ids = items.map((doc) => doc._id);
+      const likeCounts = await Like.aggregate([
+        { $match: { sighting: { $in: ids } } },
+        { $group: { _id: '$sighting', count: { $sum: 1 } } },
+      ]);
+      const likeMap = new Map(likeCounts.map((c) => [String(c._id), c.count]));
+      items.forEach((doc) => {
+        const key = String(doc._id);
+        const aggCount = likeMap.get(key) || 0;
+        const denorm = typeof doc.likes === 'number' ? doc.likes : 0;
+        doc.likes = denorm > 0 ? denorm : aggCount;
+      });
+    } catch (e) {
+      // ignore
+    }
+
+    return { items, total, page, pageSize };
+  }
 };

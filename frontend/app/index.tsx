@@ -1,8 +1,8 @@
-import { View, Text, Pressable, TextInput, ActivityIndicator, Image } from 'react-native';
 import { useState } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { ActivityIndicator, Image, Pressable, Text, TextInput, View } from 'react-native';
 import { Colors } from '../constants/Colors';
 import { LoginScreenStyles } from '../constants/LoginStyles';
+import { useAuth } from '../context/AuthContext';
 
 export default function LoginScreen() {
   const { login, isLoading } = useAuth();

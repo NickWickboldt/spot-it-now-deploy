@@ -59,16 +59,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     restore();
 
     const inTabsGroup = segments[0] === '(tabs)';
+    const inUserGroup = segments[0] === '(user)';
+    const inAdminGroup = segments[0] === '(admin)';
     
     // Check if the current route is the login/index page.
-    // An empty segments array means you are at the root.
-    const onLoginPage = segments.length === 0;
+    // We're on login if we're not in any of the main groups
+    const onLoginPage = !inTabsGroup && !inUserGroup && !inAdminGroup;
 
-    // If the user is not signed in and is trying to access a protected route.
-    if (!token && inTabsGroup) {
+    // Only redirect if we have a definitive state
+    if (token === null && inTabsGroup) {
       router.replace('/');
     } 
-    // If the user is signed in and is on the login page.
     else if (token && onLoginPage) {
       router.replace('/feed');
     }
@@ -155,6 +156,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     } catch (e) {
       // ignore
     }
+    // Navigate to login screen after logout
+    router.replace('/');
   };
 
   return (

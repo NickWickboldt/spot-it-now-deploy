@@ -25,6 +25,11 @@ export async function apiGetRecentSightings(page = 1, pageSize = 10) {
     return fetchWithAuth(`/sightings/recent${qs}`, '', { method: 'GET' });
 }
 
+export async function apiGetFollowingRecentSightings(token: string, page = 1, pageSize = 10) {
+    const qs = `?page=${page}&pageSize=${pageSize}`;
+    return fetchWithAuth(`/sightings/following/recent${qs}`, token, { method: 'GET' });
+}
+
 // Authenticated/admin actions
 export async function apiCreateSighting(token: string, sightingData: any) {
     return fetchWithAuth('/sightings/create', token, {
@@ -49,6 +54,10 @@ export async function apiAdminDeleteSighting(token: string, sightingId: string) 
 export async function apiAdminGetAllSightings(token: string, page = 1, pageSize = 20, q = '') {
     const qs = `?page=${page}&pageSize=${pageSize}` + (q ? `&q=${encodeURIComponent(q)}` : '');
     return fetchWithAuth(`/sightings${qs}`, token, { method: 'GET' });
+}
+
+export async function apiGetMySightings(token: string) {
+    return fetchWithAuth(`/sightings/my`, token, { method: 'GET' });
 }
 
 export async function apiAddMediaToSighting(token: string, sightingId: string, mediaUrl: string) {

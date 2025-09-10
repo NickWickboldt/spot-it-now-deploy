@@ -1,11 +1,12 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, FlatList, Image, Pressable, TouchableOpacity, ScrollView, Dimensions, Modal, Animated, Easing } from 'react-native';
+import { View, Text, FlatList, Image, Pressable, TouchableOpacity, ScrollView, Dimensions, Modal, Animated, Easing, StyleSheet } from 'react-native';
 import { FeedScreenStyles } from '../../constants/FeedStyles';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
 import { apiToggleSightingLike } from '../../api/like';
+import { apiAdminDeleteSighting } from '../../api/sighting';
 
 // Define the Sighting type again here so the component is self-contained
 type Sighting = {
@@ -25,7 +26,7 @@ const { width } = Dimensions.get('window');
 
 export default function UserSightingScreen() {
     const router = useRouter();
-    const { token } = useAuth();
+    const { token, user } = useAuth();
     const [menuVisible, setMenuVisible] = useState(false);
     const [selectedSighting, setSelectedSighting] = useState<Sighting | null>(null);
     const [carouselIndex, setCarouselIndex] = useState<Record<string, number>>({});
@@ -48,13 +49,16 @@ export default function UserSightingScreen() {
         ]).start();
     };
     // Get the new 'initialIndex' parameter
-    const { sightings: sightingsJson, initialIndex } = useLocalSearchParams<{ sightings: string; initialIndex: string }>();
+    const { sightings: sightingsJson, initialIndex, isOwner: isOwnerParam } = useLocalSearchParams<{ sightings: string; initialIndex: string; isOwner?: string }>();
 
     // Create a ref for the FlatList
     const flatListRef = useRef<FlatList<Sighting>>(null);
 
     // Parse the JSON string back into an array. No reordering is needed.
     const allSightings: Sighting[] = sightingsJson ? JSON.parse(sightingsJson) : [];
+    const [list, setList] = useState<Sighting[]>(allSightings);
+    useEffect(() => { setList(allSightings); }, [sightingsJson]);
+    const isOwnerView = String(isOwnerParam || '') === 'true';
 
     // This effect runs once after the component mounts
     useEffect(() => {
@@ -80,6 +84,22 @@ export default function UserSightingScreen() {
     const handleMenuClose = () => {
         setMenuVisible(false);
         setSelectedSighting(null);
+    };
+
+    const handleDeleteSelected = async () => {
+        if (!selectedSighting?._id) return;
+        if (!token || token === 'local-admin-fake-token') {
+            alert('Please log in to delete your post.');
+            return;
+        }
+        try {
+            await apiAdminDeleteSighting(token, selectedSighting._id);
+            setList(prev => prev.filter(s => s._id !== selectedSighting._id));
+            handleMenuClose();
+        } catch (e) {
+            console.error('Failed to delete sighting', e);
+            alert('Could not delete this post.');
+        }
     };
 
     function getRelativeTime(dateString: string) {
@@ -285,7 +305,7 @@ export default function UserSightingScreen() {
 
             <FlatList
                 ref={flatListRef} // Attach the ref here
-                data={allSightings}
+                data={list}
                 renderItem={renderSightingPost}
                 keyExtractor={(item) => item._id}
                 getItemLayout={getItemLayout} // Add the performance optimization
@@ -299,16 +319,31 @@ export default function UserSightingScreen() {
                     animationType="fade"
                     onRequestClose={handleMenuClose}
                   >
-                    <TouchableOpacity style={FeedScreenStyles.menuOverlay} onPress={handleMenuClose} activeOpacity={1}>
+                    <View style={FeedScreenStyles.menuOverlay}>
+                      <TouchableOpacity
+                        style={StyleSheet.absoluteFillObject as any}
+                        activeOpacity={1}
+                        onPress={handleMenuClose}
+                      />
                       <View style={FeedScreenStyles.menuContainer}>
+                        {(() => {
+                          const ownerId = typeof selectedSighting?.user === 'string' ? selectedSighting?.user : (selectedSighting as any)?.user?._id;
+                          const isSelectedOwner = ownerId && user?._id && String(ownerId) === String(user._id);
+                          const canDelete = isOwnerView || !!isSelectedOwner;
+                          return canDelete ? (
+                          <TouchableOpacity style={FeedScreenStyles.menuItem} onPress={handleDeleteSelected}>
+                            <Text style={[FeedScreenStyles.menuText, { color: '#f55' }]}>Delete</Text>
+                          </TouchableOpacity>
+                          ) : null;
+                        })()}
                         <TouchableOpacity style={FeedScreenStyles.menuItem}>
                           <Text style={FeedScreenStyles.menuText}>Share</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity style={FeedScreenStyles.menuItem}>
+                        <TouchableOpacity style={FeedScreenStyles.menuItem} onPress={handleMenuClose}>
                           <Text style={FeedScreenStyles.menuText}>Cancel</Text>
                         </TouchableOpacity>
                       </View>
-                    </TouchableOpacity>
+                    </View>
                   </Modal>
         </View>
     );

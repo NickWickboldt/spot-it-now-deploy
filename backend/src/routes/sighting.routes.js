@@ -5,12 +5,14 @@ import {
   deleteSighting,
   findSightingsNear,
   getAllSightings,
+  getFollowingRecentSightings,
+  getMySightings,
+  getRecentSightings,
   getSightingById,
   getSightingsByAnimal,
   getSightingsByUser,
   removeMediaUrlFromSighting,
-  updateSightingField,
-  getRecentSightings
+  updateSightingField
 } from '../controllers/sighting.controller.js';
 import { verifyAdmin } from '../middlewares/admin.middleware.js';
 import { verifyJWT } from '../middlewares/auth.middleware.js';
@@ -22,9 +24,16 @@ const router = Router();
 router.route('/near').get(findSightingsNear); // e.g., /near?long=-96.8&lat=32.7
 router.route('/by-user/:userId').get(getSightingsByUser);
 router.route('/by-animal/:animalId').get(getSightingsByAnimal);
-// public recent feed (paginated) - define before parameterized routes so 'recent' is not
-// interpreted as a sightingId by the `/:sightingId` route.
+
+// public recent feed (paginated)
 router.route('/recent').get(getRecentSightings);
+
+// following recent feed (paginated)
+router.route('/following/recent').get(verifyJWT, getFollowingRecentSightings);
+
+// Get current user's own sightings (including private) - place before param route to avoid 'my' matching :sightingId
+router.route('/my').get(verifyJWT, getMySightings);
+
 router.route('/:sightingId').get(getSightingById);
 
 // Admin: list all sightings
