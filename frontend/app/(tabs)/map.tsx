@@ -43,7 +43,6 @@ const AnimalTrackerScreen = () => {
   const MIN_CAMERA_ZOOM = 13;
   const MAX_CAMERA_ZOOM = 18;
 
-
   useEffect(() => {
     (async () => {
       let { status } = await Location.requestForegroundPermissionsAsync();
