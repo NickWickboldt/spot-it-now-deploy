@@ -1,0 +1,130 @@
+import { StyleSheet } from 'react-native';
+import { Colors } from './Colors';
+// You may want to pass theme as a prop or use context, but for now we'll default to dark
+const theme = Colors.light;
+
+const MapStyles = StyleSheet.create({
+    container: { flex: 1, backgroundColor: theme.background },
+    centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+    loadingText: { marginTop: 15, fontSize: 18, color: theme.mainText },
+    subtitle: { fontSize: 18, color: theme.mainText, textAlign: 'center', lineHeight: 26 },
+    map: { flex: 1 },
+    animalMarker: {
+        backgroundColor: theme.primaryGreen,
+        padding: 10,
+        borderRadius: 22,
+        borderColor: theme.softBeige,
+        borderWidth: 2,
+
+    },
+    markerIcon: {
+        width: 20,
+        height: 20,
+        color: theme.softBeige,
+        fontSize: 20,
+        textAlign: 'center',
+        textAlignVertical: 'center',
+        alignSelf: 'center',
+        justifyContent: 'center',
+    },
+    calloutView: { padding: 10, minWidth: 100, alignItems: 'center' },
+    calloutTitle: { fontWeight: 'bold', fontSize: 16 },
+    sightingsBar: {
+        backgroundColor: theme.background,
+        paddingVertical: 8,
+        flexDirection: 'row',
+        maxHeight: 200,
+    },
+    sightingItem: {
+        flexDirection: 'column',
+        alignItems: 'center',
+        marginRight: 16,
+        paddingVertical: 2,
+        minWidth: 60,
+    },
+    sightingIconWrap: {
+        backgroundColor: theme.primaryGreen,
+        borderRadius: 16,
+        padding: 6,
+        marginBottom: 2,
+        borderWidth: 2,
+        borderColor: theme.softBeige,
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: "100%",
+    },
+    sightingName: {
+        color: theme.primaryGreen,
+        fontSize: 13,
+        fontWeight: '600',
+        maxWidth: 60,
+        textAlign: 'center',
+    },
+    buttonContainer: {
+        position: 'absolute',
+        top: 60,
+        right: 15,
+        alignItems: 'center',
+    },
+    zoomControls: {
+        backgroundColor: theme.softBeige,
+        borderRadius: 20,
+        elevation: 4,
+        shadowColor: theme.shadow,
+        shadowOpacity: 0.3,
+        shadowRadius: 5,
+        shadowOffset: { width: 0, height: 2 },
+    },
+    zoomButton: {
+        padding: 10,
+        alignItems: 'center',
+    },
+    zoomSeparator: {
+        width: '100%',
+        height: 1,
+        backgroundColor: theme.secondaryGreen,
+    },
+    recenterButton: {
+        marginTop: 10,
+        backgroundColor: theme.softBeige,
+        borderRadius: 20,
+        padding: 10,
+        elevation: 4,
+        shadowColor: theme.shadow,
+        shadowOpacity: 0.3,
+        shadowRadius: 5,
+        shadowOffset: { width: 0, height: 2 },
+    },
+    distanceSelectorWrap: {
+        backgroundColor: theme.background,
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: Colors.light.shadow,
+    },
+    distanceSelectorButton: {
+        borderRadius: 8,
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        marginHorizontal: 4,
+        borderWidth: 1,
+        borderColor: theme.secondaryGreen,
+        backgroundColor: theme.softBeige,
+    },
+    distanceSelectorButtonActive: {
+        backgroundColor: theme.secondaryGreen,
+
+    },
+    distanceSelectorText: {
+        color: theme.secondaryGreen,
+        fontWeight: 'bold',
+        fontSize: 16,
+    },
+    distanceSelectorTextActive: {
+        color: 'white',
+    },
+});
+
+export default MapStyles;

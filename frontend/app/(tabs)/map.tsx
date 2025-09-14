@@ -1,38 +1,44 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, StatusBar, ActivityIndicator, TouchableOpacity } from 'react-native';
 import * as Location from 'expo-location';
-import MapView, { Marker, Callout, MapStyleElement, Region } from 'react-native-maps';
-import mapStyle from '../../constants/mapStyle';
+import { StatusBar } from 'expo-status-bar';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import MapView, { Callout, Marker, Region } from 'react-native-maps';
 import Icon from 'react-native-vector-icons/FontAwesome';
+import { apiGetSightingsNear } from '../../api/sighting';
+import AnimalMarker from '../../components/ui/AnimalMarker';
+import MapStyles from '../../constants/MapStyles';
 
-// --- (generateMockAnimals function remains the same) ---
-const generateMockAnimals = (userCoords) => {
-  const animals = [
-    { name: 'Deer', icon: 'paw' },
-    { name: 'Squirrel', icon: 'paw' },
-    { name: 'Fox', icon: 'paw' },
-    { name: 'Bird', icon: 'paw' },
-    { name: 'Rabbit', icon: 'paw' },
-  ];
-  return animals.map((animal, index) => {
-    const offset = (Math.random() - 0.5) * 0.02;
-    return {
-      id: index,
-      name: animal.name,
-      icon: animal.icon,
-      coordinate: {
-        latitude: userCoords.latitude + offset,
-        longitude: userCoords.longitude + (offset / Math.cos(userCoords.latitude * Math.PI / 180)),
-      },
-    };
-  });
-};
-
+// FontAwesome glyphmap and icon validator
+import fontAwesomeIcons from 'react-native-vector-icons/glyphmaps/FontAwesome.json';
+function isValidIcon(iconName) {
+  return iconName && Object.prototype.hasOwnProperty.call(fontAwesomeIcons, iconName);
+}
 
 const AnimalTrackerScreen = () => {
+  // Helper to go to a sighting's location
+  // Store refs for each marker
+  const markerRefs = useRef({});
+
+  const goToSighting = (sighting) => {
+    if (mapRef.current && sighting && sighting.coordinate) {
+      mapRef.current.animateToRegion({
+        latitude: Number(sighting.coordinate.latitude),
+        longitude: Number(sighting.coordinate.longitude),
+        latitudeDelta: 0.00922,
+        longitudeDelta: 0.00421,
+      }, 300);
+      // Show callout for the selected marker
+      if (markerRefs.current[sighting.id]) {
+        setTimeout(() => {
+          markerRefs.current[sighting.id].showCallout();
+        }, 200);
+      }
+    }
+  };
   const [location, setLocation] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
   const [animals, setAnimals] = useState([]);
+  const [distance, setDistance] = useState(1000); // default to 5km
   const mapRef = useRef<MapView>(null);
 
   // Define the zoom boundaries using deltas for pinch-to-zoom gestures.
@@ -50,11 +56,39 @@ const AnimalTrackerScreen = () => {
         setErrorMsg('Permission to access location was denied');
         return;
       }
-      let currentLocation = await Location.getCurrentPositionAsync({});
-      setLocation(currentLocation);
-      setAnimals(generateMockAnimals(currentLocation.coords));
+      try {
+        // Get user's current location if not already set
+        let currentLocation = location;
+        if (!currentLocation) {
+          currentLocation = await Location.getCurrentPositionAsync({});
+          setLocation(currentLocation);
+        }
+        if (currentLocation) {
+          const resp = await apiGetSightingsNear(
+            currentLocation.coords.longitude,
+            currentLocation.coords.latitude,
+            distance // use state value
+          );
+          setAnimals(
+            (resp.data || []).map((sighting, index) => ({
+              id: sighting._id || index,
+              name: sighting.animal || 'Unknown',
+              caption: sighting.caption || '',
+              mediaUrls: sighting.mediaUrls || [],
+              userName: sighting.userName || '',
+              coordinate: {
+                latitude: Number(sighting.location.coordinates[1]),
+                longitude: Number(sighting.location.coordinates[0]),
+              },
+            }))
+          );
+        }
+      } catch (err) {
+        setErrorMsg('Failed to fetch nearby sightings');
+        setAnimals([]);
+      }
     })();
-  }, []);
+  }, [distance]);
 
   const handleZoom = async (zoomIn: boolean) => {
     if (!mapRef.current) return;
@@ -102,7 +136,7 @@ const AnimalTrackerScreen = () => {
         longitude: location.coords.longitude,
         latitudeDelta: 0.00922,
         longitudeDelta: 0.00421,
-      }, 1000);
+      }, 300);
     }
   };
 
@@ -113,7 +147,7 @@ const AnimalTrackerScreen = () => {
         <MapView
           ref={mapRef}
           provider="google"
-          style={styles.map}
+          style={MapStyles.map}
           onRegionChangeComplete={handleRegionChange}
           initialRegion={{
             latitude: location.coords.latitude,
@@ -122,17 +156,30 @@ const AnimalTrackerScreen = () => {
             longitudeDelta: 0.00421,
           }}
           showsUserLocation={true}
-          customMapStyle={mapStyle as MapStyleElement[]}
+          // If you have a custom map style, import it correctly, otherwise remove this line or set to []
+          customMapStyle={[]}
         >
-          {animals.map(animal => (
-            <Marker key={animal.id} coordinate={animal.coordinate}>
-              <View style={styles.animalMarker}>
-                <Icon name={animal.icon} style={styles.markerIcon} />
+          {animals.map(sighting => (
+            <Marker
+              key={sighting.id}
+              ref={ref => { markerRefs.current[sighting.id] = ref; }}
+              coordinate={{
+                latitude: Number(sighting.coordinate.latitude),
+                longitude: Number(sighting.coordinate.longitude),
+              }}
+            >
+              {/* Custom marker icon */}
+              <View style={MapStyles.animalMarker}>
+                <Icon name={isValidIcon(sighting.animal) ? sighting.animal : 'question'} style={MapStyles.markerIcon} />
               </View>
-              <Callout>
-                <View style={styles.calloutView}>
-                  <Text style={styles.calloutTitle}>{animal.name}</Text>
-                </View>
+              {/* Callout with info */}
+              <Callout style={{ borderRadius: 16, padding: 0, backgroundColor: 'transparent' }}>
+                <AnimalMarker
+                  name={sighting.animal || 'Unknown'}
+                  caption={sighting.caption}
+                  mediaUrls={sighting.mediaUrls}
+                  userName={sighting.userName}
+                />
               </Callout>
             </Marker>
           ))}
@@ -141,29 +188,68 @@ const AnimalTrackerScreen = () => {
     }
 
     return (
-      <View style={styles.centered}>
+      <View style={MapStyles.centered}>
         <ActivityIndicator size="large" color="#ffffff" />
-        <Text style={styles.loadingText}>Finding nearby animals...</Text>
+        <Text style={MapStyles.loadingText}>Finding nearby animals...</Text>
       </View>
     );
   };
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
+    <View style={MapStyles.container}>
+      <StatusBar style="light" />
+
+
       {renderContent()}
+      {/* Distance select buttons */}
+      <View style={MapStyles.distanceSelectorWrap}>
+        <View style={{ flexDirection: 'row' }}>
+          {[100, 500, 1000].map(val => {
+            const isActive = distance === val;
+            return (
+              <TouchableOpacity
+                key={val}
+                style={[MapStyles.distanceSelectorButton, isActive && MapStyles.distanceSelectorButtonActive]}
+                onPress={() => setDistance(val)}
+              >
+                <Text style={[MapStyles.distanceSelectorText, isActive && MapStyles.distanceSelectorTextActive]}>{val} km</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+      {/* Sightings bar */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={MapStyles.sightingsBar}
+        contentContainerStyle={{ alignItems: 'flex-start', paddingHorizontal: 8 }}
+      >
+        {animals.map(sighting => (
+          <TouchableOpacity
+            key={sighting.id}
+            style={MapStyles.sightingItem}
+            onPress={() => goToSighting(sighting)}
+          >
+            <View style={MapStyles.sightingIconWrap}>
+              <Icon name={isValidIcon(sighting.animal) ? sighting.animal : 'question'} size={22} color="#fff" />
+            </View>
+            <Text style={MapStyles.sightingName} numberOfLines={1}>{sighting.animal || 'Unknown'}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
       {location && (
-        <View style={styles.buttonContainer}>
-          <View style={styles.zoomControls}>
-            <TouchableOpacity style={styles.zoomButton} onPress={() => handleZoom(true)}>
+        <View style={MapStyles.buttonContainer}>
+          <View style={MapStyles.zoomControls}>
+            <TouchableOpacity style={MapStyles.zoomButton} onPress={() => handleZoom(true)}>
               <Icon name="plus" size={20} color="#333" />
             </TouchableOpacity>
-            <View style={styles.zoomSeparator} />
-            <TouchableOpacity style={styles.zoomButton} onPress={() => handleZoom(false)}>
+            <View style={MapStyles.zoomSeparator} />
+            <TouchableOpacity style={MapStyles.zoomButton} onPress={() => handleZoom(false)}>
               <Icon name="minus" size={20} color="#333" />
             </TouchableOpacity>
           </View>
-          <TouchableOpacity style={styles.recenterButton} onPress={goToMyLocation}>
+          <TouchableOpacity style={MapStyles.recenterButton} onPress={goToMyLocation}>
             <Icon name="location-arrow" size={20} color="#333" />
           </TouchableOpacity>
         </View>
@@ -171,56 +257,6 @@ const AnimalTrackerScreen = () => {
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1c1c1e' },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-  loadingText: { marginTop: 15, fontSize: 18, color: '#a1a1a6' },
-  subtitle: { fontSize: 18, color: '#a1a1a6', textAlign: 'center', lineHeight: 26 },
-  map: { flex: 1 },
-  animalMarker: {
-    backgroundColor: '#c6633c', padding: 10, borderRadius: 22,
-    borderColor: '#fff', borderWidth: 2, alignItems: 'center', justifyContent: 'center',
-  },
-  markerIcon: { width: 20, height: 20, color: 'white' },
-  calloutView: { padding: 10, minWidth: 100, alignItems: 'center' },
-  calloutTitle: { fontWeight: 'bold', fontSize: 16 },
-  buttonContainer: {
-    position: 'absolute',
-    top: 60,
-    right: 15,
-    alignItems: 'center',
-  },
-  zoomControls: {
-    backgroundColor: 'white',
-    borderRadius: 20,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  zoomButton: {
-    padding: 10,
-    alignItems: 'center',
-  },
-  zoomSeparator: {
-    width: '100%',
-    height: 1,
-    backgroundColor: '#ccc',
-  },
-  recenterButton: {
-    marginTop: 10,
-    backgroundColor: 'white',
-    borderRadius: 20,
-    padding: 10,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 2 },
-  },
-});
 
 export default AnimalTrackerScreen;
 
