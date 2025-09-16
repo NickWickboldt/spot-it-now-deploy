@@ -1,6 +1,5 @@
-import { useRouter } from 'expo-router';
-import React, { useEffect, useState, useCallback } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, Modal, Pressable, Text, View } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { apiGetMySightings } from '../../api/sighting'; // Use authenticated endpoint to get all sightings
@@ -51,22 +50,65 @@ export default function ProfileScreen(): React.JSX.Element | null {
   useEffect(() => { loadMySightings(); }, [loadMySightings]);
   useFocusEffect(useCallback(() => { loadMySightings(); return () => {}; }, [loadMySightings]));
 
+  const isVideoUrl = (url: string | undefined | null): boolean => {
+    if (!url) return false;
+    const u = url.toLowerCase();
+    return /(\.(mp4|mov|m4v|webm)(\?|$))/.test(u) || /\/video\/upload\//.test(u);
+  };
+
+  const isCloudinary = (url: string | undefined | null): boolean => !!url && /res\.cloudinary\.com\//.test(url);
+
+  const deriveCloudinaryPoster = (videoUrl: string): string | null => {
+    if (!isCloudinary(videoUrl)) return null;
+    // Insert transformation after /upload/, keep versioning, swap extension to .jpg
+    const parts = videoUrl.split('/upload/');
+    if (parts.length !== 2) return null;
+    const [prefix, rest] = parts;
+    // Avoid double-transform
+    const alreadyHasSo = rest.startsWith('so_');
+    const body = alreadyHasSo ? rest : `so_1/${rest}`;
+    const dot = body.lastIndexOf('.');
+    const pathNoExt = dot !== -1 ? body.substring(0, dot) : body;
+    return `${prefix}/upload/${pathNoExt}.jpg`;
+  };
+
+  const pickThumbnail = (mediaUrls: string[] | undefined): string | null => {
+    if (!mediaUrls || mediaUrls.length === 0) return null;
+    // Prefer first image if available
+    const img = mediaUrls.find(u => !isVideoUrl(u));
+    if (img) return img;
+    // Otherwise derive from first video
+    const vid = mediaUrls.find(u => isVideoUrl(u));
+    if (vid) return deriveCloudinaryPoster(vid);
+    return null;
+  };
+
   if (!user) {
     // If the user is null, show a loading indicator
     return <View style={profileStyles.container}><ActivityIndicator /></View>;
   }
 
-  const renderSightingGridItem = ({ item, index }: { item: Sighting; index: number }) => (
-    <Pressable
-      style={profileStyles.sightingGridItem}
-      onPress={() => handleSightingPress(index)}
-    >
-      <Image
-        source={{ uri: item.mediaUrls[0] }}
-        style={profileStyles.sightingGridImage}
-      />
-    </Pressable>
-  );
+  const renderSightingGridItem = ({ item, index }: { item: Sighting; index: number }) => {
+    const thumb = pickThumbnail(item.mediaUrls);
+    return (
+      <Pressable
+        style={profileStyles.sightingGridItem}
+        onPress={() => handleSightingPress(index)}
+      >
+        {thumb ? (
+          <Image
+            source={{ uri: thumb }}
+            style={profileStyles.sightingGridImage}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={[profileStyles.sightingGridImage, { backgroundColor: '#ddd', alignItems: 'center', justifyContent: 'center' }]}>
+            <Text>No preview</Text>
+          </View>
+        )}
+      </Pressable>
+    );
+  };
 
   const handleDeleteAccount = (): void => {
     setMenuVisible(false); // Close menu before showing alert
