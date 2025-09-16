@@ -1,12 +1,13 @@
+import { ResizeMode, Video } from 'expo-av';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, FlatList, Image, Pressable, TouchableOpacity, ScrollView, Dimensions, Modal, Animated, Easing, StyleSheet } from 'react-native';
-import { FeedScreenStyles } from '../../constants/FeedStyles';
+import { Animated, Dimensions, Easing, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
-import { Colors } from '../../constants/Colors';
-import { useAuth } from '../../context/AuthContext';
 import { apiToggleSightingLike } from '../../api/like';
 import { apiAdminDeleteSighting } from '../../api/sighting';
+import { Colors } from '../../constants/Colors';
+import { FeedScreenStyles } from '../../constants/FeedStyles';
+import { useAuth } from '../../context/AuthContext';
 
 // Define the Sighting type again here so the component is self-contained
 type Sighting = {
@@ -33,6 +34,17 @@ export default function UserSightingScreen() {
     const [likedMap, setLikedMap] = useState<Record<string, boolean>>({});
     const [likesCountMap, setLikesCountMap] = useState<Record<string, number>>({});
     const scaleMapRef = useRef<Record<string, Animated.Value>>({});
+    // Track visibility of items to control autoplay
+    const [visibleMap, setVisibleMap] = useState<Record<string, boolean>>({});
+    const viewabilityConfig = useRef({ viewAreaCoveragePercentThreshold: 60 }).current;
+    const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: any[] }) => {
+        const next: Record<string, boolean> = {};
+        for (const it of viewableItems) {
+            const id = it?.item?._id;
+            if (id) next[id] = true;
+        }
+        setVisibleMap(next);
+    });
 
     const getScale = (id: string) => {
         if (!scaleMapRef.current[id]) {
@@ -142,14 +154,42 @@ export default function UserSightingScreen() {
 
     const renderImages = (mediaUrls: string[], sightingId: string) => {
         if (!mediaUrls || mediaUrls.length === 0) return null;
+        const isVideoUrl = (url: string) => /\.(mp4|mov|m4v|webm)$/i.test(url) || /\/video\/upload\//i.test(url);
+        const derivePoster = (url: string): string | undefined => {
+            try {
+                if (!/res\.cloudinary\.com/i.test(url) || !/\/video\/upload\//i.test(url)) return undefined;
+                const qIndex = url.indexOf('?');
+                const clean = qIndex >= 0 ? url.slice(0, qIndex) : url;
+                const dot = clean.lastIndexOf('.');
+                const base = dot >= 0 ? clean.slice(0, dot) : clean;
+                const transformed = base.replace('/video/upload/', '/video/upload/so_1/');
+                return `${transformed}.jpg`;
+            } catch { return undefined; }
+        };
+        const VideoComponent: any = Video as any;
+        const isVisible = !!visibleMap[sightingId];
         if (mediaUrls.length === 1) {
+            const url = mediaUrls[0];
             return (
                 <View style={FeedScreenStyles.cardImageContainer}>
-                    <Image
-                        source={{ uri: mediaUrls[0] }}
-                        style={FeedScreenStyles.cardImage}
-                        resizeMode="contain"
-                    />
+                    {isVideoUrl(url) ? (
+                        <VideoComponent
+                            source={{ uri: url }}
+                            style={FeedScreenStyles.cardImage}
+                            resizeMode={ResizeMode.CONTAIN}
+                            useNativeControls
+                            shouldPlay={isVisible}
+                            isLooping
+                            isMuted
+                            {...(() => { const p = derivePoster(url); return p ? { usePoster: true, posterSource: { uri: p } } : {}; })()}
+                        />
+                    ) : (
+                        <Image
+                            source={{ uri: url }}
+                            style={FeedScreenStyles.cardImage}
+                            resizeMode="contain"
+                        />
+                    )}
                 </View>
             );
         }
@@ -168,13 +208,26 @@ export default function UserSightingScreen() {
                 // No style needed on the ScrollView itself for this to work
                 >
                     {mediaUrls.map((url, idx) => (
-                        <Image
-                            key={idx}
-                            source={{ uri: url }}
-                            // Combine the original style with a specific width
-                            style={[FeedScreenStyles.cardImage, { width: width }]}
-                            resizeMode="contain"
-                        />
+                        isVideoUrl(url) ? (
+                            <VideoComponent
+                                key={idx}
+                                source={{ uri: url }}
+                                style={[FeedScreenStyles.cardImage, { width }]}
+                                resizeMode={ResizeMode.CONTAIN}
+                                useNativeControls
+                                shouldPlay={isVisible && (carouselIndex[sightingId] === idx)}
+                                isLooping
+                                isMuted
+                                {...(() => { const p = derivePoster(url); return p ? { usePoster: true, posterSource: { uri: p } } : {}; })()}
+                            />
+                        ) : (
+                            <Image
+                                key={idx}
+                                source={{ uri: url }}
+                                style={[FeedScreenStyles.cardImage, { width: width }]}
+                                resizeMode="contain"
+                            />
+                        )
                     ))}
                 </ScrollView>
             </View>
@@ -309,6 +362,8 @@ export default function UserSightingScreen() {
                 renderItem={renderSightingPost}
                 keyExtractor={(item) => item._id}
                 getItemLayout={getItemLayout} // Add the performance optimization
+                onViewableItemsChanged={onViewableItemsChanged.current}
+                viewabilityConfig={viewabilityConfig}
                 
             />
 
@@ -326,10 +381,11 @@ export default function UserSightingScreen() {
                         onPress={handleMenuClose}
                       />
                       <View style={FeedScreenStyles.menuContainer}>
-                        {(() => {
-                          const ownerId = typeof selectedSighting?.user === 'string' ? selectedSighting?.user : (selectedSighting as any)?.user?._id;
-                          const isSelectedOwner = ownerId && user?._id && String(ownerId) === String(user._id);
-                          const canDelete = isOwnerView || !!isSelectedOwner;
+                                                {(() => {
+                                                    // selectedSighting in this screen doesn't include 'user' in the narrowed type; fall back to owner by username match
+                                                    const ownerId = (selectedSighting as any)?.user?._id || (selectedSighting as any)?.user || null;
+                                                    const isSelectedOwner = ownerId && user?._id && String(ownerId) === String(user._id);
+                                                    const canDelete = isOwnerView || !!isSelectedOwner;
                           return canDelete ? (
                           <TouchableOpacity style={FeedScreenStyles.menuItem} onPress={handleDeleteSelected}>
                             <Text style={[FeedScreenStyles.menuText, { color: '#f55' }]}>Delete</Text>

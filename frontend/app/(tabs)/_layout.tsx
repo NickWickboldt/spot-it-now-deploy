@@ -3,6 +3,7 @@ import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { Colors } from '../../constants/Colors';
+import { getTakePictureRef, subscribeCaptureState, type CaptureState } from '../captureRegistry';
 
 const TAB_ICONS = [
   { name: 'feed', icon: 'file-text', label: 'Sightings' },
@@ -13,6 +14,11 @@ const TAB_ICONS = [
 ];
 
 function CustomTabBar({ state, navigation }) {
+  const [capState, setCapState] = React.useState<CaptureState>({ isVideoMode: false, isRecording: false });
+  React.useEffect(() => {
+    const unsub = subscribeCaptureState(setCapState);
+    return unsub;
+  }, []);
   return (
     <View style={styles.tabBarWrapper}>
       <View style={styles.tabRow}>
@@ -20,12 +26,10 @@ function CustomTabBar({ state, navigation }) {
           const focused = state.index === idx;
 
           if (tab.isCenter) {
-            const spotitRoute = state.routes.find(r => r.name === 'spotit');
-            const takePictureFn = spotitRoute?.params?.takePicture;
-
             const handlePress = () => {
-              if (focused && typeof takePictureFn === 'function') {
-                takePictureFn();
+              const cb = getTakePictureRef();
+              if (focused && typeof cb === 'function') {
+                cb();
               } else {
                 navigation.navigate(tab.name);
               }
@@ -38,7 +42,11 @@ function CustomTabBar({ state, navigation }) {
                   activeOpacity={0.7}
                   style={styles.centerIconBg}
                 >
-                  <Icon name={tab.icon} size={32} color={Colors.light.buttonText} />
+                  {capState.isVideoMode ? (
+                    <Icon name={capState.isRecording ? 'stop' : 'dot-circle-o'} size={32} color={capState.isRecording ? '#ff4040' : '#ff9f9f'} />
+                  ) : (
+                    <Icon name={tab.icon} size={32} color={Colors.light.buttonText} />
+                  )}
                 </TouchableOpacity>
                 <Text style={styles.centerTabLabel}>{tab.label}</Text>
               </View>

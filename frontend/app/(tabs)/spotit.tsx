@@ -1,17 +1,21 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { CameraCapturedPicture, CameraType, CameraView, useCameraPermissions } from "expo-camera";
-import * as FileSystem from 'expo-file-system';
+// Use legacy API to avoid SDK 54 migration error for readAsStringAsync
+import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-import { useNavigation } from 'expo-router';
+import { useFocusEffect, useNavigation } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from "react"; // 1. Import useCallback
 import { ActivityIndicator, Alert, Image, Modal, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { PinchGestureHandler, State } from 'react-native-gesture-handler';
 import { apiCreateSighting } from '../../api/sighting';
 import { isRemoteUrl, uploadToCloudinarySigned } from '../../api/upload';
 import ConfirmationModal from "../../components/ConfirmationModal";
+import ImageCropModal from '../../components/ImageCropModal';
+import VideoFramePickerModal from '../../components/VideoFramePickerModal';
 import { useAuth } from '../../context/AuthContext';
+import { setCaptureState, setTakePictureRef } from '../captureRegistry';
 
 
 const API_KEY = "AIzaSyCZOLCu2c-fTsGqN2oy2Gl_hSPaFTq2V30";
@@ -40,14 +44,24 @@ type AnalysisResult = {
   reasoning: string;
 };
 
-async function fileToGenerativePart(uri: string, mimeType: string) {
+function guessMimeType(uri: string): string {
+  const lower = uri.split('?')[0].toLowerCase();
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.heic') || lower.endsWith('.heif')) return 'image/heic';
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.startsWith('data:image/jpeg')) return 'image/jpeg';
+  return 'image/jpeg';
+}
+
+async function fileToGenerativePart(uri: string, mimeType?: string) {
   const base64ImageData = await FileSystem.readAsStringAsync(uri, {
-    encoding: FileSystem.EncodingType.Base64,
+    // SDK 54 typing accepts string literal
+    encoding: 'base64' as any,
   });
   return {
     inlineData: {
       data: base64ImageData,
-      mimeType,
+      mimeType: mimeType || guessMimeType(uri),
     },
   };
 }
@@ -61,6 +75,14 @@ export default function SpotItScreen() {
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [isVideoMode, setIsVideoMode] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [showCropModal, setShowCropModal] = useState(false);
+  const [frameUri, setFrameUri] = useState<string | null>(null);
+  const [recordedVideoUri, setRecordedVideoUri] = useState<string | null>(null);
+  const [showFramePicker, setShowFramePicker] = useState(false);
+  const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null);
+  const [recordingElapsed, setRecordingElapsed] = useState(0);
 
 
   const [zoom, setZoom] = useState(0);
@@ -143,7 +165,7 @@ export default function SpotItScreen() {
     const analyzeImage = async (uri: string, modelName: string, prompt: string): Promise<AnalysisResult | null> => {
       try {
         const model = genAI.getGenerativeModel({ model: modelName });
-        const imagePart = await fileToGenerativePart(uri, "image/jpeg");
+  const imagePart = await fileToGenerativePart(uri);
         const result = await model.generateContent([prompt, imagePart]);
         const responseText = result.response.text();
         console.log(`Gemini Raw Response (${modelName}):`, responseText);
@@ -157,6 +179,71 @@ export default function SpotItScreen() {
       }
     };
 
+  // Unified analyzer that applies thresholds and opens the right modal
+  const analyzeAndHandle = useCallback(async (uri: string) => {
+    setIsProcessing(true);
+    try {
+      const prompt = `
+      Analyze the image and provide your output in a single, clean JSON object.
+
+      **JSON Key Definitions and Structure:**
+      - **"type"**: A broad category like 'Bird', 'Mammal', 'Insect', 'Reptile'.
+      - **"animal"**: The specific common name of the animal, e.g., 'Bald Eagle', 'Grizzly Bear'.
+      - **"species"**: The scientific (Latin) name, enclosed in parentheses, e.g., '(Haliaeetus leucocephalus)'.
+      - **"confidence"**: Your confidence in the identification from 0-100, be as exact as possible try to really nail down the score.
+      - **"reasoning"**: A brief justification for your identification.
+
+      **Example Output:**
+      If the image contained a clear picture of a Lilac-breasted Roller, your output should be formatted EXACTLY like this:
+      {
+        "type": "Bird",
+        "animal": "Lilac-breasted Roller",
+        "species": "Coracias caudatus",
+        "confidence": 98,
+        "reasoning": "The image shows a bird with vibrant, multi-colored plumage including a lilac throat and blue belly, which are key identifiers."
+      }
+
+      **No Animal Case:**
+      If no animal is present, return this exact JSON:
+      {
+        "type": "N/A",
+        "animal": "None",
+        "species": "N/A",
+        "confidence": 0,
+        "reasoning": "No animal could be clearly identified in the image."
+      }
+      `;
+
+      const analysis = await analyzeImage(uri, 'gemini-1.5-flash', prompt);
+      const HIGH_CONFIDENCE_THRESHOLD = 55;
+      const LOW_CONFIDENCE_THRESHOLD = 0;
+
+      if (!analysis) throw new Error('Analysis returned null');
+
+      if (analysis.confidence >= HIGH_CONFIDENCE_THRESHOLD) {
+        setAnalysisResult(analysis);
+        setModalVisible(true);
+      } else if (analysis.confidence >= LOW_CONFIDENCE_THRESHOLD) {
+        // Force ambiguous modal flow for consistency
+        setAnalysisResult(analysis.animal.toLowerCase() === 'none' ? {
+          type: analysis.type || 'N/A',
+          animal: 'Unknown',
+          species: 'N/A',
+          confidence: analysis.confidence ?? 0,
+          reasoning: analysis.reasoning || 'Model could not confidently identify an animal.'
+        } : analysis);
+        setShowAmbiguousModal(true);
+      } else {
+        Alert.alert('Nothing Spotted', "We couldn't identify an animal in this picture.");
+      }
+    } catch (err) {
+      console.error('analyzeAndHandle error', err);
+      Alert.alert('Error', 'Failed to analyze the image');
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [analyzeImage]);
+
 
     // Add with other functions in SpotItScreen
 const handleUploadImage = async () => {
@@ -164,6 +251,10 @@ const handleUploadImage = async () => {
   if (!hasPermission) return;
 
   try {
+  // Switching to image flow: discard any pending recorded video
+  setRecordedVideoUri(null);
+  setFrameUri(null);
+  setIsVideoMode(false);
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.9,
@@ -321,9 +412,12 @@ const handleOverride = useCallback(async (uri?: string) => {
     if (isProcessing || !cameraRef.current) {
       return;
     }
-    setIsProcessing(true);
     
     try {
+  // Starting photo flow: discard any pending recorded video context
+  setRecordedVideoUri(null);
+  setFrameUri(null);
+  setIsVideoMode(false);
       // 1. Take the picture
       const photo: CameraCapturedPicture = await cameraRef.current.takePictureAsync({ quality: 0.9 });
       console.log("Photo taken:", photo.uri);
@@ -331,82 +425,93 @@ const handleOverride = useCallback(async (uri?: string) => {
 
 
       setPhotoUri(photo.uri)
-      const prompt = `
-      Analyze the image and provide your output in a single, clean JSON object.
-
-      **JSON Key Definitions and Structure:**
-      - **"type"**: A broad category like 'Bird', 'Mammal', 'Insect', 'Reptile'.
-      - **"animal"**: The specific common name of the animal, e.g., 'Bald Eagle', 'Grizzly Bear'.
-      - **"species"**: The scientific (Latin) name, enclosed in parentheses, e.g., '(Haliaeetus leucocephalus)'.
-      - **"confidence"**: Your confidence in the identification from 0-100, be as exact as possible try to really nail down the score.
-      - **"reasoning"**: A brief justification for your identification.
-
-      **Example Output:**
-      If the image contained a clear picture of a Lilac-breasted Roller, your output should be formatted EXACTLY like this:
-      {
-        "type": "Bird",
-        "animal": "Lilac-breasted Roller",
-        "species": "Coracias caudatus",
-        "confidence": 98,
-        "reasoning": "The image shows a bird with vibrant, multi-colored plumage including a lilac throat and blue belly, which are key identifiers."
-      }
-
-      **No Animal Case:**
-      If no animal is present, return this exact JSON:
-      {
-        "type": "N/A",
-        "animal": "None",
-        "species": "N/A",
-        "confidence": 0,
-        "reasoning": "No animal could be clearly identified in the image."
-      }
-      `;
-
-      const analysis = await analyzeImage(photo.uri, 'gemini-1.5-flash', prompt);
-      const HIGH_CONFIDENCE_THRESHOLD = 55;
-      const LOW_CONFIDENCE_THRESHOLD = 0;
-
-      if (!analysis){
-        throw new Error("Analysis returned null.");
-      }
-      if (analysis.confidence >= HIGH_CONFIDENCE_THRESHOLD){
-        setAnalysisResult(analysis);
-        setModalVisible(true);
-      }   
-
-      else {
-          Alert.alert(
-          "Not a Clear Sighting",
-          `We think we saw a ${analysis.animal}, but we're not very confident. Would you like to try a more powerful analysis or retake the photo?`,
-          [
-            {
-              text: "Try Advanced Analysis",
-              onPress: () => handleOverride(photo.uri),
-            },
-            {
-              text: "Retake Photo",
-              style: "cancel",
-              onPress: () => setPhotoUri(null), // Clear the URI on retake
-            },
-          ]
-        );
-      }
+      await analyzeAndHandle(photo.uri);
     
 
 
    } catch (error) {
       console.error("Error in takePicture function:", error);
       Alert.alert("Error", "Something went wrong while trying to analyze the image.");
-    } finally {
-      setIsProcessing(false);
     }
-  }, [isProcessing, cameraRef,]);
+  }, [isProcessing, cameraRef, analyzeAndHandle]);
+
+  const handleRecordVideo = useCallback(async () => {
+    if (isProcessing || !cameraRef.current) return;
+    if (isRecording) {
+      try { cameraRef.current.stopRecording(); } catch {}
+      return;
+    }
+    setIsRecording(true);
+    setCaptureState({ isRecording: true });
+    setRecordingStartedAt(Date.now());
+    try {
+  const video = await cameraRef.current.recordAsync({ maxDuration: 30 } as any);
+  const videoUri = (video as any)?.uri || video?.uri;
+  if (!videoUri) throw new Error('No video uri');
+  // Store the recorded video and open frame picker so user can scrub to the desired moment
+  setRecordedVideoUri(videoUri);
+  setShowFramePicker(true);
+    } catch (e) {
+      console.error('Recording or thumbnail error', e);
+      Alert.alert('Error', 'Failed to record video or extract frame');
+    } finally {
+  setIsRecording(false);
+  setCaptureState({ isRecording: false });
+      setRecordingStartedAt(null);
+      setRecordingElapsed(0);
+    }
+  }, [isProcessing, isRecording, cameraRef]);
+
+  // Unified capture callback used by the center tab button (mode-aware)
+  const capture = useCallback(() => {
+    if (isVideoMode) {
+      return handleRecordVideo();
+    }
+    return takePicture();
+  }, [isVideoMode, handleRecordVideo, takePicture]);
 
   
   useEffect(() => {
+    setTakePictureRef(capture);
+    return () => setTakePictureRef(null);
+  }, [capture]);
 
-    navigation.setParams({ takePicture: takePicture });
-  }, [navigation, takePicture]);
+  // When leaving SpotIt tab, reset to photo mode and clear recording
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        setIsVideoMode(false);
+        setIsRecording(false);
+        setCaptureState({ isVideoMode: false, isRecording: false });
+      };
+    }, [])
+  );
+
+  // Publish capture state to the tab bar icon
+  useEffect(() => {
+    setCaptureState({ isVideoMode });
+  }, [isVideoMode]);
+  useEffect(() => {
+    setCaptureState({ isRecording });
+  }, [isRecording]);
+
+  // Update recording timer while recording
+  useEffect(() => {
+    if (isRecording && recordingStartedAt) {
+      const id = setInterval(() => {
+        setRecordingElapsed(Math.floor((Date.now() - recordingStartedAt) / 1000));
+      }, 200);
+      return () => clearInterval(id);
+    }
+    setRecordingElapsed(0);
+  }, [isRecording, recordingStartedAt]);
+
+  const formatTime = (total: number) => {
+    const t = Math.min(total, 30);
+    const mm = String(Math.floor(t / 60)).padStart(2, '0');
+    const ss = String(t % 60).padStart(2, '0');
+    return `${mm}:${ss}`;
+  };
 
   const handleConfirm = async () => {
     console.log("User confirmed:", analysisResult?.animal);
@@ -422,7 +527,8 @@ const handleOverride = useCallback(async (uri?: string) => {
 
       setSightingForm(prev => ({
         ...prev,
-        mediaUrls: [photoUri],
+  // If a video was recorded in this flow, post the video; otherwise post the still photo
+  mediaUrls: [recordedVideoUri ?? photoUri],
         caption: `Spotted a ${analysisResult?.animal}!`,
         latitude: location.latitude,
         longitude: location.longitude
@@ -450,7 +556,9 @@ const handleOverride = useCallback(async (uri?: string) => {
       if (isRemoteUrl(uri)) {
         uploadedUrls.push(uri);
       } else if (uri) {
-        const up = await uploadToCloudinarySigned(uri, token, 'image');
+        // Upload video if it's the recorded video URI, otherwise upload as image
+        const resourceType = recordedVideoUri && uri === recordedVideoUri ? 'video' : 'image';
+        const up = await uploadToCloudinarySigned(uri, token, resourceType as any);
         uploadedUrls.push(up.secure_url);
       }
     }
@@ -481,6 +589,8 @@ const handleOverride = useCallback(async (uri?: string) => {
       longitude: null
     });
     setPhotoUri(null);
+  setRecordedVideoUri(null);
+  setFrameUri(null);
     setAnalysisResult(null);
   } catch (error) {
     console.error("Error posting sighting:", error);
@@ -498,6 +608,8 @@ const handleOverride = useCallback(async (uri?: string) => {
   setManualCommonName('');
   setManualScientificName('');
   setPhotoUri(null); // Clear current photo so camera is ready
+  setRecordedVideoUri(null);
+  setFrameUri(null);
   };
 
   // Accept ambiguous low-confidence AI guess
@@ -521,12 +633,12 @@ const handleOverride = useCallback(async (uri?: string) => {
     }
     setShowManualInputModal(false);
     // Prepare form with manual caption & image
-    if (photoUri) {
+  if (photoUri) {
       const location = await getCurrentLocation();
       if (!location) return;
       setSightingForm(prev => ({
         ...prev,
-        mediaUrls: [photoUri],
+    mediaUrls: [recordedVideoUri ?? photoUri],
         caption: manualCommonName, // free caption; identification stored separately
         latitude: location.latitude,
         longitude: location.longitude,
@@ -561,7 +673,13 @@ const handleOverride = useCallback(async (uri?: string) => {
 return (
   <PinchGestureHandler onHandlerStateChange={onPinchHandlerStateChange}>
     <View style={styles.container}>
-      <CameraView style={styles.camera} facing={facing} ref={cameraRef} zoom={zoom} />
+  <CameraView
+        style={styles.camera}
+        facing={facing}
+        ref={cameraRef}
+        zoom={zoom}
+        mode={isVideoMode ? ('video' as any) : ('picture' as any)}
+      />
       
       {/* Move the upload button outside and directly in the main container */}
       <TouchableOpacity 
@@ -571,7 +689,7 @@ return (
         <MaterialIcons name="photo-library" size={32} color="white" />
       </TouchableOpacity>
 
-      <Modal
+  <Modal
           visible={showSightingForm}
           animationType="slide"
           onRequestClose={() => setShowSightingForm(false)}
@@ -580,9 +698,10 @@ return (
             <Text style={styles.formTitle}>Post Sighting</Text>
             
             {photoUri && (
-              <Image 
-                source={{ uri: photoUri }} 
+              <Image
+                source={{ uri: photoUri }}
                 style={styles.previewImage}
+                resizeMode="contain"
               />
             )}
 
@@ -612,7 +731,7 @@ return (
               
               <TouchableOpacity 
                 style={[styles.button, styles.cancelButton]}
-                onPress={() => setShowSightingForm(false)}
+                onPress={handleRetake}
               >
                 <Text style={styles.buttonText}>Cancel</Text>
               </TouchableOpacity>
@@ -626,6 +745,40 @@ return (
           <Text style={styles.processingText}>Analyzing...</Text>
         </View>
       )}
+
+      {isVideoMode && isRecording && (
+        <View style={styles.recordingIndicator}>
+          <View style={styles.recordDot} />
+          <Text style={styles.recordTimer}>{formatTime(recordingElapsed)}</Text>
+        </View>
+      )}
+
+      {/* Capture button */}
+      <TouchableOpacity
+        style={[styles.captureButton, isVideoMode ? styles.captureButtonVideo : null]}
+        onPress={capture}
+        disabled={isProcessing}
+      >
+        <View
+          style={[
+            styles.captureInner,
+            isVideoMode && isRecording ? styles.captureInnerVideo : isVideoMode ? styles.captureInnerVideoIdle : null,
+          ]}
+        />
+      </TouchableOpacity>
+
+      {/* Toggle photo/video mode (disabled while recording) */}
+      <TouchableOpacity
+        style={styles.modeToggleButton}
+        onPress={() => { if (!isRecording) setIsVideoMode(v => { const nv = !v; setCaptureState({ isVideoMode: nv }); return nv; }); }}
+        disabled={isRecording}
+      >
+        <MaterialIcons
+          name={!isVideoMode ? 'videocam' : (isRecording ? 'stop' : 'fiber-manual-record')}
+          size={24}
+          color={!isVideoMode ? '#fff' : '#ff4040'}
+        />
+      </TouchableOpacity>
 
       {/* Render the Modal component */}
       <ConfirmationModal
@@ -689,6 +842,30 @@ return (
           </View>
         </View>
       </Modal>
+      {/* Crop Modal for video frame */}
+      <VideoFramePickerModal
+        isVisible={showFramePicker}
+        videoUri={recordedVideoUri}
+  onClose={() => { setShowFramePicker(false); setRecordedVideoUri(null); setFrameUri(null); }}
+        onPickFrame={(uri) => {
+          setShowFramePicker(false);
+          setFrameUri(uri);
+          setShowCropModal(true);
+        }}
+      />
+      <ImageCropModal
+        isVisible={showCropModal}
+        imageUri={frameUri}
+        onClose={() => setShowCropModal(false)}
+        onCropComplete={async (croppedUri) => {
+          setShowCropModal(false);
+          // Ensure we revert to photo mode after cropping
+          setIsVideoMode(false);
+          setCaptureState({ isVideoMode: false, isRecording: false });
+          setPhotoUri(croppedUri);
+          await analyzeAndHandle(croppedUri);
+        }}
+      />
     </View>
     </PinchGestureHandler>
   );
@@ -726,8 +903,10 @@ formContainer: {
     marginBottom: 20,
   },
   previewImage: {
-    width: '100%',
-    height: 200,
+    alignSelf: 'center',
+    width: '90%',
+    height: undefined as unknown as number,
+    aspectRatio: 4/3,
     borderRadius: 8,
     marginBottom: 20,
   },
@@ -762,6 +941,68 @@ formContainer: {
     color: 'white',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  recordingIndicator: {
+    position: 'absolute',
+    top: 50,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  recordDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#ff4040',
+    marginRight: 8,
+  },
+  recordTimer: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  // Bottom-left upload already exists. Add capture and toggle buttons
+  captureButton: {
+    position: 'absolute',
+    bottom: 40,
+    alignSelf: 'center',
+    width: 74,
+    height: 74,
+    borderRadius: 37,
+    borderWidth: 4,
+    borderColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.2)'
+  },
+  captureButtonVideo: {
+    borderColor: '#ff4040',
+  },
+  captureInner: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#fff',
+  },
+  captureInnerVideo: {
+    backgroundColor: '#ff4040',
+  },
+  captureInnerVideoIdle: {
+    backgroundColor: '#ff9f9f',
+  },
+  modeToggleButton: {
+    position: 'absolute',
+    bottom: 125,
+    right: 30,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
     uploadButton: {
     position: 'absolute',

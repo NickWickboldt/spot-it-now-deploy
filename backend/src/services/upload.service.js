@@ -1,4 +1,4 @@
-import { configureCloudinary, cloudinary } from '../config/cloudinary.config.js';
+import { cloudinary, configureCloudinary } from '../config/cloudinary.config.js';
 import { ApiError } from '../utils/ApiError.util.js';
 import { log } from '../utils/logger.util.js';
 
@@ -28,12 +28,16 @@ const getUploadSignature = ({ resourceType, folder, publicId }) => {
   }
 
   const isImage = resourceType === 'image';
+  // Support both VIDEO and VID env var names for backwards compatibility
   const uploadPreset = isImage
     ? process.env.CLOUDINARY_IMG_PRESET
-    : process.env.CLOUDINARY_VIDEO_PRESET;
+    : (process.env.CLOUDINARY_VIDEO_PRESET || process.env.CLOUDINARY_VID_PRESET);
 
   if (!uploadPreset) {
-    throw new ApiError(500, 'Cloudinary upload preset is not configured.');
+    throw new ApiError(
+      500,
+      'Cloudinary upload preset is not configured. Expected CLOUDINARY_IMG_PRESET for images and CLOUDINARY_VIDEO_PRESET or CLOUDINARY_VID_PRESET for videos.'
+    );
   }
 
   const timestamp = Math.floor(Date.now() / 1000);

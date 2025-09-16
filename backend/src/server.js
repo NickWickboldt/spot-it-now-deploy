@@ -1,6 +1,11 @@
+import dotenv from 'dotenv';
+
+dotenv.config({
+  path: './.env' 
+});
+
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import express from 'express';
 import connectDB from './config/db.config.js';
 import { requestLogger } from './middlewares/requestLogger.middleware.js';
@@ -11,9 +16,7 @@ import { log } from './utils/logger.util.js';
 import apiRouter from './routes/index.routes.js';
 
 // Configure environment variables
-dotenv.config({
-  path: './.env' 
-});
+
 
 // Initialize the Express app
 const app = express();

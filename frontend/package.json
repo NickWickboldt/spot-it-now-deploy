@@ -23,6 +23,7 @@
     "expo-file-system": "~19.0.14",
     "expo-haptics": "~15.0.7",
     "expo-image": "~3.0.8",
+    "expo-image-manipulator": "^14.0.7",
     "expo-image-picker": "~17.0.8",
     "expo-linking": "~8.0.8",
     "expo-location": "~19.0.7",
@@ -30,6 +31,7 @@
     "expo-splash-screen": "~31.0.10",
     "expo-status-bar": "~3.0.8",
     "expo-symbols": "~1.0.7",
+    "expo-video-thumbnails": "^10.0.7",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.4",
@@ -42,7 +44,8 @@
     "react-native-vector-icons": "^10.3.0",
     "react-native-web": "^0.21.0",
     "react-navigation": "^5.0.0",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "expo-av": "~16.0.7"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",

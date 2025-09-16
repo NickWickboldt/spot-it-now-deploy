@@ -1,12 +1,12 @@
+import { ResizeMode, Video } from 'expo-av';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Animated, Dimensions, Easing, FlatList, Image, Modal, Platform, RefreshControl, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { apiCreateComment, apiDeleteComment, apiGetCommentsForSighting, apiUpdateComment } from '../../api/comment';
-import { apiAdminDeleteSighting } from '../../api/sighting';
 import { apiGetLikedSightingsByUser, apiToggleSightingLike } from '../../api/like';
-import { apiGetFollowingRecentSightings, apiGetRecentSightings } from '../../api/sighting';
+import { apiAdminDeleteSighting, apiGetFollowingRecentSightings, apiGetRecentSightings } from '../../api/sighting';
 import { Colors } from '../../constants/Colors';
 import { FeedScreenStyles } from '../../constants/FeedStyles';
 import { useAuth } from '../../context/AuthContext';
@@ -49,6 +49,17 @@ export default function FeedScreen() {
   const [hasMore, setHasMore] = useState(true);
   const [likedMap, setLikedMap] = useState<Record<string, boolean>>({});
   const scaleMapRef = useRef<Record<string, Animated.Value>>({});
+  // Track which posts are currently visible to control video autoplay
+  const [visibleMap, setVisibleMap] = useState<Record<string, boolean>>({});
+  const viewabilityConfig = useRef({ viewAreaCoveragePercentThreshold: 60 }).current;
+  const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: any[] }) => {
+    const next: Record<string, boolean> = {};
+    for (const it of viewableItems) {
+      const id = it?.item?._id;
+      if (id) next[id] = true;
+    }
+    setVisibleMap(next);
+  });
 
   const getScale = (id: string) => {
     if (!scaleMapRef.current[id]) {
@@ -330,11 +341,46 @@ const loadCommentsFor = async (sightingId: string) => {
 
   const renderImages = (mediaUrls, sightingId) => {
     if (!mediaUrls || mediaUrls.length === 0) return null;
+    const isVideoUrl = (url: string) => /\.(mp4|mov|m4v|webm)$/i.test(url) || /\/video\/upload\//i.test(url);
+    const derivePoster = (url: string): string | undefined => {
+      // Cloudinary videos: replace /video/upload/ with /video/upload/so_1/ and switch extension to .jpg
+      try {
+        if (!/res\.cloudinary\.com/i.test(url) || !/\/video\/upload\//i.test(url)) return undefined;
+        const qIndex = url.indexOf('?');
+        const clean = qIndex >= 0 ? url.slice(0, qIndex) : url;
+        const dot = clean.lastIndexOf('.');
+        const base = dot >= 0 ? clean.slice(0, dot) : clean;
+        const transformed = base.replace('/video/upload/', '/video/upload/so_1/');
+        return `${transformed}.jpg`;
+      } catch {
+        return undefined;
+      }
+    };
+    const VideoComponent: any = Video as any;
+    const isVisible = !!visibleMap[sightingId];
     if (mediaUrls.length === 1) {
+      const url = mediaUrls[0];
+      if (isVideoUrl(url)) {
+        const poster = derivePoster(url);
+        return (
+          <View style={FeedScreenStyles.cardImageContainer}>
+            <VideoComponent
+              source={{ uri: url }}
+              style={FeedScreenStyles.cardImage}
+              resizeMode={ResizeMode.CONTAIN}
+              useNativeControls
+              shouldPlay={isVisible}
+              isLooping
+              isMuted
+              {...(poster ? { usePoster: true, posterSource: { uri: poster } } : {})}
+            />
+          </View>
+        );
+      }
       return (
         <View style={FeedScreenStyles.cardImageContainer}>
           <Image
-            source={{ uri: mediaUrls[0] }}
+            source={{ uri: url }}
             style={FeedScreenStyles.cardImage}
             resizeMode="contain"
           />
@@ -355,15 +401,29 @@ const loadCommentsFor = async (sightingId: string) => {
           scrollEventThrottle={16}
         // No style needed on the ScrollView itself for this to work
         >
-          {mediaUrls.map((url, idx) => (
-            <Image
-              key={idx}
-              source={{ uri: url }}
-              // Combine the original style with a specific width
-              style={[FeedScreenStyles.cardImage, { width: width }]}
-              resizeMode="contain"
-            />
-          ))}
+      {mediaUrls.map((url, idx) => {
+            const video = isVideoUrl(url);
+            return video ? (
+              <VideoComponent
+                key={idx}
+                source={{ uri: url }}
+                style={[FeedScreenStyles.cardImage, { width }]}
+                resizeMode={ResizeMode.CONTAIN}
+        useNativeControls
+        shouldPlay={isVisible && (carouselIndex[sightingId] === idx)}
+        isLooping
+        isMuted
+        {...(() => { const p = derivePoster(url); return p ? { usePoster: true, posterSource: { uri: p } } : {}; })()}
+              />
+            ) : (
+              <Image
+                key={idx}
+                source={{ uri: url }}
+                style={[FeedScreenStyles.cardImage, { width }]}
+                resizeMode="contain"
+              />
+            );
+          })}
         </ScrollView>
       </View>
     );
@@ -562,6 +622,8 @@ const loadCommentsFor = async (sightingId: string) => {
             renderItem={renderItem}
             onEndReached={() => { if (hasMore && !loading) loadPage(page + 1); }}
             onEndReachedThreshold={0.5}
+            onViewableItemsChanged={onViewableItemsChanged.current}
+            viewabilityConfig={viewabilityConfig}
             contentContainerStyle={{ paddingTop: tabBarHeight + statusPad + extraOffset + 8, paddingBottom: 32 }}
             refreshControl={
               <RefreshControl
