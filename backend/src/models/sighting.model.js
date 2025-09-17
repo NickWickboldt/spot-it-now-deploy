@@ -22,9 +22,9 @@ const sightingSchema = new Schema(
     },
     // The animal that the AI *thinks* was sighted.
     aiIdentification: {
-        type: Schema.Types.ObjectId,
-        ref: 'Animal',
-        default: null,
+      type: Schema.Types.ObjectId,
+      ref: 'Animal',
+      default: null,
     },
     // URLs for the photos or videos uploaded by the user.
     mediaUrls: [
@@ -35,26 +35,36 @@ const sightingSchema = new Schema(
     ],
     // Geographic location of the sighting.
     location: {
-        type: {
-            type: String,
-            enum: ['Point'],
-            required: true,
-            default: 'Point',
-        },
-        coordinates: {
-            type: [Number], // [longitude, latitude]
-            required: true,
-        }
+      type: {
+        type: String,
+        enum: ['Point'],
+        required: true,
+        default: 'Point',
+      },
+      coordinates: {
+        type: [Number], // [longitude, latitude]
+        required: true,
+      }
     },
     caption: {
       type: String,
       trim: true,
     },
-    // The moderation status of the post.
-    aiModerationStatus: {
-      type: String,
-      enum: ['pending', 'approved', 'rejected'],
-      default: 'pending',
+    // Verification status - how the animal identification has been verified
+    verifiedByAI: {
+      type: Boolean,
+      default: false,
+      description: 'Whether this sighting was verified by AI identification'
+    },
+    verifiedByUser: {
+      type: Boolean,
+      default: false,
+      description: 'Whether this sighting was verified by a user'
+    },
+    verifiedByCommunity: {
+      type: Boolean,
+      default: false,
+      description: 'Whether this sighting was verified by the community'
     },
     // If true, the sighting is hidden from the public feed.
     isPrivate: {

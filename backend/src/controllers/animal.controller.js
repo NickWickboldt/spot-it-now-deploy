@@ -36,10 +36,24 @@ const getAnimalById = asyncHandler(async (req, res) => {
 });
 
 const getAllAnimals = asyncHandler(async (req, res) => {
-  const animals = await animalService.getAllAnimals();
+  const { category, search } = req.query;
+  
+  let query = {};
+  
+  // Add category filter if provided
+  if (category) {
+    query.category = category;
+  }
+  
+  // Add search filter if provided
+  if (search) {
+    query.commonName = { $regex: search, $options: 'i' }; // Case-insensitive search
+  }
+  
+  const animals = await animalService.getAllAnimals(query);
   return res
     .status(200)
-    .json(new ApiResponse(200, animals, 'All animals fetched successfully'));
+    .json(new ApiResponse(200, animals, 'Animals fetched successfully'));
 });
 
 // --- Individual Field Getters ---
@@ -79,8 +93,26 @@ const removeImageUrl = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, updatedAnimal, 'Image URL removed successfully'));
 });
 
+/**
+ * Controller to find/match an animal by identification data.
+ */
+const findAnimalByIdentification = asyncHandler(async (req, res) => {
+  const { commonName, scientificName } = req.body;
+  const identification = { commonName, scientificName };
+  const matchedAnimal = await animalService.findAnimalByIdentification(identification);
+  
+  if (matchedAnimal) {
+    return res
+      .status(200)
+      .json(new ApiResponse(200, matchedAnimal, 'Animal found successfully'));
+  } else {
+    return res
+      .status(404)
+      .json(new ApiResponse(404, null, 'No matching animal found'));
+  }
+});
 
 export {
-    addImageUrl, createAnimal, deleteAnimal, getAllAnimals, getAnimalById, getAnimalField, removeImageUrl, setAnimalField, updateAnimal
+    addImageUrl, createAnimal, deleteAnimal, findAnimalByIdentification, getAllAnimals, getAnimalById, getAnimalField, removeImageUrl, setAnimalField, updateAnimal
 };
 

@@ -1,9 +1,11 @@
-import { Sighting } from '../models/sighting.model.js';
-import { Follow } from '../models/follow.model.js';
 import { Comment } from '../models/comment.model.js';
+import { Follow } from '../models/follow.model.js';
 import { Like } from '../models/like.model.js';
+import { Sighting } from '../models/sighting.model.js';
 import { ApiError } from '../utils/ApiError.util.js';
 import { log } from '../utils/logger.util.js';
+import { animalService } from './animal.service.js';
+import { userDiscoveryService } from './userDiscovery.service.js';
 
 /**
  * Creates a new sighting post.
@@ -29,6 +31,46 @@ const createSighting = async (userId, userName, sightingData) => {
     coordinates: [longNum, latNum], // GeoJSON format: [longitude, latitude]
   };
 
+  // Try to find matching animal if identification is provided
+  let linkedAnimalId = null;
+  if (identification && (identification.commonName || identification.scientificName)) {
+    try {
+      const matchedAnimal = await animalService.findAnimalByIdentification(identification);
+      if (matchedAnimal) {
+        linkedAnimalId = matchedAnimal._id;
+        log.info('sighting-service', 'Animal linked to sighting', { 
+          animalId: linkedAnimalId, 
+          commonName: identification.commonName,
+          scientificName: identification.scientificName
+        });
+      } else {
+        log.warn('sighting-service', 'No animal found for identification', { 
+          commonName: identification.commonName,
+          scientificName: identification.scientificName 
+        });
+      }
+    } catch (error) {
+      log.warn('sighting-service', 'Error linking animal to sighting', { error: error.message });
+    }
+  }
+
+  // Set verification flags based on identification source
+  let verificationFlags = {
+    verifiedByAI: false,
+    verifiedByUser: false,
+    verifiedByCommunity: false
+  };
+  
+  if (identification && identification.source) {
+    if (identification.source === 'AI') {
+      verificationFlags.verifiedByAI = true;
+    } else if (identification.source === 'USER') {
+      verificationFlags.verifiedByUser = true;
+    } else if (identification.source === 'COMMUNITY') {
+      verificationFlags.verifiedByCommunity = true;
+    }
+  }
+
   const sighting = await Sighting.create({
     user: userId,
     userName,
@@ -37,7 +79,29 @@ const createSighting = async (userId, userName, sightingData) => {
     caption,
     isPrivate,
     identification: identification || null,
+    animal: linkedAnimalId, // Link the matched animal
+    ...verificationFlags, // Add verification flags
   });
+
+  // Auto-add discovery if animal is identified and linked
+  if (linkedAnimalId && identification) {
+    try {
+      const verifiedBy = identification.source === 'USER' ? 'USER' : 'AI';
+      await userDiscoveryService.addDiscovery(userId, linkedAnimalId, sighting._id, verifiedBy);
+      log.info('sighting-service', 'Discovery added for sighting', { 
+        sightingId: sighting._id, 
+        userId, 
+        animalId: linkedAnimalId,
+        verifiedBy 
+      });
+    } catch (error) {
+      // Don't fail sighting creation if discovery fails
+      log.warn('sighting-service', 'Failed to add discovery for sighting', { 
+        sightingId: sighting._id, 
+        error: error.message 
+      });
+    }
+  }
 
   log.info('sighting-service', 'Sighting created', { sightingId: sighting._id, userId });
   return sighting;
@@ -241,14 +305,81 @@ const updateSightingField = async (sightingId, fieldsToUpdate) => {
     }
   }
 
+  // Get the original sighting to compare identification changes
+  const originalSighting = await Sighting.findById(sightingId);
+  if (!originalSighting) {
+    throw new ApiError(404, 'Sighting not found');
+  }
+
+  // Try to link animal if identification is being updated
+  if (update.identification && (update.identification.commonName || update.identification.scientificName)) {
+    try {
+      const matchedAnimal = await animalService.findAnimalByIdentification(update.identification);
+      if (matchedAnimal) {
+        update.animal = matchedAnimal._id;
+        
+        // Update verification flags based on identification source
+        if (update.identification.source === 'AI') {
+          update.verifiedByAI = true;
+        } else if (update.identification.source === 'USER') {
+          update.verifiedByUser = true;
+        } else if (update.identification.source === 'COMMUNITY') {
+          update.verifiedByCommunity = true;
+        }
+        
+        log.info('sighting-service', 'Animal linked to sighting update', { 
+          sightingId,
+          animalId: matchedAnimal._id, 
+          commonName: update.identification.commonName,
+          scientificName: update.identification.scientificName,
+          verificationSource: update.identification.source
+        });
+      } else {
+        log.warn('sighting-service', 'No animal found for identification update', { 
+          sightingId,
+          commonName: update.identification.commonName,
+          scientificName: update.identification.scientificName 
+        });
+        // Clear animal link if identification doesn't match any animal
+        update.animal = null;
+      }
+    } catch (error) {
+      log.warn('sighting-service', 'Error linking animal to sighting update', { sightingId, error: error.message });
+      update.animal = null;
+    }
+  }
+
   const sighting = await Sighting.findByIdAndUpdate(
     sightingId,
     { $set: update },
     { new: true }
   );
-  if (!sighting) {
-    throw new ApiError(404, 'Sighting not found');
+
+  // Handle discovery updates when identification is added or changed
+  if (update.animal && update.identification) {
+    try {
+      const verifiedBy = update.identification.source === 'USER' ? 'USER' : 'AI';
+      await userDiscoveryService.addDiscovery(
+        originalSighting.user,
+        update.animal,
+        sightingId,
+        verifiedBy
+      );
+      log.info('sighting-service', 'Discovery added/updated for sighting update', {
+        sightingId,
+        userId: originalSighting.user,
+        animalId: update.animal,
+        verifiedBy
+      });
+    } catch (error) {
+      // Don't fail sighting update if discovery fails
+      log.warn('sighting-service', 'Failed to add/update discovery for sighting', {
+        sightingId,
+        error: error.message
+      });
+    }
   }
+
   return sighting;
 };
 
@@ -360,5 +491,35 @@ export const sightingService = {
     }
 
     return { items, total, page, pageSize };
+  }
+  
+  /**
+   * Updates verification status for a sighting.
+   * @param {string} sightingId - The ID of the sighting to update.
+   * @param {string} verifiedBy - The verification type ('AI', 'USER', 'COMMUNITY').
+   * @returns {Promise<Sighting>} The updated sighting object.
+   */
+  ,updateSightingVerification: async (sightingId, verifiedBy) => {
+    const update = {};
+    
+    if (verifiedBy === 'AI') {
+      update.verifiedByAI = true;
+    } else if (verifiedBy === 'USER') {
+      update.verifiedByUser = true;
+    } else if (verifiedBy === 'COMMUNITY') {
+      update.verifiedByCommunity = true;
+    }
+    
+    const sighting = await Sighting.findByIdAndUpdate(
+      sightingId,
+      { $set: update },
+      { new: true }
+    );
+    
+    if (!sighting) {
+      throw new ApiError(404, 'Sighting not found');
+    }
+    
+    return sighting;
   }
 };

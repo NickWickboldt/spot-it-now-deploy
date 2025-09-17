@@ -1,11 +1,15 @@
 import { Router } from 'express';
 import {
-  changeAdminPermissionLevel,
-  getAdminDetails,
-  getAllAdmins,
-  promoteUserToAdmin,
-  removeAdminPrivileges,
+    changeAdminPermissionLevel,
+    getAdminDetails,
+    getAllAdmins,
+    promoteUserToAdmin,
+    removeAdminPrivileges,
 } from '../controllers/admin.controller.js';
+import {
+    getAnimalStats,
+    populateAnimals,
+} from '../controllers/animalPopulation.controller.js';
 import { verifyAdmin } from '../middlewares/admin.middleware.js';
 import { verifyJWT } from '../middlewares/auth.middleware.js';
 
@@ -26,6 +30,10 @@ router.route('/:adminId/permission').patch(verifyAdmin(2), changeAdminPermission
 // These routes can be accessed by any admin (permission level 1 or higher)
 router.route('/').get(verifyAdmin(1), getAllAdmins);
 router.route('/:adminId').get(verifyAdmin(1), getAdminDetails);
+
+// --- Animal Management Routes ---
+router.route('/populate-animals').post(verifyAdmin(1), populateAnimals);
+router.route('/animal-stats').get(verifyAdmin(1), getAnimalStats);
 
 
 export default router;

@@ -120,3 +120,15 @@ export const apiAdminPromoteUser = async (token: string, userId: string, permiss
   });
 };
 
+// Animal population management
+export const apiAdminPopulateAnimals = async (token: string, animals: any[]) => {
+  return fetchWithAuth('/admins/populate-animals', token, {
+    method: 'POST',
+    body: JSON.stringify({ animals }),
+  });
+};
+
+export const apiAdminGetAnimalStats = async (token: string) => {
+  return fetchWithAuth('/admins/animal-stats', token);
+};
+

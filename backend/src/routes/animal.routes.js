@@ -3,6 +3,7 @@ import {
     addImageUrl,
     createAnimal,
     deleteAnimal,
+    findAnimalByIdentification,
     getAllAnimals,
     getAnimalById,
     getAnimalField,
@@ -20,6 +21,9 @@ const router = Router();
 router.route('/').get(getAllAnimals);
 router.route('/:animalId').get(getAnimalById);
 router.route('/:animalId/field/:fieldName').get(getAnimalField);
+
+// Animal matching/identification endpoint
+router.route('/match').post(findAnimalByIdentification);
 
 
 // --- Admin-Only Routes ---

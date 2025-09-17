@@ -212,6 +212,9 @@ export default function ProfileScreen(): React.JSX.Element | null {
                 <Pressable style={profileStyles.menuItem} onPress={() => { router.push('/manage-sightings'); setMenuVisible(false); }}>
                   <Text style={profileStyles.menuText}>Manage Sightings</Text>
                 </Pressable>
+                <Pressable style={profileStyles.menuItem} onPress={() => { router.push('/(admin)/add-animal'); setMenuVisible(false); }}>
+                  <Text style={profileStyles.menuText}>Animals</Text>
+                </Pressable>
               </>
             )}
 

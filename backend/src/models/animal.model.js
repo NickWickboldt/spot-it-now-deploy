@@ -33,6 +33,12 @@ const animalSchema = new Schema(
       required: true,
       enum: ['Common', 'Uncommon', 'Rare', 'Legendary'], // Enforce specific values
     },
+    category: {
+      type: String,
+      required: true,
+      enum: ['Mammals', 'Birds', 'Insects and Arachnids', 'Reptiles and Amphibians', 'Marine Animals'],
+      index: true, // Index for faster filtering by category
+    },
     conservationStatus: {
       type: String,
       default: 'Not Evaluated',

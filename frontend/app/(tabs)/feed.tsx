@@ -481,6 +481,28 @@ const loadCommentsFor = async (sightingId: string) => {
         </View>
       )}
       <Text style={FeedScreenStyles.cardCaption}>{item.caption}</Text>
+      
+      {/* Verification badges */}
+      {(item.verifiedByAI || item.verifiedByUser || item.verifiedByCommunity) && (
+        <View style={verificationStyles.badgeContainer}>
+          {item.verifiedByAI && (
+            <View style={[verificationStyles.badge, verificationStyles.aiBadge]}>
+              <Text style={verificationStyles.badgeText}>✓ AI</Text>
+            </View>
+          )}
+          {item.verifiedByUser && (
+            <View style={[verificationStyles.badge, verificationStyles.userBadge]}>
+              <Text style={verificationStyles.badgeText}>✓ User</Text>
+            </View>
+          )}
+          {item.verifiedByCommunity && (
+            <View style={[verificationStyles.badge, verificationStyles.communityBadge]}>
+              <Text style={verificationStyles.badgeText}>✓ Community</Text>
+            </View>
+          )}
+        </View>
+      )}
+      
       <View style={FeedScreenStyles.cardActions}>
         <TouchableOpacity style={FeedScreenStyles.cardActionBtn} onPress={() => handleToggleLike(item)} activeOpacity={0.8}>
           <Text style={{ marginRight: 10, color: Colors.light.primaryGreen }}>{Number(item.likes || 0)}</Text>
@@ -728,4 +750,37 @@ const comingSoonStyles = StyleSheet.create({
   icon: { marginBottom: 30 },
   title: { fontSize: 36, fontWeight: 'bold', color: '#fff', textAlign: 'center', marginBottom: 15 },
   subtitle: { fontSize: 18, color: '#a1a1a6', textAlign: 'center', lineHeight: 26 },
+});
+
+const verificationStyles = StyleSheet.create({
+  badgeContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: 12,
+    marginBottom: 8,
+    gap: 6,
+  },
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  aiBadge: {
+    backgroundColor: '#4CAF50', // Green for AI
+  },
+  userBadge: {
+    backgroundColor: '#FFC107', // Yellow for User
+  },
+  communityBadge: {
+    backgroundColor: '#2196F3', // Blue for Community
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1,
+  },
 });

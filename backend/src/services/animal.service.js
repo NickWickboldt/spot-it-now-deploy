@@ -58,10 +58,11 @@ const getAnimalById = async (animalId) => {
 
 /**
  * Gets all animals from the database.
+ * @param {object} query - Optional query filter object
  * @returns {Promise<Animal[]>} An array of animal objects.
  */
-const getAllAnimals = async () => {
-  return await Animal.find({});
+const getAllAnimals = async (query = {}) => {
+  return await Animal.find(query);
 };
 
 /**
@@ -132,6 +133,84 @@ const removeImageUrlFromAnimal = async (animalId, imageUrl) => {
   return animal;
 };
 
+/**
+ * Finds an animal by common name (case-insensitive).
+ * @param {string} commonName - The common name to search for.
+ * @returns {Promise<Animal|null>} The matching animal or null if not found.
+ */
+const findAnimalByCommonName = async (commonName) => {
+  if (!commonName || typeof commonName !== 'string') {
+    return null;
+  }
+  
+  // Try exact match first (case-insensitive)
+  const exactMatch = await Animal.findOne({ 
+    commonName: { $regex: new RegExp(`^${commonName.trim()}$`, 'i') }
+  });
+  
+  if (exactMatch) {
+    return exactMatch;
+  }
+  
+  // Try partial match if exact match fails
+  const partialMatch = await Animal.findOne({
+    commonName: { $regex: new RegExp(commonName.trim(), 'i') }
+  });
+  
+  return partialMatch;
+};
+
+/**
+ * Finds an animal by scientific name (case-insensitive).
+ * @param {string} scientificName - The scientific name to search for.
+ * @returns {Promise<Animal|null>} The matching animal or null if not found.
+ */
+const findAnimalByScientificName = async (scientificName) => {
+  if (!scientificName || typeof scientificName !== 'string') {
+    return null;
+  }
+  
+  // Clean up scientific name (remove parentheses if present)
+  const cleanName = scientificName.replace(/[()]/g, '').trim();
+  
+  const animal = await Animal.findOne({ 
+    scientificName: { $regex: new RegExp(`^${cleanName}$`, 'i') }
+  });
+  
+  return animal;
+};
+
+/**
+ * Finds an animal by either common name or scientific name.
+ * @param {object} identification - Object containing commonName and/or scientificName
+ * @returns {Promise<Animal|null>} The matching animal or null if not found.
+ */
+const findAnimalByIdentification = async (identification) => {
+  if (!identification || typeof identification !== 'object') {
+    return null;
+  }
+  
+  const { commonName, scientificName } = identification;
+  
+  // Try common name first
+  if (commonName) {
+    const byCommonName = await findAnimalByCommonName(commonName);
+    if (byCommonName) {
+      return byCommonName;
+    }
+  }
+  
+  // Try scientific name if common name doesn't work
+  if (scientificName) {
+    const byScientificName = await findAnimalByScientificName(scientificName);
+    if (byScientificName) {
+      return byScientificName;
+    }
+  }
+  
+  return null;
+};
+
 export const animalService = {
   createAnimal,
   updateAnimal,
@@ -142,4 +221,7 @@ export const animalService = {
   updateAnimalField,
   addImageUrlToAnimal,
   removeImageUrlFromAnimal,
+  findAnimalByCommonName,
+  findAnimalByScientificName,
+  findAnimalByIdentification,
 };
