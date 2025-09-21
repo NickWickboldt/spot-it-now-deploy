@@ -6,10 +6,31 @@ import { ScrollView } from 'react-native-gesture-handler';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { apiCreateComment, apiDeleteComment, apiGetCommentsForSighting, apiUpdateComment } from '../../api/comment';
 import { apiGetLikedSightingsByUser, apiToggleSightingLike } from '../../api/like';
-import { apiAdminDeleteSighting, apiGetFollowingRecentSightings, apiGetRecentSightings } from '../../api/sighting';
+import { apiAdminDeleteSighting, apiGetFollowingRecentSightings, apiGetRecentSightings, apiGetSightingsNear } from '../../api/sighting';
 import { Colors } from '../../constants/Colors';
 import { FeedScreenStyles } from '../../constants/FeedStyles';
 import { useAuth } from '../../context/AuthContext';
+
+const LOCAL_PAGE_SIZE = 10;
+const getSightingTimestamp = (doc: any) => {
+  const dateString = doc?.createdAt || doc?.updatedAt || doc?.timestamp;
+  const time = dateString ? new Date(dateString).getTime() : 0;
+  return Number.isFinite(time) ? time : 0;
+};
+
+// Calculate distance between two points using Haversine formula
+const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+  const R = 3959; // Earth's radius in miles
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  const distance = R * c;
+  return distance;
+};
 
 const { width } = Dimensions.get('window');
 
@@ -47,6 +68,9 @@ export default function FeedScreen() {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
   const [hasMore, setHasMore] = useState(true);
+  const [localAllSightings, setLocalAllSightings] = useState<any[]>([]);
+  const [localPage, setLocalPage] = useState(1);
+  const [localMessage, setLocalMessage] = useState<string | null>(null);
   const [likedMap, setLikedMap] = useState<Record<string, boolean>>({});
   const scaleMapRef = useRef<Record<string, Animated.Value>>({});
   // Track which posts are currently visible to control video autoplay
@@ -135,6 +159,116 @@ export default function FeedScreen() {
         setRefreshing(false);
       });
   }, [activeTab, token, user?._id, pageSize]);
+  const loadLocal = useCallback(async () => {
+    setRefreshing(true);
+    setLoading(true);
+    setLocalMessage(null);
+    setHasMore(false);
+    setPage(1);
+    try {
+      if (!user) {
+        setSightings([]);
+        setLocalMessage('Sign in to see nearby sightings.');
+        return;
+      }
+
+      const longitudeRaw = user.longitude ?? user?.location?.coordinates?.[0];
+      const latitudeRaw = user.latitude ?? user?.location?.coordinates?.[1];
+
+      const hasLongitude = !(longitudeRaw === null || longitudeRaw === undefined || (typeof longitudeRaw === 'string' && longitudeRaw.trim() === ''));
+      const hasLatitude = !(latitudeRaw === null || latitudeRaw === undefined || (typeof latitudeRaw === 'string' && latitudeRaw.trim() === ''));
+
+      if (!hasLongitude || !hasLatitude) {
+        setSightings([]);
+        setLocalMessage('Add a location to your profile to see nearby sightings.');
+        return;
+      }
+
+      const longitudeNum = typeof longitudeRaw === 'number' ? longitudeRaw : Number(longitudeRaw);
+      const latitudeNum = typeof latitudeRaw === 'number' ? latitudeRaw : Number(latitudeRaw);
+      if (!Number.isFinite(longitudeNum) || !Number.isFinite(latitudeNum) || (longitudeNum === 0 && latitudeNum === 0)) {
+        setSightings([]);
+        setLocalMessage('Add a location to your profile to see nearby sightings.');
+        return;
+      }
+
+      const radiusRaw = user.radius;
+      const hasRadius = !(radiusRaw === null || radiusRaw === undefined || (typeof radiusRaw === 'string' && radiusRaw.trim() === ''));
+      const radiusMiles = typeof radiusRaw === 'number' ? radiusRaw : Number(radiusRaw);
+      if (!hasRadius || !Number.isFinite(radiusMiles) || radiusMiles <= 0) {
+        setSightings([]);
+        setLocalMessage('Set a search radius in your profile to see nearby sightings.');
+        return;
+      }
+
+      const distMeters = Math.max(250, Math.round(radiusMiles * 1609.34));
+      const resp = await apiGetSightingsNear(longitudeNum, latitudeNum, distMeters, token || undefined);
+      const payload = resp?.data;
+      const items = Array.isArray(payload) ? payload : (payload?.items || []);
+      // Sort items by timestamp in descending order (newest first)
+      const sortedItems = items.sort((a, b) => getSightingTimestamp(b) - getSightingTimestamp(a));
+      setSightings(sortedItems);
+
+      if (sortedItems.length === 0) {
+        setLocalMessage('No sightings within your radius yet. Try widening your search or check back later.');
+      } else {
+        setLocalMessage(null);
+        if (user?._id) {
+          try {
+            const likedResp = await apiGetLikedSightingsByUser(user._id);
+            const likedArr = Array.isArray(likedResp?.data) ? likedResp.data : [];
+            const likedSet = new Set(
+              likedArr
+                .map((l: any) => (typeof l.sighting === 'object' ? l.sighting?._id : l.sighting))
+                .filter(Boolean)
+            );
+            const pageIds = sortedItems.map((it: any) => it._id);
+            setLikedMap((prev) => {
+              const next = { ...prev } as Record<string, boolean>;
+              pageIds.forEach((id: string) => { next[id] = likedSet.has(id); });
+              return next;
+            });
+          } catch (e) {
+            // ignore like prefetch errors for local feed
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load local sightings', error);
+      const message = error instanceof Error ? error.message : 'Failed to load local sightings.';
+      setSightings([]);
+      setLocalMessage(message);
+    } finally {
+      setHasMore(false);
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [token, user]);
+
+  useEffect(() => {
+    if (activeTab === 'Discover' || activeTab === 'Following') {
+      loadPage(1);
+    } else if (activeTab === 'Local') {
+      loadLocal();
+    }
+  }, [activeTab, loadLocal, loadPage]);
+
+  const loadMoreLocal = useCallback(() => {
+    if (activeTab !== 'Local' || loading || !hasMore) {
+      return;
+    }
+
+    const nextPage = localPage + 1;
+    const nextSlice = localAllSightings.slice(0, nextPage * LOCAL_PAGE_SIZE);
+    if (nextSlice.length === sightings.length) {
+      setHasMore(false);
+      return;
+    }
+
+    setSightings(nextSlice);
+    setLocalPage(nextPage);
+    setHasMore(nextSlice.length < localAllSightings.length);
+  }, [activeTab, hasMore, localAllSightings, localPage, loading, sightings]);
 
   const handleMenuOpen = (item) => {
     setSelectedSighting(item);
@@ -339,6 +473,33 @@ const loadCommentsFor = async (sightingId: string) => {
     return 'just now';
   }
 
+  // Helper function to calculate and format distance for local posts
+  const getDistanceText = (item: any): string | null => {
+    if (activeTab !== 'Local' || !user) return null;
+    
+    const userLat = user.latitude ?? user?.location?.coordinates?.[1];
+    const userLon = user.longitude ?? user?.location?.coordinates?.[0];
+    const sightingLat = item?.location?.coordinates?.[1] || item?.latitude;
+    const sightingLon = item?.location?.coordinates?.[0] || item?.longitude;
+    
+    if (!userLat || !userLon || !sightingLat || !sightingLon) return null;
+    
+    const distance = calculateDistance(
+      Number(userLat), 
+      Number(userLon), 
+      Number(sightingLat), 
+      Number(sightingLon)
+    );
+    
+    if (distance < 0.1) {
+      return '< 0.1 mi away';
+    } else if (distance < 1) {
+      return `${distance.toFixed(1)} mi away`;
+    } else {
+      return `${distance.toFixed(1)} mi away`;
+    }
+  };
+
   const renderImages = (mediaUrls, sightingId) => {
     if (!mediaUrls || mediaUrls.length === 0) return null;
     const isVideoUrl = (url: string) => /\.(mp4|mov|m4v|webm)$/i.test(url) || /\/video\/upload\//i.test(url);
@@ -453,7 +614,15 @@ const loadCommentsFor = async (sightingId: string) => {
           />
           <View style={{ flex: 1 }}>
             <Text style={FeedScreenStyles.username}>{item?.user?.username || item.userName || 'Unknown'}</Text>
-            <Text style={FeedScreenStyles.time}>{getRelativeTime(item.createdAt)}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={FeedScreenStyles.time}>{getRelativeTime(item.createdAt)}</Text>
+              {getDistanceText(item) && (
+                <>
+                  <Text style={[FeedScreenStyles.time, { marginHorizontal: 4 }]}>•</Text>
+                  <Text style={[FeedScreenStyles.time, { color: '#666' }]}>{getDistanceText(item)}</Text>
+                </>
+              )}
+            </View>
           </View>
         </TouchableOpacity>
         <TouchableOpacity
@@ -629,7 +798,7 @@ const loadCommentsFor = async (sightingId: string) => {
         })}
       </View>
 
-      {(activeTab === 'Discover' || activeTab === 'Following') ? (
+      {activeTab === 'Discover' || activeTab === 'Following' ? (
         loading && sightings.length === 0 ? (
           <Text style={{ color: Colors.light.primaryGreen, paddingTop: tabBarHeight + statusPad + extraOffset + 8 }}>Loading...</Text>
         ) : (
@@ -638,32 +807,63 @@ const loadCommentsFor = async (sightingId: string) => {
               <Text style={{ color: '#aaa' }}>Log in to see posts from people you follow.</Text>
             </View>
           ) : (
-          <FlatList
-            data={sightings}
-            keyExtractor={item => item._id}
-            renderItem={renderItem}
-            onEndReached={() => { if (hasMore && !loading) loadPage(page + 1); }}
-            onEndReachedThreshold={0.5}
-            onViewableItemsChanged={onViewableItemsChanged.current}
-            viewabilityConfig={viewabilityConfig}
-            contentContainerStyle={{ paddingTop: tabBarHeight + statusPad + extraOffset + 8, paddingBottom: 32 }}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={() => loadPage(1)}
-                colors={[Colors.light.primaryGreen]}
-                tintColor={Colors.light.primaryGreen}
-              />
-            }
-            ListFooterComponent={hasMore ? <Text style={{ textAlign: 'center', padding: 8 }}>Loading more...</Text> : null}
-          />
+            <FlatList
+              data={sightings}
+              keyExtractor={item => item._id}
+              renderItem={renderItem}
+              onEndReached={() => { if (hasMore && !loading) loadPage(page + 1); }}
+              onEndReachedThreshold={0.5}
+              onViewableItemsChanged={onViewableItemsChanged.current}
+              viewabilityConfig={viewabilityConfig}
+              contentContainerStyle={{ paddingTop: tabBarHeight + statusPad + extraOffset + 8, paddingBottom: 32 }}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={() => loadPage(1)}
+                  colors={[Colors.light.primaryGreen]}
+                  tintColor={Colors.light.primaryGreen}
+                />
+              }
+              ListFooterComponent={hasMore ? <Text style={{ textAlign: 'center', padding: 8 }}>Loading more...</Text> : null}
+            />
           )
         )
+      ) : activeTab === 'Local' ? (
+        <View style={{ flex: 1 }}>
+          {loading && sightings.length === 0 ? (
+            <Text style={{ color: Colors.light.primaryGreen, paddingTop: tabBarHeight + statusPad + extraOffset + 8, textAlign: 'center' }}>Loading...</Text>
+          ) : localMessage ? (
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingTop: tabBarHeight + statusPad + extraOffset }}>
+              <Text style={{ color: '#aaa', textAlign: 'center', lineHeight: 22 }}>{localMessage}</Text>
+              <TouchableOpacity onPress={() => loadLocal()} style={{ marginTop: 16, paddingHorizontal: 18, paddingVertical: 10, backgroundColor: Colors.light.primaryGreen, borderRadius: 8 }}>
+                <Text style={{ color: '#000', fontWeight: '700' }}>Refresh</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <FlatList
+              data={sightings}
+              keyExtractor={item => item._id}
+              renderItem={renderItem}
+              onViewableItemsChanged={onViewableItemsChanged.current}
+              viewabilityConfig={viewabilityConfig}
+              contentContainerStyle={{ paddingTop: tabBarHeight + statusPad + extraOffset + 8, paddingBottom: 32 }}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={() => loadLocal()}
+                  colors={[Colors.light.primaryGreen]}
+                  tintColor={Colors.light.primaryGreen}
+                />
+              }
+            />
+          )}
+        </View>
       ) : (
-  <View style={{ flex:1, paddingTop: tabBarHeight + statusPad + extraOffset }}>
+        <View style={{ flex: 1, paddingTop: tabBarHeight + statusPad + extraOffset }}>
           <ComingSoonScreen />
         </View>
       )}
+
       {/* Popup menu modal */}
       <Modal
         visible={menuVisible}
@@ -784,3 +984,13 @@ const verificationStyles = StyleSheet.create({
     textShadowRadius: 1,
   },
 });
+
+
+
+
+
+
+
+
+
+

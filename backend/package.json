@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "seed:test-network": "node scripts/bootstrap-test-network.js"
   },
   "dependencies": {
     "cloudinary": "^1.41.3",
@@ -17,7 +18,8 @@
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
     "mongodb": "^6.18.0",
-    "mongoose": "^8.4.1"
+    "mongoose": "^8.4.1",
+    "@google/genai": "^0.3.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.3"

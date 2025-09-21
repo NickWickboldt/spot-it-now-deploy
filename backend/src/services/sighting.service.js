@@ -1,6 +1,7 @@
 import { Comment } from '../models/comment.model.js';
 import { Follow } from '../models/follow.model.js';
 import { Like } from '../models/like.model.js';
+import { Animal } from '../models/animal.model.js';
 import { Sighting } from '../models/sighting.model.js';
 import { ApiError } from '../utils/ApiError.util.js';
 import { log } from '../utils/logger.util.js';
@@ -315,17 +316,57 @@ const getSightingsByAnimal = async (animalId) => {
  * @returns {Promise<Sighting[]>} An array of nearby sighting objects.
  */
 const findSightingsNear = async (longitude, latitude, maxDistanceInMeters = 10000) => {
-    return await Sighting.find({
-        location: {
-            $near: {
-                $geometry: {
-                    type: "Point",
-                    coordinates: [longitude, latitude]
-                },
-                $maxDistance: maxDistanceInMeters
-            }
-        }
-    });
+  const lon = Number(longitude);
+  const lat = Number(latitude);
+  const distInput = Number(maxDistanceInMeters);
+
+  if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
+    return [];
+  }
+
+  const distMeters = Number.isFinite(distInput) && distInput > 0 ? distInput : 10000;
+  const clampedDistance = Math.min(distMeters, 500000); // cap at ~310 miles
+
+  const docs = await Sighting.find({
+    isPrivate: { $ne: true },
+    location: {
+      $near: {
+        $geometry: {
+          type: 'Point',
+          coordinates: [lon, lat],
+        },
+        $maxDistance: clampedDistance,
+      },
+    },
+  })
+    .populate('user', 'username profilePictureUrl')
+    .lean();
+
+  const animalIds = Array.from(
+    new Set(
+      docs
+        .map((doc) => doc.animal)
+        .filter((value) => value !== null && value !== undefined)
+        .map((value) => (typeof value === 'string' ? value : value.toString()))
+        .filter((value) => value && value.length === 24)
+    )
+  );
+
+  let animalsById = new Map();
+  if (animalIds.length) {
+    const animals = await Animal.find({ _id: { $in: animalIds } })
+      .select('commonName')
+      .lean();
+    animalsById = new Map(animals.map((animal) => [animal._id.toString(), animal]));
+  }
+
+  return docs.map((doc) => {
+    const animalId = typeof doc.animal === 'string' ? doc.animal : doc.animal?.toString?.();
+    return {
+      ...doc,
+      animal: animalId && animalsById.has(animalId) ? animalsById.get(animalId) : null,
+    };
+  });
 };
 
 /**
@@ -660,4 +701,7 @@ export const sightingService = {
     return sighting;
   }
 };
+
+
+
 
