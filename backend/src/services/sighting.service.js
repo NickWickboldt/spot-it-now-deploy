@@ -4,8 +4,136 @@ import { Like } from '../models/like.model.js';
 import { Sighting } from '../models/sighting.model.js';
 import { ApiError } from '../utils/ApiError.util.js';
 import { log } from '../utils/logger.util.js';
+import { cloudinary, configureCloudinary } from '../config/cloudinary.config.js';
 import { animalService } from './animal.service.js';
 import { userDiscoveryService } from './userDiscovery.service.js';
+
+const isCloudinaryConfigured = () => Boolean(
+  process.env.CLOUDINARY_CLOUD_NAME &&
+  process.env.CLOUDINARY_API_KEY &&
+  process.env.CLOUDINARY_API_SECRET
+);
+
+let cloudinaryConfigured = false;
+
+const ensureCloudinaryConfigured = () => {
+  if (cloudinaryConfigured) {
+    return true;
+  }
+
+  if (!isCloudinaryConfigured()) {
+    return false;
+  }
+
+  configureCloudinary();
+  cloudinaryConfigured = true;
+  return true;
+};
+
+const extractCloudinaryAssetFromUrl = (mediaUrl) => {
+  if (!mediaUrl || typeof mediaUrl !== 'string') {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(mediaUrl);
+    if (!parsed.hostname || !parsed.hostname.endsWith('cloudinary.com')) {
+      return null;
+    }
+
+    const segments = parsed.pathname.split('/').filter(Boolean);
+    if (segments.length < 4) {
+      return null;
+    }
+
+    const [, resourceType, deliveryType, ...rest] = segments;
+    if (deliveryType !== 'upload') {
+      return null;
+    }
+
+    if (!['image', 'video'].includes(resourceType)) {
+      return null;
+    }
+
+    const versionIndex = rest.findIndex((segment) => /^v\d+$/.test(segment));
+    let publicIdParts = versionIndex >= 0 ? rest.slice(versionIndex + 1) : rest;
+
+    while (publicIdParts.length && publicIdParts[0].includes(',')) {
+      publicIdParts = publicIdParts.slice(1);
+    }
+
+    if (!publicIdParts.length) {
+      return null;
+    }
+
+    const filename = publicIdParts.pop();
+    const dotIndex = filename.lastIndexOf('.');
+    const baseName = dotIndex > -1 ? filename.slice(0, dotIndex) : filename;
+    publicIdParts.push(baseName);
+
+    return {
+      publicId: publicIdParts.join('/'),
+      resourceType,
+    };
+  } catch (error) {
+    return null;
+  }
+};
+
+const deleteCloudinaryAssetsForSighting = async (mediaUrls = [], context = {}) => {
+  if (!ensureCloudinaryConfigured()) {
+    log.debug('sighting-service', 'Skipping Cloudinary cleanup; configuration missing', { sightingId: context.sightingId });
+    return;
+  }
+
+  const assets = mediaUrls
+    .map((url) => extractCloudinaryAssetFromUrl(url))
+    .filter(Boolean);
+
+  if (!assets.length) {
+    return;
+  }
+
+  const uniqueAssets = Array.from(
+    new Map(assets.map((asset) => [`${asset.resourceType}:${asset.publicId}`, asset])).values()
+  );
+
+  try {
+    const results = await Promise.allSettled(
+      uniqueAssets.map(async (asset) => {
+        try {
+          const result = await cloudinary.uploader.destroy(asset.publicId, {
+            resource_type: asset.resourceType,
+            invalidate: true,
+          });
+          log.debug('sighting-service', 'Deleted Cloudinary asset for sighting', {
+            sightingId: context.sightingId,
+            resourceType: asset.resourceType,
+            publicId: asset.publicId,
+            result,
+          });
+          return result;
+        } catch (error) {
+          const reason = error?.message || error;
+          log.warn('sighting-service', 'Failed to delete Cloudinary asset for sighting', {
+            sightingId: context.sightingId,
+            resourceType: asset.resourceType,
+            publicId: asset.publicId,
+            error: reason,
+          });
+          return null;
+        }
+      })
+    );
+    return results;
+  } catch (error) {
+    const reason = error?.message || error;
+    log.warn('sighting-service', 'Cloudinary cleanup threw unexpectedly; continuing', {
+      sightingId: context.sightingId,
+      error: reason,
+    });
+  }
+};
 
 /**
  * Creates a new sighting post.
@@ -114,7 +242,7 @@ const createSighting = async (userId, userName, sightingData) => {
  * @param {boolean} isAdmin - Flag indicating if the user is an admin.
  */
 const deleteSighting = async (sightingId, userId, isAdmin = false) => {
-  const sighting = await Sighting.findById(sightingId).select('user');
+  const sighting = await Sighting.findById(sightingId).select('user mediaUrls');
 
   if (!sighting) {
     throw new ApiError(404, 'Sighting not found');
@@ -130,7 +258,16 @@ const deleteSighting = async (sightingId, userId, isAdmin = false) => {
     throw new ApiError(403, 'You are not authorized to delete this sighting.');
   }
 
-  await Sighting.findByIdAndDelete(sightingId);
+  const mediaUrls = Array.isArray(sighting.mediaUrls) ? sighting.mediaUrls : [];
+
+  try {
+    await deleteCloudinaryAssetsForSighting(mediaUrls, { sightingId });
+  } catch (error) {
+    const reason = error?.message || error;
+    log.warn('sighting-service', 'Continuing after Cloudinary cleanup failure', { sightingId, error: reason });
+  }
+
+  await sighting.deleteOne();
 };
 
 /**
@@ -523,3 +660,4 @@ export const sightingService = {
     return sighting;
   }
 };
+
