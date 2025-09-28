@@ -3,6 +3,7 @@ import { Follow } from '../models/follow.model.js';
 import { Like } from '../models/like.model.js';
 import { Animal } from '../models/animal.model.js';
 import { Sighting } from '../models/sighting.model.js';
+import { CommunityVote } from '../models/communityVote.model.js';
 import { ApiError } from '../utils/ApiError.util.js';
 import { log } from '../utils/logger.util.js';
 import { cloudinary, configureCloudinary } from '../config/cloudinary.config.js';
@@ -669,6 +670,100 @@ export const sightingService = {
     }
 
     return { items, total, page, pageSize };
+  }
+  ,getCommunitySightingCandidate: async ({ userId } = {}) => {
+    if (!userId) {
+      throw new ApiError(400, 'User ID is required to fetch community sightings');
+    }
+
+    const votedIds = await CommunityVote.find({ user: userId }).distinct('sighting');
+    const match = {
+      isPrivate: { $ne: true },
+      verifiedByCommunity: { $ne: true },
+      'mediaUrls.0': { $exists: true },
+    };
+
+    if (votedIds.length) {
+      match._id = { $nin: votedIds };
+    }
+
+    const [randomDoc] = await Sighting.aggregate([
+      { $match: match },
+      { $sample: { size: 1 } },
+    ]);
+
+    if (!randomDoc) {
+      return null;
+    }
+
+    const sighting = await Sighting.findById(randomDoc._id)
+      .populate('user', 'username profilePictureUrl')
+      .populate('animal', 'commonName scientificName')
+      .lean();
+
+    return sighting;
+  }
+  ,submitCommunityVote: async ({ userId, sightingId, vote }) => {
+    if (!userId || !sightingId) {
+      throw new ApiError(400, 'User and sighting are required');
+    }
+
+    const normalizedVote = vote === 'APPROVE' ? 'APPROVE' : 'REJECT';
+
+    const [sighting, existingVote] = await Promise.all([
+      Sighting.findOne({ _id: sightingId, isPrivate: { $ne: true } }).populate('animal'),
+      CommunityVote.findOne({ user: userId, sighting: sightingId }),
+    ]);
+
+    if (!sighting) {
+      throw new ApiError(404, 'Sighting not found');
+    }
+
+    if (existingVote) {
+      throw new ApiError(400, 'You have already reviewed this sighting');
+    }
+
+    await CommunityVote.create({ user: userId, sighting: sightingId, vote: normalizedVote });
+
+    const now = new Date();
+    const inc = normalizedVote === 'APPROVE'
+      ? { 'communityReview.approvals': 1 }
+      : { 'communityReview.rejections': 1 };
+    const set = { 'communityReview.lastReviewedAt': now };
+
+    if (normalizedVote === 'APPROVE') {
+      set.verifiedByCommunity = true;
+    }
+
+    const updatedSighting = await Sighting.findByIdAndUpdate(
+      sightingId,
+      { $inc: inc, $set: set },
+      { new: true }
+    )
+      .populate('user', 'username profilePictureUrl')
+      .populate('animal', 'commonName scientificName')
+      .lean();
+
+    if (!updatedSighting) {
+      throw new ApiError(404, 'Sighting not found after vote');
+    }
+
+    if (normalizedVote === 'APPROVE' && sighting.animal) {
+      try {
+        const ownerId = String(sighting.user);
+        const animalId = sighting.animal._id ? sighting.animal._id : sighting.animal;
+        if (animalId) {
+          await userDiscoveryService.updateVerification(ownerId, animalId, 'COMMUNITY');
+        }
+      } catch (error) {
+        log.warn('sighting-service', 'Failed to update discovery with community verification', {
+          sightingId,
+          error: error?.message || error,
+        });
+      }
+    }
+
+    return { vote: normalizedVote, sighting: updatedSighting };
   }
   
   /**

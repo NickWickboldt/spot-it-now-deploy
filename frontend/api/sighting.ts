@@ -73,3 +73,17 @@ export async function apiRemoveMediaFromSighting(token: string, sightingId: stri
         body: JSON.stringify({ mediaUrl }),
     });
 }
+export type CommunityVoteType = 'APPROVE' | 'REJECT';
+
+export async function apiGetCommunitySighting(token: string) {
+    return fetchWithAuth('/sightings/community/next', token, {
+        method: 'GET',
+    });
+}
+
+export async function apiSubmitCommunityVote(token: string, sightingId: string, vote: CommunityVoteType) {
+    return fetchWithAuth(`/sightings/${sightingId}/community-vote`, token, {
+        method: 'POST',
+        body: JSON.stringify({ vote }),
+    });
+}

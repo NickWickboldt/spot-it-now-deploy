@@ -111,6 +111,37 @@ const getFollowingRecentSightings = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Controller to fetch a random sighting for community review.
+ */
+const getCommunityReviewSighting = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+  const sighting = await sightingService.getCommunitySightingCandidate({ userId });
+
+  return res
+    .status(200)
+    .json(new ApiResponse(
+      200,
+      sighting,
+      sighting ? 'Community sighting fetched successfully' : 'No community sightings available'
+    ));
+});
+
+/**
+ * Controller to submit a community verification vote for a sighting.
+ */
+const submitCommunityVerificationVote = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+  const { sightingId } = req.params;
+  const { vote } = req.body;
+
+  const result = await sightingService.submitCommunityVote({ userId, sightingId, vote });
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, result, 'Community vote recorded successfully'));
+});
+
+/**
  * Admin controller to fetch paginated sightings with optional search.
  * Query params: page, pageSize, q
  */
@@ -161,6 +192,6 @@ export {
   addMediaUrlToSighting, createSighting,
   deleteSighting, findSightingsNear,
   // admin
-  getAllSightings, getRecentSightings, getFollowingRecentSightings, getSightingById, getSightingsByAnimal, getSightingsByUser, getMySightings, removeMediaUrlFromSighting, updateSightingField
+  getAllSightings, getRecentSightings, getFollowingRecentSightings, getCommunityReviewSighting, submitCommunityVerificationVote, getSightingById, getSightingsByAnimal, getSightingsByUser, getMySightings, removeMediaUrlFromSighting, updateSightingField
 };
 

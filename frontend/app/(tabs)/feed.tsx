@@ -1,12 +1,12 @@
 import { ResizeMode, Video } from 'expo-av';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Animated, Dimensions, Easing, FlatList, Image, Modal, Platform, RefreshControl, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Animated, Dimensions, Easing, FlatList, Image, Modal, PanResponder, Platform, RefreshControl, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { apiCreateComment, apiDeleteComment, apiGetCommentsForSighting, apiUpdateComment } from '../../api/comment';
 import { apiGetLikedSightingsByUser, apiToggleSightingLike } from '../../api/like';
-import { apiAdminDeleteSighting, apiGetFollowingRecentSightings, apiGetRecentSightings, apiGetSightingsNear } from '../../api/sighting';
+import { CommunityVoteType, apiAdminDeleteSighting, apiGetCommunitySighting, apiGetFollowingRecentSightings, apiGetRecentSightings, apiGetSightingsNear, apiSubmitCommunityVote } from '../../api/sighting';
 import { Colors } from '../../constants/Colors';
 import { FeedScreenStyles } from '../../constants/FeedStyles';
 import { useAuth } from '../../context/AuthContext';
@@ -85,6 +85,12 @@ export default function FeedScreen() {
     setVisibleMap(next);
   });
 
+  const [communityCandidate, setCommunityCandidate] = useState<any | null>(null);
+  const [communityLoading, setCommunityLoading] = useState(false);
+  const [communityProcessing, setCommunityProcessing] = useState(false);
+  const [communityMessage, setCommunityMessage] = useState<string | null>(null);
+  const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+
   const getScale = (id: string) => {
     if (!scaleMapRef.current[id]) {
       scaleMapRef.current[id] = new Animated.Value(1);
@@ -100,12 +106,140 @@ export default function FeedScreen() {
     ]).start();
   };
 
+  const loadCommunityCandidate = useCallback(async () => {
+    if (!token || token === 'local-admin-fake-token') {
+      setCommunityCandidate(null);
+      setCommunityMessage('Log in to help verify community sightings.');
+      setCommunityLoading(false);
+      pan.setValue({ x: 0, y: 0 });
+      return;
+    }
+
+    setCommunityLoading(true);
+    setCommunityMessage(null);
+    setCommunityCandidate(null);
+
+    try {
+      const response = await apiGetCommunitySighting(token);
+      const candidate = response?.data || null;
+
+      if (candidate) {
+        setCommunityCandidate(candidate);
+      } else {
+        setCommunityCandidate(null);
+        setCommunityMessage('All caught up! Check back later for more community reviews.');
+      }
+    } catch (error: any) {
+      const message = error?.message || 'Failed to load community sighting.';
+      setCommunityMessage(message);
+    } finally {
+      setCommunityLoading(false);
+      pan.setValue({ x: 0, y: 0 });
+    }
+  }, [pan, token]);
+
+  const submitCommunityVoteAction = useCallback(async (voteType: CommunityVoteType) => {
+    if (!communityCandidate) {
+      return;
+    }
+    if (!token || token === 'local-admin-fake-token') {
+      Alert.alert('Community Review', 'Log in to vote on community sightings.');
+      return;
+    }
+    if (communityProcessing) {
+      return;
+    }
+
+    setCommunityProcessing(true);
+    try {
+      await apiSubmitCommunityVote(token, communityCandidate._id, voteType);
+      await loadCommunityCandidate();
+    } catch (error: any) {
+      const message = error?.message || 'Failed to record your vote.';
+      Alert.alert('Community Review', message);
+    } finally {
+      setCommunityProcessing(false);
+      pan.setValue({ x: 0, y: 0 });
+    }
+  }, [communityCandidate, communityProcessing, loadCommunityCandidate, pan, token]);
+
+  const animateAndVote = useCallback((voteType: CommunityVoteType) => {
+    if (!communityCandidate || communityProcessing) {
+      return;
+    }
+    const targetX = voteType === 'APPROVE' ? width : -width;
+    Animated.timing(pan, {
+      toValue: { x: targetX, y: 0 },
+      duration: 220,
+      useNativeDriver: true,
+    }).start(() => {
+      submitCommunityVoteAction(voteType);
+    });
+  }, [communityCandidate, communityProcessing, pan, submitCommunityVoteAction]);
+
+  const rotate = pan.x.interpolate({
+    inputRange: [-width, 0, width],
+    outputRange: ['-12deg', '0deg', '12deg'],
+    extrapolate: 'clamp',
+  });
+
+  const approveOpacity = pan.x.interpolate({
+    inputRange: [30, 150],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+
+  const rejectOpacity = pan.x.interpolate({
+    inputRange: [-150, -30],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gesture) => {
+          if (communityProcessing || !communityCandidate) return false;
+          return Math.abs(gesture.dx) > 12 && Math.abs(gesture.dx) > Math.abs(gesture.dy);
+        },
+        onPanResponderMove: (_, gesture) => {
+          pan.setValue({ x: gesture.dx, y: gesture.dy });
+        },
+        onPanResponderRelease: (_, gesture) => {
+          const threshold = 120;
+          if (communityProcessing) {
+            Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: true }).start();
+            return;
+          }
+          if (gesture.dx > threshold) {
+            animateAndVote('APPROVE');
+          } else if (gesture.dx < -threshold) {
+            animateAndVote('REJECT');
+          } else {
+            Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: true }).start();
+          }
+        },
+        onPanResponderTerminate: () => {
+          Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: true }).start();
+        },
+      }),
+    [animateAndVote, communityCandidate, communityProcessing, pan]
+  );
+
+
+
   useEffect(() => {
     // Load the first page whenever the active tab changes (Discover/Following)
     if (activeTab === 'Discover' || activeTab === 'Following') {
       loadPage(1);
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'Community') {
+      loadCommunityCandidate();
+    }
+  }, [activeTab, loadCommunityCandidate]);
 
   const loadPage = useCallback((p = 1) => {
     if (p === 1) {
@@ -500,7 +634,7 @@ const loadCommentsFor = async (sightingId: string) => {
     }
   };
 
-  const renderImages = (mediaUrls, sightingId) => {
+  const renderImages = (mediaUrls, sightingId, forceVisible = false) => {
     if (!mediaUrls || mediaUrls.length === 0) return null;
     const isVideoUrl = (url: string) => /\.(mp4|mov|m4v|webm)$/i.test(url) || /\/video\/upload\//i.test(url);
     const derivePoster = (url: string): string | undefined => {
@@ -518,7 +652,7 @@ const loadCommentsFor = async (sightingId: string) => {
       }
     };
     const VideoComponent: any = Video as any;
-    const isVisible = !!visibleMap[sightingId];
+    const isVisible = forceVisible || !!visibleMap[sightingId];
     if (mediaUrls.length === 1) {
       const url = mediaUrls[0];
       if (isVideoUrl(url)) {
@@ -798,7 +932,125 @@ const loadCommentsFor = async (sightingId: string) => {
         })}
       </View>
 
-      {activeTab === 'Discover' || activeTab === 'Following' ? (
+      {activeTab === 'Community' ? (
+        <View style={[communityStyles.container, { paddingTop: tabBarHeight + statusPad + extraOffset }]}> 
+          {communityLoading && !communityCandidate ? (
+            <View style={communityStyles.loadingContainer}>
+              <ActivityIndicator color={Colors.light.primaryGreen} size="large" />
+              <Text style={communityStyles.loadingText}>Loading community sighting...</Text>
+            </View>
+          ) : (!token || token === 'local-admin-fake-token') ? (
+            <View style={communityStyles.emptyState}>
+              <Text style={communityStyles.emptyText}>Log in to help verify community sightings.</Text>
+            </View>
+          ) : communityCandidate ? (
+            <>
+              <Animated.View style={[communityStyles.cardWrapper, { transform: [{ translateX: pan.x }, { translateY: pan.y }, { rotate }] }]} {...panResponder.panHandlers}>
+                <Animated.View style={[communityStyles.swipeLabel, communityStyles.approveLabel, { opacity: approveOpacity }]}>
+                  <Text style={communityStyles.approveText}>VERIFIED</Text>
+                </Animated.View>
+                <Animated.View style={[communityStyles.swipeLabel, communityStyles.rejectLabel, { opacity: rejectOpacity }]}>
+                  <Text style={communityStyles.rejectText}>FLAG</Text>
+                </Animated.View>
+                <View style={FeedScreenStyles.card}>
+                  <View style={FeedScreenStyles.cardHeader}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        const userId = communityCandidate?.user?._id || communityCandidate?.user;
+                        const username = communityCandidate?.user?.username || communityCandidate?.userName || '';
+                        const profilePictureUrl = communityCandidate?.user?.profilePictureUrl || communityCandidate?.userProfilePictureUrl || '';
+                        if (userId) {
+                          router.push({
+                            pathname: '/(user)/user_profile',
+                            params: { userId: String(userId), username: String(username), profilePictureUrl: String(profilePictureUrl) }
+                          });
+                        }
+                      }}
+                      style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
+                      activeOpacity={0.8}
+                    >
+                      <Image
+                        source={{ uri: (communityCandidate?.user?.profilePictureUrl || communityCandidate?.userProfilePictureUrl || 'https://ui-avatars.com/api/?name=User') }}
+                        style={FeedScreenStyles.avatar}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <Text style={FeedScreenStyles.username}>{communityCandidate?.user?.username || communityCandidate?.userName || 'Unknown'}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <Text style={FeedScreenStyles.time}>{getRelativeTime(communityCandidate.createdAt)}</Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+                  {renderImages(communityCandidate.mediaUrls, communityCandidate._id, true)}
+                  <Text style={FeedScreenStyles.cardCaption}>{communityCandidate.caption || 'No caption provided.'}</Text>
+                  {(communityCandidate.verifiedByAI || communityCandidate.verifiedByUser || communityCandidate.verifiedByCommunity) && (
+                    <View style={verificationStyles.badgeContainer}>
+                      {communityCandidate.verifiedByAI && (
+                        <View style={[verificationStyles.badge, verificationStyles.aiBadge]}>
+                          <Text style={verificationStyles.badgeText}>AI</Text>
+                        </View>
+                      )}
+                      {communityCandidate.verifiedByUser && (
+                        <View style={[verificationStyles.badge, verificationStyles.userBadge]}>
+                          <Text style={verificationStyles.badgeText}>User</Text>
+                        </View>
+                      )}
+                      {communityCandidate.verifiedByCommunity && (
+                        <View style={[verificationStyles.badge, verificationStyles.communityBadge]}>
+                          <Text style={verificationStyles.badgeText}>Community</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+                  {communityCandidate.identification?.commonName && (
+                    <Text style={{ marginHorizontal: 12, marginTop: 6, color: '#9aa0a6', fontSize: 12 }}>
+                      Identified as {communityCandidate.identification.commonName}
+                      {communityCandidate.identification?.scientificName ? ' (' + communityCandidate.identification.scientificName + ')' : ''}
+                    </Text>
+                  )}
+                  {communityCandidate.communityReview && (
+                    <Text style={{ marginHorizontal: 12, marginTop: 6, color: '#666', fontSize: 11 }}>
+                      Community approvals: {communityCandidate.communityReview?.approvals || 0} | Flags: {communityCandidate.communityReview?.rejections || 0}
+                    </Text>
+                  )}
+                </View>
+              </Animated.View>
+              <View style={communityStyles.buttonRow}>
+                <TouchableOpacity
+                  style={[
+                    communityStyles.voteButton,
+                    communityStyles.rejectButton,
+                    (communityProcessing || communityLoading) && communityStyles.disabledButton,
+                  ]}
+                  onPress={() => animateAndVote('REJECT')}
+                  disabled={communityProcessing || communityLoading}
+                >
+                  <Text style={communityStyles.voteButtonText}>Fake / Wrong ID</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    communityStyles.voteButton,
+                    communityStyles.approveButton,
+                    (communityProcessing || communityLoading) && communityStyles.disabledButton,
+                  ]}
+                  onPress={() => animateAndVote('APPROVE')}
+                  disabled={communityProcessing || communityLoading}
+                >
+                  <Text style={[communityStyles.voteButtonText, { color: '#000' }]}>Looks Good</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={communityStyles.instructions}>Swipe left to flag, swipe right to verify. Help the community validate sightings.</Text>
+            </>
+          ) : (
+            <View style={communityStyles.emptyState}>
+              <Text style={communityStyles.emptyText}>{communityMessage || 'All caught up! Check back later for more sightings.'}</Text>
+              <TouchableOpacity onPress={loadCommunityCandidate} style={communityStyles.refreshButton} disabled={communityLoading}>
+                <Text style={communityStyles.refreshText}>{communityLoading ? 'Refreshing...' : 'Refresh'}</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      ) : activeTab === 'Discover' || activeTab === 'Following' ? (
         loading && sightings.length === 0 ? (
           <Text style={{ color: Colors.light.primaryGreen, paddingTop: tabBarHeight + statusPad + extraOffset + 8 }}>Loading...</Text>
         ) : (
@@ -908,6 +1160,105 @@ const loadCommentsFor = async (sightingId: string) => {
   );
 }
 
+const communityStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    color: '#888',
+    fontSize: 13,
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  emptyText: {
+    color: '#bbb',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  refreshButton: {
+    marginTop: 18,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: Colors.light.primaryGreen,
+    borderRadius: 10,
+  },
+  refreshText: {
+    color: '#000',
+    fontWeight: '700',
+  },
+  cardWrapper: {
+    alignSelf: 'stretch',
+  },
+  swipeLabel: {
+    position: 'absolute',
+    top: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderWidth: 2,
+    borderRadius: 8,
+    zIndex: 2,
+  },
+  approveLabel: {
+    left: 16,
+    borderColor: '#4CAF50',
+  },
+  approveText: {
+    color: '#4CAF50',
+    fontWeight: '700',
+    letterSpacing: 1.1,
+  },
+  rejectLabel: {
+    right: 16,
+    borderColor: '#FF3B30',
+  },
+  rejectText: {
+    color: '#FF3B30',
+    fontWeight: '700',
+    letterSpacing: 1.1,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    marginTop: 24,
+    gap: 16,
+  },
+  voteButton: {
+    flex: 1,
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  rejectButton: {
+    backgroundColor: '#2f2f2f',
+  },
+  approveButton: {
+    backgroundColor: Colors.light.primaryGreen,
+  },
+  voteButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  disabledButton: {
+    opacity: 0.6,
+  },
+  instructions: {
+    marginTop: 18,
+    color: '#9aa0a6',
+    fontSize: 12,
+    textAlign: 'center',
+  },
+});
+
 const tabStyles = StyleSheet.create({
   // New absolute bar mimicking TikTok top tabs
   absoluteBar: {
@@ -984,9 +1335,6 @@ const verificationStyles = StyleSheet.create({
     textShadowRadius: 1,
   },
 });
-
-
-
 
 
 

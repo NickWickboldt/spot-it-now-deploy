@@ -66,6 +66,20 @@ const sightingSchema = new Schema(
       default: false,
       description: 'Whether this sighting was verified by the community'
     },
+    communityReview: {
+      approvals: {
+        type: Number,
+        default: 0,
+      },
+      rejections: {
+        type: Number,
+        default: 0,
+      },
+      lastReviewedAt: {
+        type: Date,
+        default: null,
+      },
+    },
     // If true, the sighting is hidden from the public feed.
     isPrivate: {
       type: Boolean,
