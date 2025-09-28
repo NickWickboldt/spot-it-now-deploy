@@ -1,6 +1,6 @@
 # Test Network Bootstrap Script
 
-This script generates test data for the SpotItNow application by creating automated users and wildlife sighting posts with AI-generated images.
+This script generates test data for the SpotItNow application by creating automated users and wildlife sighting posts with AI-generated images across major US metropolitan areas.
 
 ## Prerequisites
 
@@ -32,6 +32,7 @@ TEST_NETWORK_POSTS=3
 TEST_NETWORK_BASE_URL=http://localhost:8000/api/v1
 TEST_NETWORK_POST_DELAY_MS=350
 TEST_NETWORK_USER_RADIUS=75
+TEST_NETWORK_CITY=Dallas, TX
 CLOUDINARY_BASE_FOLDER=your_folder_name
 ```
 
@@ -39,7 +40,7 @@ CLOUDINARY_BASE_FOLDER=your_folder_name
 
 ### Basic Usage
 
-Run the script with default settings (5 users, 3 posts each):
+Run the script with default settings (5 users, 3 posts each, Dallas TX area):
 
 ```bash
 cd backend
@@ -61,12 +62,19 @@ node scripts/bootstrap-test-network.js -u 10 -p 5
 node scripts/bootstrap-test-network.js 10 5
 ```
 
-### Custom Server URL
+### Custom City Selection
 
-If your server is running on a different port or host:
+Choose from 50 major US metropolitan areas for test data generation:
 
 ```bash
-node scripts/bootstrap-test-network.js --base-url http://localhost:3000/api/v1
+# Use New York City as the anchor
+node scripts/bootstrap-test-network.js --city "New York, NY"
+
+# Use Los Angeles
+node scripts/bootstrap-test-network.js -c "Los Angeles, CA"
+
+# List all available cities
+node scripts/bootstrap-test-network.js --city list
 ```
 
 ### Get Help
@@ -75,10 +83,32 @@ node scripts/bootstrap-test-network.js --base-url http://localhost:3000/api/v1
 node scripts/bootstrap-test-network.js --help
 ```
 
+This displays:
+```
+Usage: node scripts/bootstrap-test-network.js [options]
+
+Options:
+  -u, --users <number>       Number of automated users to generate (default: 5)
+  -p, --posts <number>       Posts per user (default: 3)
+  -b, --base-url <url>       API base URL (default: http://localhost:8000/api/v1)
+  -c, --city <name>          Anchor city for generated accounts (default: Dallas, TX)
+                             Use "--city list" to print available cities
+  -h, --help                 Show this help message
+
+Environment overrides:
+  GEMINI_API_KEY                   Gemini API key (required)
+  GEMINI_IMAGE_MODEL               Gemini model used for image generation
+  TEST_NETWORK_USERS               Default user count
+  TEST_NETWORK_POSTS               Default post count
+  TEST_NETWORK_BASE_URL            Default API base URL
+  TEST_NETWORK_POST_DELAY_MS       Delay between posts in ms (default 350)
+  TEST_NETWORK_CITY                Default city anchor (matches --city)
+```
+
 ## What the Script Does
 
 1. **Creates Test Users**: Generates users with randomized usernames like `wildotter_a1b2c3`
-2. **Sets User Locations**: Assigns users to locations within the Dallas-Fort Worth area
+2. **Sets User Locations**: Assigns users to neighborhoods within the selected metropolitan area
 3. **Generates Wildlife Images**: Uses Google Gemini AI to create realistic wildlife photographs
 4. **Creates Sighting Posts**: Posts the generated images with captions and location data
 5. **Uploads to Cloudinary**: Stores all images in your Cloudinary account under the `test-network` folder
@@ -98,18 +128,32 @@ The script creates posts featuring these wildlife species:
 Each post includes:
 - AI-generated wildlife photograph
 - Realistic caption describing the sighting
-- Geographic coordinates within the DFW area
+- Geographic coordinates within the selected metropolitan area
 - Species identification (common and scientific names)
 
 ## Geographic Distribution
 
-Test users are distributed across these DFW area clusters:
-- Downtown Dallas (35km radius)
-- Fort Worth (35km radius)
-- Plano (25km radius)
-- Frisco (20km radius)
-- Arlington (25km radius)
-- Denton (30km radius)
+Test users are distributed across neighborhoods within the selected metropolitan area. For each city, the script creates 5 clusters:
+
+- **Downtown**: Central business district (largest radius)
+- **North**: Northern neighborhoods
+- **South**: Southern neighborhoods  
+- **East**: Eastern neighborhoods
+- **West**: Western neighborhoods
+
+### Supported Cities
+
+The script supports 50 major US metropolitan areas including:
+
+**Major Hubs (35km radius)**: New York, NY; Los Angeles, CA; Chicago, IL; Houston, TX; Phoenix, AZ; Philadelphia, PA; San Antonio, TX; San Diego, CA; Dallas, TX; Jacksonville, FL
+
+**Regional Centers (32km radius)**: Fort Worth, TX; San Jose, CA; Austin, TX; Charlotte, NC; Columbus, OH; Indianapolis, IN; San Francisco, CA; Seattle, WA; Denver, CO; Oklahoma City, OK
+
+**Mid-sized Cities (28km radius)**: Nashville, TN; Washington, DC; El Paso, TX; Las Vegas, NV; Boston, MA; Detroit, MI; Louisville, KY; Portland, OR; Memphis, TN; Baltimore, MD; Milwaukee, WI; Albuquerque, NM; Tucson, AZ; Fresno, CA; Sacramento, CA
+
+**Smaller Metros (24km radius)**: Atlanta, GA; Mesa, AZ; Kansas City, MO; Raleigh, NC; Colorado Springs, CO; Omaha, NE; Miami, FL; Virginia Beach, VA; Long Beach, CA; Oakland, CA; Minneapolis, MN; Bakersfield, CA; Tulsa, OK; Tampa, FL; Arlington, TX
+
+Use `node scripts/bootstrap-test-network.js --city list` to see all available cities.
 
 ## Performance Notes
 
@@ -126,6 +170,7 @@ Test users are distributed across these DFW area clusters:
 2. **Server Not Running**: Start your SpotItNow backend server before running the script
 3. **Cloudinary Errors**: Verify your Cloudinary credentials are correct
 4. **Network Timeouts**: Check your internet connection for AI image generation
+5. **Invalid City**: Use `node scripts/bootstrap-test-network.js --city list` to see valid city names
 
 ### Debug Tips
 
@@ -152,4 +197,12 @@ node scripts/bootstrap-test-network.js -u 50 -p 10
 
 # Custom server with moderate data
 node scripts/bootstrap-test-network.js -u 15 -p 4 -b http://staging.myapp.com/api/v1
+
+# Generate data for different cities
+node scripts/bootstrap-test-network.js -u 10 -p 3 -c "New York, NY"
+node scripts/bootstrap-test-network.js -u 10 -p 3 -c "Los Angeles, CA"
+node scripts/bootstrap-test-network.js -u 10 -p 3 -c "Chicago, IL"
+
+# List all available cities
+node scripts/bootstrap-test-network.js --city list
 ```

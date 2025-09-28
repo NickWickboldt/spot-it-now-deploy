@@ -1,12 +1,12 @@
+import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import * as Location from 'expo-location';
-import { Alert, ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { apiUpdateUserDetails } from '../../api/user';
-import { useAuth } from '../../context/AuthContext';
-import { EditProfileStyles } from '../../constants/EditProfileStyles';
+import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
+import { apiUpdateUserDetails } from '../../api/user';
 import { Colors } from '../../constants/Colors';
+import { EditProfileStyles } from '../../constants/EditProfileStyles';
+import { useAuth } from '../../context/AuthContext';
 
 type EditProfileForm = {
   username: string;
@@ -45,6 +45,11 @@ export default function EditProfileScreen(): React.JSX.Element | null {
   });
 
   const [isLocating, setIsLocating] = useState(false);
+  const [locationQuery, setLocationQuery] = useState('');
+  const [isGeocoding, setIsGeocoding] = useState(false);
+  const [locationResults, setLocationResults] = useState<Location.LocationGeocodedLocation[]>([]);
+  const [locationMessage, setLocationMessage] = useState<string | null>(null);
+  const hasLocationQuery = locationQuery.trim().length > 0;
 
   const handleSave = async (): Promise<void> => {
     const radiusVal = Number(form.radius);
@@ -80,9 +85,61 @@ export default function EditProfileScreen(): React.JSX.Element | null {
   const formatCoordinate = (value: number | null) =>
     value !== null && Number.isFinite(value) ? value.toFixed(4) : 'Not set';
 
+  const formatGeocodedAddress = (result: Location.LocationGeocodedLocation) => {
+    // LocationGeocodedLocation doesn't have address info, so we'll show coordinates
+    return `Lat: ${result.latitude.toFixed(4)}, Lon: ${result.longitude.toFixed(4)}`;
+  };
+
+  const handleSearchLocation = async (): Promise<void> => {
+    const trimmedQuery = locationQuery.trim();
+    if (!trimmedQuery) {
+      Alert.alert('Enter a Location', 'Type a city, address, or landmark to search for.');
+      return;
+    }
+
+    try {
+      setIsGeocoding(true);
+      setLocationMessage(null);
+      const results = await Location.geocodeAsync(trimmedQuery);
+      const normalized = results
+        .filter((item) => typeof item.latitude === 'number' && typeof item.longitude === 'number')
+        .slice(0, 5);
+
+      if (!normalized.length) {
+        setLocationResults([]);
+        setLocationMessage('No results found. Try a different search.');
+        return;
+      }
+
+      setLocationResults(normalized);
+      setLocationMessage('Select a result below to update your location.');
+    } catch (error: any) {
+      setLocationResults([]);
+      const fallbackMessage = 'Unable to search for that location right now. Please try again.';
+      setLocationMessage(typeof error?.message === 'string' && error.message ? error.message : fallbackMessage);
+    } finally {
+      setIsGeocoding(false);
+    }
+  };
+
+  const handleSelectLocationResult = (result: Location.LocationGeocodedLocation): void => {
+    const nextLatitude = Number(result.latitude.toFixed(6));
+    const nextLongitude = Number(result.longitude.toFixed(6));
+    setForm((prev) => ({
+      ...prev,
+      latitude: nextLatitude,
+      longitude: nextLongitude,
+    }));
+    setLocationQuery(formatGeocodedAddress(result));
+    setLocationResults([]);
+    setLocationMessage('Location updated. Remember to save your changes.');
+    Alert.alert('Location Updated', 'Location has been set from your search selection.');
+  };
+
   const handleUseCurrentLocation = async () => {
     try {
       setIsLocating(true);
+      setLocationMessage(null);
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert('Permission Denied', 'Location permission is required to capture your current location.');
@@ -98,6 +155,9 @@ export default function EditProfileScreen(): React.JSX.Element | null {
           latitude: nextLatitude,
           longitude: nextLongitude,
         }));
+        setLocationQuery('');
+        setLocationResults([]);
+        setLocationMessage('Location updated using your current GPS coordinates. Remember to save your changes.');
         Alert.alert('Location Updated', 'Your current location has been captured for the local feed.');
       }
     } catch (error: any) {
@@ -138,22 +198,82 @@ export default function EditProfileScreen(): React.JSX.Element | null {
           keyboardType='numeric'
         />
 
-        <View style={{ marginTop: 12, marginBottom: 16 }}>
+        <View style={EditProfileStyles.locationSection}>
           <Text style={EditProfileStyles.fieldLabel}>Current Location</Text>
-          <Text style={{ color: '#999', marginTop: 4 }}>Latitude: {formatCoordinate(form.latitude)}</Text>
-          <Text style={{ color: '#999', marginTop: 2 }}>Longitude: {formatCoordinate(form.longitude)}</Text>
+          <Text style={EditProfileStyles.locationMeta}>Latitude: {formatCoordinate(form.latitude)}</Text>
+          <Text style={EditProfileStyles.locationMeta}>Longitude: {formatCoordinate(form.longitude)}</Text>
           <Pressable
-            style={[EditProfileStyles.halfButton, { marginTop: 12, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 8 }]}
+            style={[
+              EditProfileStyles.locationActionButton,
+              (isLocating || isGeocoding) && EditProfileStyles.locationActionButtonDisabled,
+              { marginTop: 12 },
+            ]}
             onPress={handleUseCurrentLocation}
-            disabled={isLocating}
+            disabled={isLocating || isGeocoding}
           >
             {isLocating ? (
-              <ActivityIndicator size='small' color='#000' />
+              <ActivityIndicator size='small' color='#fff' />
             ) : (
-              <Icon name='map-marker' size={18} color='#000' />
+              <Icon name='map-marker' size={18} color='#fff' />
             )}
-            <Text style={EditProfileStyles.buttonText}>{isLocating ? 'Locating...' : 'Use Current Location'}</Text>
+            <Text style={EditProfileStyles.locationActionButtonText}>
+              {isLocating ? 'Locating...' : 'Use Current Location'}
+            </Text>
           </Pressable>
+
+          <Text style={[EditProfileStyles.fieldLabel, { marginTop: 18 }]}>Search Location</Text>
+          <TextInput
+            value={locationQuery}
+            onChangeText={(t) => {
+              setLocationQuery(t);
+              if (locationMessage) setLocationMessage(null);
+              if (locationResults.length) setLocationResults([]);
+            }}
+            style={EditProfileStyles.input}
+            placeholder='Search city, address, or landmark'
+            autoCapitalize='words'
+            autoCorrect={false}
+            returnKeyType='search'
+            onSubmitEditing={handleSearchLocation}
+          />
+          <Pressable
+            style={[
+              EditProfileStyles.locationActionButton,
+              (!hasLocationQuery || isGeocoding) && EditProfileStyles.locationActionButtonDisabled,
+            ]}
+            onPress={handleSearchLocation}
+            disabled={!hasLocationQuery || isGeocoding}
+          >
+            {isGeocoding ? (
+              <ActivityIndicator size='small' color='#fff' />
+            ) : (
+              <Icon name='search' size={18} color='#fff' />
+            )}
+            <Text style={EditProfileStyles.locationActionButtonText}>
+              {isGeocoding ? 'Searching...' : 'Search & Set'}
+            </Text>
+          </Pressable>
+
+          {locationMessage ? (
+            <Text style={EditProfileStyles.locationStatusText}>{locationMessage}</Text>
+          ) : null}
+
+          {locationResults.length > 0 ? (
+            <View style={EditProfileStyles.locationResultsContainer}>
+              {locationResults.map((result, index) => (
+                <Pressable
+                  key={`location-result-${index}-${result.latitude}-${result.longitude}`}
+                  onPress={() => handleSelectLocationResult(result)}
+                  style={EditProfileStyles.locationResult}
+                >
+                  <Text style={EditProfileStyles.locationResultTitle}>{formatGeocodedAddress(result)}</Text>
+                  <Text style={EditProfileStyles.locationResultSubtitle}>
+                    Latitude: {formatCoordinate(result.latitude ?? null)} | Longitude: {formatCoordinate(result.longitude ?? null)}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
         </View>
 
         <Text style={EditProfileStyles.fieldLabel}>Username</Text>

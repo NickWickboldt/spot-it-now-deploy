@@ -2,20 +2,150 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
+import dotenv from 'dotenv';
 
 import { cloudinary, configureCloudinary } from '../src/config/cloudinary.config.js';
 
-const DFW_CLUSTER_CENTERS = [
-  { name: 'Downtown Dallas', lat: 32.7767, lon: -96.7970, radiusKm: 35 },
-  { name: 'Fort Worth', lat: 32.7555, lon: -97.3308, radiusKm: 35 },
-  { name: 'Plano', lat: 33.0198, lon: -96.6989, radiusKm: 25 },
-  { name: 'Frisco', lat: 33.1507, lon: -96.8236, radiusKm: 20 },
-  { name: 'Arlington', lat: 32.7357, lon: -97.1081, radiusKm: 25 },
-  { name: 'Denton', lat: 33.2148, lon: -97.1331, radiusKm: 30 },
+const normalizeCityKey = (value) => (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const createCity = (name, state, latitude, longitude, radiusKm) => {
+  const displayName = `${name}, ${state}`;
+  return {
+    key: normalizeCityKey(`${name}-${state}`),
+    name,
+    state,
+    displayName,
+    latitude,
+    longitude,
+    radiusKm,
+  };
+};
+
+const CITY_DATA = [
+  createCity('New York', 'NY', 40.730599, -73.986581, 35),
+  createCity('Los Angeles', 'CA', 34.053717, -118.242727, 35),
+  createCity('Chicago', 'IL', 41.875555, -87.624421, 35),
+  createCity('Houston', 'TX', 29.758938, -95.367697, 35),
+  createCity('Phoenix', 'AZ', 33.446768, -112.075672, 35),
+  createCity('Philadelphia', 'PA', 39.952335, -75.163789, 35),
+  createCity('San Antonio', 'TX', 29.424600, -98.495141, 35),
+  createCity('San Diego', 'CA', 32.717421, -117.162771, 35),
+  createCity('Dallas', 'TX', 32.776196, -96.796899, 35),
+  createCity('Jacksonville', 'FL', 30.332184, -81.655651, 35),
+  createCity('Fort Worth', 'TX', 32.753177, -97.332746, 32),
+  createCity('San Jose', 'CA', 37.343850, -121.883135, 32),
+  createCity('Austin', 'TX', 30.271129, -97.743700, 32),
+  createCity('Charlotte', 'NC', 35.227087, -80.843127, 32),
+  createCity('Columbus', 'OH', 39.962260, -83.000707, 32),
+  createCity('Indianapolis', 'IN', 39.768333, -86.158350, 32),
+  createCity('San Francisco', 'CA', 37.779277, -122.419270, 32),
+  createCity('Seattle', 'WA', 47.603832, -122.330062, 32),
+  createCity('Denver', 'CO', 39.739154, -104.984703, 32),
+  createCity('Oklahoma City', 'OK', 35.472989, -97.517054, 32),
+  createCity('Nashville', 'TN', 36.187025, -86.780862, 28),
+  createCity('Washington', 'DC', 38.894955, -77.036646, 28),
+  createCity('El Paso', 'TX', 31.811131, -106.501349, 28),
+  createCity('Las Vegas', 'NV', 36.166286, -115.149225, 28),
+  createCity('Boston', 'MA', 42.360482, -71.059568, 28),
+  createCity('Detroit', 'MI', 42.348664, -83.056737, 28),
+  createCity('Louisville', 'KY', 38.254238, -85.759407, 28),
+  createCity('Portland', 'OR', 45.520247, -122.674195, 28),
+  createCity('Memphis', 'TN', 35.149022, -90.051629, 28),
+  createCity('Baltimore', 'MD', 39.290861, -76.610807, 28),
+  createCity('Milwaukee', 'WI', 43.034993, -87.922497, 28),
+  createCity('Albuquerque', 'NM', 35.084103, -106.650985, 28),
+  createCity('Tucson', 'AZ', 32.221742, -110.926476, 28),
+  createCity('Fresno', 'CA', 36.739442, -119.784831, 28),
+  createCity('Sacramento', 'CA', 38.581572, -121.494400, 28),
+  createCity('Atlanta', 'GA', 33.749099, -84.390185, 24),
+  createCity('Mesa', 'AZ', 33.436188, -111.586066, 24),
+  createCity('Kansas City', 'MO', 39.084469, -94.563030, 24),
+  createCity('Raleigh', 'NC', 35.780402, -78.639078, 24),
+  createCity('Colorado Springs', 'CO', 38.833958, -104.825349, 24),
+  createCity('Omaha', 'NE', 41.258732, -95.937873, 24),
+  createCity('Miami', 'FL', 25.774266, -80.193659, 24),
+  createCity('Virginia Beach', 'VA', 36.795302, -76.050925, 24),
+  createCity('Long Beach', 'CA', 33.777466, -118.188487, 24),
+  createCity('Oakland', 'CA', 37.804456, -122.271356, 24),
+  createCity('Minneapolis', 'MN', 44.977300, -93.265469, 24),
+  createCity('Bakersfield', 'CA', 35.373871, -119.019464, 24),
+  createCity('Tulsa', 'OK', 36.155681, -95.992911, 24),
+  createCity('Tampa', 'FL', 27.947760, -82.458444, 24),
+  createCity('Arlington', 'TX', 32.735582, -97.107119, 24),
 ];
+
+const CITY_LOOKUP = new Map();
+CITY_DATA.forEach((city) => {
+  const candidates = [
+    city.key,
+    normalizeCityKey(city.name),
+    normalizeCityKey(city.displayName),
+    normalizeCityKey(`${city.name}${city.state}`),
+    normalizeCityKey(`${city.name} ${city.state}`),
+  ];
+  candidates.forEach((candidate) => {
+    if (!CITY_LOOKUP.has(candidate)) {
+      CITY_LOOKUP.set(candidate, city);
+    }
+  });
+});
+
+const resolveCity = (input) => {
+  if (!input) {
+    return undefined;
+  }
+  const normalized = normalizeCityKey(input);
+  if (CITY_LOOKUP.has(normalized)) {
+    return CITY_LOOKUP.get(normalized);
+  }
+  const lowercase = input.toLowerCase();
+  return CITY_DATA.find(
+    (city) =>
+      city.displayName.toLowerCase() === lowercase
+      || normalizeCityKey(city.name).startsWith(normalized)
+      || normalized.startsWith(normalizeCityKey(city.name)),
+  );
+};
+
+const DEFAULT_CITY_NAME = process.env.TEST_NETWORK_CITY || 'Dallas, TX';
+const DEFAULT_CITY = resolveCity(DEFAULT_CITY_NAME) || resolveCity('Dallas, TX') || CITY_DATA[0];
+
+const printAvailableCities = () => {
+  console.log('Available cities (50 largest US metros):');
+  CITY_DATA.forEach((city) => {
+    console.log(`  - ${city.displayName}`);
+  });
+};
+
+const kmToLatitudeDegrees = (km) => km / 111;
+const kmToLongitudeDegrees = (km, latitude) => {
+  const radians = (latitude * Math.PI) / 180;
+  const denominator = 111 * Math.cos(radians);
+  if (!Number.isFinite(denominator) || Math.abs(denominator) < 1e-6) {
+    return 0;
+  }
+  return km / denominator;
+};
+
+const buildCityClusters = (city) => {
+  const baseRadius = Math.max(10, city.radiusKm);
+  const neighborhoodRadius = Math.max(6, Math.round(baseRadius * 0.6));
+  const offsetKm = baseRadius * 0.5;
+  const latOffset = kmToLatitudeDegrees(offsetKm);
+  const lonOffset = kmToLongitudeDegrees(offsetKm, city.latitude);
+  return [
+    { name: `${city.displayName} (Downtown)`, lat: city.latitude, lon: city.longitude, radiusKm: baseRadius },
+    { name: `${city.displayName} (North)`, lat: city.latitude + latOffset, lon: city.longitude, radiusKm: neighborhoodRadius },
+    { name: `${city.displayName} (South)`, lat: city.latitude - latOffset, lon: city.longitude, radiusKm: neighborhoodRadius },
+    { name: `${city.displayName} (East)`, lat: city.latitude, lon: city.longitude + lonOffset, radiusKm: neighborhoodRadius },
+    { name: `${city.displayName} (West)`, lat: city.latitude, lon: city.longitude - lonOffset, radiusKm: neighborhoodRadius },
+  ];
+};
+
+const pickCluster = (clusters) => clusters[Math.floor(Math.random() * clusters.length)];
+
 const USER_DEFAULT_RADIUS_MILES = Number.parseFloat(process.env.TEST_NETWORK_USER_RADIUS || '75');
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,8 +172,6 @@ const cloudinaryFolder = baseFolder ? `${baseFolder}/test-network` : 'test-netwo
 const genAI = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
 const joinUrl = (base, segment) => `${base.replace(/\/$/, '')}/${segment.replace(/^\//, '')}`;
-
-const pickCluster = () => DFW_CLUSTER_CENTERS[Math.floor(Math.random() * DFW_CLUSTER_CENTERS.length)];
 
 const SPECIES_PRESETS = [
   {
@@ -113,9 +241,11 @@ const parseArgs = (argv) => {
     users: TEST_USER_COUNT,
     posts: TEST_POSTS_PER_USER,
     baseUrl: DEFAULT_BASE_URL,
+    city: DEFAULT_CITY,
   };
 
   const positional = [];
+  let cityCandidate;
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -131,6 +261,19 @@ const parseArgs = (argv) => {
         options.baseUrl = next.replace(/\/$/, '');
         i += 1;
       }
+    } else if (arg === '--city' || arg === '-c') {
+      const next = argv[i + 1];
+      if (!next) {
+        console.error('Missing value for --city');
+        printAvailableCities();
+        process.exit(1);
+      }
+      if (next.toLowerCase() === 'list') {
+        printAvailableCities();
+        process.exit(0);
+      }
+      cityCandidate = next.trim();
+      i += 1;
     } else if (arg === '--help' || arg === '-h') {
       printHelp();
       process.exit(0);
@@ -145,9 +288,24 @@ const parseArgs = (argv) => {
   if (positional[1]) {
     options.posts = Number.parseInt(positional[1], 10) || options.posts;
   }
+  if (positional[2] && !cityCandidate) {
+    cityCandidate = positional[2];
+  }
+
+  if (cityCandidate) {
+    const trimmedCity = cityCandidate.trim();
+    const resolvedCity = resolveCity(trimmedCity);
+    if (!resolvedCity) {
+      console.error(`Unknown city "${trimmedCity}".`);
+      printAvailableCities();
+      process.exit(1);
+    }
+    options.city = resolvedCity;
+  }
 
   return options;
 };
+
 
 const printHelp = () => {
   console.log(`
@@ -157,6 +315,8 @@ Options:
   -u, --users <number>       Number of automated users to generate (default: ${TEST_USER_COUNT})
   -p, --posts <number>       Posts per user (default: ${TEST_POSTS_PER_USER})
   -b, --base-url <url>       API base URL (default: ${DEFAULT_BASE_URL})
+  -c, --city <name>          Anchor city for generated accounts (default: ${DEFAULT_CITY.displayName})
+                             Use "--city list" to print available cities
   -h, --help                 Show this help message
 
 Environment overrides:
@@ -166,6 +326,7 @@ Environment overrides:
   TEST_NETWORK_POSTS               Default post count
   TEST_NETWORK_BASE_URL            Default API base URL
   TEST_NETWORK_POST_DELAY_MS       Delay between posts in ms (default 350)
+  TEST_NETWORK_CITY                Default city anchor (matches --city)
 `);
 };
 
@@ -333,8 +494,9 @@ const createUserIdentity = () => {
 
 const orchestrate = async () => {
   const options = parseArgs(process.argv.slice(2));
+  const cityClusters = buildCityClusters(options.city);
   console.log(`
-Bootstrapping test network -> users: ${options.users}, posts/user: ${options.posts}, base URL: ${options.baseUrl}`);
+Bootstrapping test network -> users: ${options.users}, posts/user: ${options.posts}, city: ${options.city.displayName}, base URL: ${options.baseUrl}`);
 
   let aborted = false;
   process.on('SIGINT', () => {
@@ -357,7 +519,7 @@ Bootstrapping test network -> users: ${options.users}, posts/user: ${options.pos
       const accessToken = await loginUser(options.baseUrl, identity.username, identity.password);
       console.log(`Created user ${identity.username}`);
 
-      const cluster = pickCluster();
+      const cluster = pickCluster(cityClusters);
       const homeCoords = jitterCoordinates(cluster.lat, cluster.lon, cluster.radiusKm);
       await updateUserProfileLocation(options.baseUrl, accessToken, homeCoords, USER_DEFAULT_RADIUS_MILES);
 
@@ -410,6 +572,7 @@ if (import.meta.url === `file://${process.argv[1]}` || process.argv[1].endsWith(
     process.exit(1);
   });
 }
+
 
 
 
