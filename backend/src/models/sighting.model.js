@@ -13,18 +13,26 @@ const sightingSchema = new Schema(
       required: true,
       index: true,
     },
-    // The animal that was officially identified in the sighting.
-    // This can be null initially and confirmed later by an admin or AI.
-    animal: {
+    // The AnimalDex entry officially linked to this sighting.
+    // Resolved via admin mapping or manual identification.
+    animalId: {
       type: Schema.Types.ObjectId,
       ref: 'Animal',
+      default: null,
+      index: true,
+    },
+    // The original AI-provided common name string.
+    aiIdentification: {
+      type: String,
+      trim: true,
       default: null,
     },
-    // The animal that the AI *thinks* was sighted.
-    aiIdentification: {
-      type: Schema.Types.ObjectId,
-      ref: 'Animal',
+    // Confidence score returned by the AI (0-100).
+    confidence: {
+      type: Number,
       default: null,
+      min: 0,
+      max: 100,
     },
     // URLs for the photos or videos uploaded by the user.
     mediaUrls: [
@@ -111,11 +119,24 @@ const sightingSchema = new Schema(
   // The `timestamps` option automatically adds `createdAt` and `updatedAt` fields
   {
     timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
   }
 );
 
 // Create a 2dsphere index on the location field to enable geospatial queries.
 // This is crucial for features like "find sightings near me".
 sightingSchema.index({ location: '2dsphere' });
+
+// Allow population using the legacy `animal` path expected by existing clients.
+sightingSchema.virtual('animal', {
+  ref: 'Animal',
+  localField: 'animalId',
+  foreignField: '_id',
+  justOne: true,
+});
+
+// Index commonly queried AI identification strings for admin workflows.
+sightingSchema.index({ aiIdentification: 1 });
 
 export const Sighting = mongoose.model('Sighting', sightingSchema);

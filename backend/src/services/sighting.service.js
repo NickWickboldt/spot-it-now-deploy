@@ -1,13 +1,14 @@
+import { cloudinary, configureCloudinary } from '../config/cloudinary.config.js';
+import { Animal } from '../models/animal.model.js';
 import { Comment } from '../models/comment.model.js';
+import { CommunityVote } from '../models/communityVote.model.js';
 import { Follow } from '../models/follow.model.js';
 import { Like } from '../models/like.model.js';
-import { Animal } from '../models/animal.model.js';
 import { Sighting } from '../models/sighting.model.js';
-import { CommunityVote } from '../models/communityVote.model.js';
 import { ApiError } from '../utils/ApiError.util.js';
 import { log } from '../utils/logger.util.js';
-import { cloudinary, configureCloudinary } from '../config/cloudinary.config.js';
 import { animalService } from './animal.service.js';
+import { animalMappingService } from './animalMapping.service.js';
 import { userDiscoveryService } from './userDiscovery.service.js';
 
 const isCloudinaryConfigured = () => Boolean(
@@ -137,6 +138,85 @@ const deleteCloudinaryAssetsForSighting = async (mediaUrls = [], context = {}) =
   }
 };
 
+const resolveAnimalMappingForAIIdentification = async (aiNameRaw) => {
+  const trimmedName = typeof aiNameRaw === 'string' ? aiNameRaw.trim() : null;
+  if (!trimmedName) {
+    return { aiName: null, canonicalName: null, animalId: null, mapping: null };
+  }
+
+  const canonicalName = trimmedName.toLowerCase();
+
+  let mapping = await animalMappingService.findMappingByAIName(canonicalName);
+  if (mapping) {
+    log.debug('sighting-service', 'Mapping found for AI identification', {
+      aiName: trimmedName,
+      canonicalName,
+      mappingId: mapping._id,
+      animalId: mapping.animalId || null,
+    });
+  }
+
+  let resolvedAnimalId = mapping?.animalId || null;
+
+  // Always check for a direct match in the AnimalDex, regardless of mapping status.
+  // This handles cases where a placeholder mapping exists but the animal has since been added.
+  const existingAnimal = await Animal.findOne({ commonName: { $regex: `^${trimmedName}$`, $options: 'i' } })
+    .select('_id commonName');
+
+  if (existingAnimal) {
+    resolvedAnimalId = existingAnimal._id;
+  }
+
+  // If no mapping exists, create one. Link it to the animal if we found one.
+  if (!mapping) {
+    if (resolvedAnimalId) {
+      const { mapping: newMapping } = await animalMappingService.createOrUpdateMapping(
+        canonicalName,
+        resolvedAnimalId,
+        { retroactive: true }
+      );
+      mapping = newMapping;
+      log.debug('sighting-service', 'Created new mapping for AI identification', {
+        aiName: trimmedName,
+        canonicalName,
+        mappingId: mapping?._id,
+        animalId: resolvedAnimalId,
+      });
+    } else {
+      // No animal found, so create a placeholder mapping.
+      const placeholder = await animalMappingService.ensureMappingForAIName(canonicalName);
+      mapping = placeholder;
+      log.debug('sighting-service', 'Created placeholder mapping for unknown AI identification', {
+        aiName: trimmedName,
+        canonicalName,
+        mappingId: mapping?._id,
+      });
+    }
+  }
+  // If a mapping DOES exist but isn't linked to the animal we just found, update it.
+  else if (existingAnimal && (!mapping.animalId || String(mapping.animalId) !== String(existingAnimal._id))) {
+    const { mapping: updatedMapping } = await animalMappingService.createOrUpdateMapping(
+      canonicalName,
+      existingAnimal._id,
+      { retroactive: true } // An admin or process added the animal, so we can safely backfill
+    );
+    mapping = updatedMapping;
+    log.debug('sighting-service', 'Updated existing placeholder mapping with found animal', {
+      aiName: trimmedName,
+      canonicalName,
+      mappingId: mapping?._id,
+      animalId: existingAnimal._id,
+    });
+  }
+
+  return {
+    aiName: trimmedName,
+    canonicalName,
+    animalId: resolvedAnimalId,
+    mapping,
+  };
+};
+
 /**
  * Creates a new sighting post.
  * @param {string} userId - The ID of the user creating the sighting.
@@ -161,26 +241,58 @@ const createSighting = async (userId, userName, sightingData) => {
     coordinates: [longNum, latNum], // GeoJSON format: [longitude, latitude]
   };
 
-  // Try to find matching animal if identification is provided
+  // Try to resolve animal linking and record AI raw data if provided
   let linkedAnimalId = null;
-  if (identification && (identification.commonName || identification.scientificName)) {
-    try {
-      const matchedAnimal = await animalService.findAnimalByIdentification(identification);
-      if (matchedAnimal) {
-        linkedAnimalId = matchedAnimal._id;
-        log.info('sighting-service', 'Animal linked to sighting', { 
-          animalId: linkedAnimalId, 
-          commonName: identification.commonName,
-          scientificName: identification.scientificName
-        });
-      } else {
-        log.warn('sighting-service', 'No animal found for identification', { 
-          commonName: identification.commonName,
-          scientificName: identification.scientificName 
+  let aiName = null;
+  let aiConfidence = null;
+
+  if (identification && typeof identification === 'object') {
+    const { source, commonName, scientificName, confidence: idConfidence } = identification;
+
+    if (source === 'AI') {
+      try {
+        const { aiName: resolvedAIName, animalId: resolvedAnimalId } = await resolveAnimalMappingForAIIdentification(commonName);
+        aiName = resolvedAIName;
+        if (Number.isFinite(Number(idConfidence))) {
+          const numericConfidence = Number(idConfidence);
+          aiConfidence = Math.max(0, Math.min(100, numericConfidence));
+        }
+
+        if (resolvedAnimalId) {
+          linkedAnimalId = resolvedAnimalId;
+        }
+      } catch (error) {
+        aiName = typeof commonName === 'string' ? commonName.trim() : null;
+        if (Number.isFinite(Number(idConfidence))) {
+          const numericConfidence = Number(idConfidence);
+          aiConfidence = Math.max(0, Math.min(100, numericConfidence));
+        }
+        log.warn('sighting-service', 'Error resolving AI identification mapping', {
+          aiName,
+          error: error.message,
         });
       }
-    } catch (error) {
-      log.warn('sighting-service', 'Error linking animal to sighting', { error: error.message });
+    } else if (commonName || scientificName) {
+      try {
+        const matchedAnimal = await animalService.findAnimalByIdentification(identification);
+        if (matchedAnimal) {
+          linkedAnimalId = matchedAnimal._id;
+          log.info('sighting-service', 'Animal linked to sighting', {
+            animalId: linkedAnimalId,
+            commonName,
+            scientificName,
+            source,
+          });
+        } else {
+          log.warn('sighting-service', 'No animal found for identification', {
+            commonName,
+            scientificName,
+            source,
+          });
+        }
+      } catch (error) {
+        log.warn('sighting-service', 'Error linking animal to sighting', { error: error.message });
+      }
     }
   }
 
@@ -209,8 +321,10 @@ const createSighting = async (userId, userName, sightingData) => {
     caption,
     isPrivate,
     identification: identification || null,
-    animal: linkedAnimalId, // Link the matched animal
-    ...verificationFlags, // Add verification flags
+    animalId: linkedAnimalId,
+    aiIdentification: aiName,
+    confidence: aiConfidence,
+    ...verificationFlags,
   });
 
   // Auto-add discovery if animal is identified and linked
@@ -231,6 +345,14 @@ const createSighting = async (userId, userName, sightingData) => {
         error: error.message 
       });
     }
+  }
+
+  if (linkedAnimalId) {
+    log.debug('sighting-service', 'Sighting linked to animal', {
+      sightingId: sighting._id,
+      animalId: linkedAnimalId,
+      aiName: aiName || null,
+    });
   }
 
   log.info('sighting-service', 'Sighting created', { sightingId: sighting._id, userId });
@@ -306,7 +428,7 @@ const getSightingsByUserAll = async (userId) => {
  * @returns {Promise<Sighting[]>} An array of sighting objects.
  */
 const getSightingsByAnimal = async (animalId) => {
-  return await Sighting.find({ animal: animalId }).sort({ createdAt: -1 });
+  return await Sighting.find({ animalId }).sort({ createdAt: -1 });
 };
 
 /**
@@ -341,31 +463,14 @@ const findSightingsNear = async (longitude, latitude, maxDistanceInMeters = 1000
     },
   })
     .populate('user', 'username profilePictureUrl')
+    .populate('animal', 'commonName')
     .lean();
-
-  const animalIds = Array.from(
-    new Set(
-      docs
-        .map((doc) => doc.animal)
-        .filter((value) => value !== null && value !== undefined)
-        .map((value) => (typeof value === 'string' ? value : value.toString()))
-        .filter((value) => value && value.length === 24)
-    )
-  );
-
-  let animalsById = new Map();
-  if (animalIds.length) {
-    const animals = await Animal.find({ _id: { $in: animalIds } })
-      .select('commonName')
-      .lean();
-    animalsById = new Map(animals.map((animal) => [animal._id.toString(), animal]));
-  }
-
+  
   return docs.map((doc) => {
-    const animalId = typeof doc.animal === 'string' ? doc.animal : doc.animal?.toString?.();
+    const canonicalAnimal = doc.animal || null;
     return {
       ...doc,
-      animal: animalId && animalsById.has(animalId) ? animalsById.get(animalId) : null,
+      animal: canonicalAnimal,
     };
   });
 };
@@ -467,16 +572,27 @@ const updateSightingField = async (sightingId, fieldsToUpdate) => {
   // Defensive: if frontend sends empty string to clear animal, coerce to null so Mongoose
   // doesn't attempt to cast an empty string to ObjectId (which throws a CastError).
   const update = { ...fieldsToUpdate };
-  if (Object.prototype.hasOwnProperty.call(update, 'animal')) {
-    // treat empty string or all-whitespace as null
-    if (update.animal === '' || (typeof update.animal === 'string' && update.animal.trim() === '')) {
-      update.animal = null;
+  if (Object.prototype.hasOwnProperty.call(update, 'animal') && !Object.prototype.hasOwnProperty.call(update, 'animalId')) {
+    update.animalId = update.animal;
+    delete update.animal;
+  }
+  if (Object.prototype.hasOwnProperty.call(update, 'animalId')) {
+    if (update.animalId === '' || (typeof update.animalId === 'string' && update.animalId.trim() === '')) {
+      update.animalId = null;
     }
   }
   if (Object.prototype.hasOwnProperty.call(update, 'aiIdentification')) {
     if (update.aiIdentification === '' || (typeof update.aiIdentification === 'string' && update.aiIdentification.trim() === '')) {
       update.aiIdentification = null;
+    } else if (typeof update.aiIdentification === 'string') {
+      update.aiIdentification = update.aiIdentification.trim();
     }
+  }
+  if (Object.prototype.hasOwnProperty.call(update, 'confidence')) {
+    const numericConfidence = Number(update.confidence);
+    update.confidence = Number.isFinite(numericConfidence)
+      ? Math.max(0, Math.min(100, numericConfidence))
+      : null;
   }
   if (Object.prototype.hasOwnProperty.call(update, 'identification')) {
     if (!update.identification || typeof update.identification !== 'object') {
@@ -492,39 +608,89 @@ const updateSightingField = async (sightingId, fieldsToUpdate) => {
 
   // Try to link animal if identification is being updated
   if (update.identification && (update.identification.commonName || update.identification.scientificName)) {
-    try {
-      const matchedAnimal = await animalService.findAnimalByIdentification(update.identification);
-      if (matchedAnimal) {
-        update.animal = matchedAnimal._id;
-        
-        // Update verification flags based on identification source
-        if (update.identification.source === 'AI') {
-          update.verifiedByAI = true;
-        } else if (update.identification.source === 'USER') {
-          update.verifiedByUser = true;
-        } else if (update.identification.source === 'COMMUNITY') {
-          update.verifiedByCommunity = true;
+    const { source, commonName, scientificName, confidence: idConfidence } = update.identification;
+    let resolvedAnimalId = null;
+
+    if (source === 'AI') {
+      try {
+        const {
+          aiName: resolvedAIName,
+          animalId: mappingAnimalId,
+        } = await resolveAnimalMappingForAIIdentification(commonName);
+        update.aiIdentification = resolvedAIName || update.aiIdentification || null;
+
+        if (Number.isFinite(Number(idConfidence))) {
+          update.confidence = Math.max(0, Math.min(100, Number(idConfidence)));
+        } else if (!Object.prototype.hasOwnProperty.call(update, 'confidence')) {
+          update.confidence = null;
         }
-        
-        log.info('sighting-service', 'Animal linked to sighting update', { 
+
+        update.verifiedByAI = true;
+        if (mappingAnimalId) {
+          resolvedAnimalId = mappingAnimalId;
+        }
+      } catch (error) {
+        update.aiIdentification = typeof commonName === 'string'
+          ? commonName.trim()
+          : update.aiIdentification || null;
+        if (Number.isFinite(Number(idConfidence))) {
+          update.confidence = Math.max(0, Math.min(100, Number(idConfidence)));
+        } else if (!Object.prototype.hasOwnProperty.call(update, 'confidence')) {
+          update.confidence = null;
+        }
+        update.verifiedByAI = true;
+        log.warn('sighting-service', 'Error resolving AI identification mapping during update', {
           sightingId,
-          animalId: matchedAnimal._id, 
-          commonName: update.identification.commonName,
-          scientificName: update.identification.scientificName,
-          verificationSource: update.identification.source
+          aiName: update.aiIdentification || null,
+          error: error.message,
         });
-      } else {
-        log.warn('sighting-service', 'No animal found for identification update', { 
-          sightingId,
-          commonName: update.identification.commonName,
-          scientificName: update.identification.scientificName 
-        });
-        // Clear animal link if identification doesn't match any animal
-        update.animal = null;
+      }
+    } else {
+      try {
+        const matchedAnimal = await animalService.findAnimalByIdentification(update.identification);
+        if (matchedAnimal) {
+          resolvedAnimalId = matchedAnimal._id;
+          log.info('sighting-service', 'Animal linked to sighting update', {
+            sightingId,
+            animalId: matchedAnimal._id,
+            commonName,
+            scientificName,
+            verificationSource: source,
+          });
+        } else {
+          log.warn('sighting-service', 'No animal found for identification update', {
+            sightingId,
+            commonName,
+            scientificName,
+            verificationSource: source,
+          });
+        }
+      } catch (error) {
+        log.warn('sighting-service', 'Error linking animal to sighting update', { sightingId, error: error.message });
+      }
+
+      if (source === 'USER') {
+        update.verifiedByUser = true;
+      } else if (source === 'COMMUNITY') {
+        update.verifiedByCommunity = true;
+      }
+    }
+
+    update.animalId = resolvedAnimalId || null;
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(update, 'animalId') && typeof update.aiIdentification === 'string' && update.aiIdentification) {
+    try {
+      const { animalId: resolvedAnimalId } = await resolveAnimalMappingForAIIdentification(update.aiIdentification);
+      if (resolvedAnimalId) {
+        update.animalId = resolvedAnimalId;
       }
     } catch (error) {
-      log.warn('sighting-service', 'Error linking animal to sighting update', { sightingId, error: error.message });
-      update.animal = null;
+      log.warn('sighting-service', 'Failed to resolve mapping from direct AI identification update', {
+        sightingId,
+        aiName: update.aiIdentification,
+        error: error.message,
+      });
     }
   }
 
@@ -535,19 +701,19 @@ const updateSightingField = async (sightingId, fieldsToUpdate) => {
   );
 
   // Handle discovery updates when identification is added or changed
-  if (update.animal && update.identification) {
+  if (update.animalId && update.identification) {
     try {
       const verifiedBy = update.identification.source === 'USER' ? 'USER' : 'AI';
       await userDiscoveryService.addDiscovery(
         originalSighting.user,
-        update.animal,
+        update.animalId,
         sightingId,
         verifiedBy
       );
       log.info('sighting-service', 'Discovery added/updated for sighting update', {
         sightingId,
         userId: originalSighting.user,
-        animalId: update.animal,
+        animalId: update.animalId,
         verifiedBy
       });
     } catch (error) {
@@ -557,6 +723,14 @@ const updateSightingField = async (sightingId, fieldsToUpdate) => {
         error: error.message
       });
     }
+  }
+
+  if (update.animalId) {
+    log.debug('sighting-service', 'Sighting linked to animal via update', {
+      sightingId,
+      animalId: update.animalId,
+      aiName: update.aiIdentification || null,
+    });
   }
 
   return sighting;
@@ -748,18 +922,22 @@ export const sightingService = {
       throw new ApiError(404, 'Sighting not found after vote');
     }
 
-    if (normalizedVote === 'APPROVE' && sighting.animal) {
-      try {
-        const ownerId = String(sighting.user);
-        const animalId = sighting.animal._id ? sighting.animal._id : sighting.animal;
-        if (animalId) {
-          await userDiscoveryService.updateVerification(ownerId, animalId, 'COMMUNITY');
+    if (normalizedVote === 'APPROVE') {
+      const ownerId = String(sighting.user);
+      const resolvedAnimalId = sighting.animalId
+        || (sighting.animal && (sighting.animal._id || sighting.animal))
+        || null;
+
+      if (resolvedAnimalId) {
+        try {
+          await userDiscoveryService.updateVerification(ownerId, resolvedAnimalId, 'COMMUNITY');
+        } catch (error) {
+          log.warn('sighting-service', 'Failed to update discovery with community verification', {
+            sightingId,
+            animalId: resolvedAnimalId,
+            error: error?.message || error,
+          });
         }
-      } catch (error) {
-        log.warn('sighting-service', 'Failed to update discovery with community verification', {
-          sightingId,
-          error: error?.message || error,
-        });
       }
     }
 

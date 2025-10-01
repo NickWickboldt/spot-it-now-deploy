@@ -1,7 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Dimensions, Image, Modal, PanResponder, ScrollView, StatusBar, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
-import { apiGetAllAnimals } from '../../api/animal';
+import { apiGetAllAnimals, apiSearchAnimals } from '../../api/animal';
+import { apiCreateOrUpdateMapping } from '../../api/mapping';
+import { apiGetMySightings } from '../../api/sighting';
 import { apiGetUserDiscoveries } from '../../api/userDiscovery';
 import { modalStyles, styles } from '../../constants/animalIndexStyle';
 import { Colors } from '../../constants/Colors';
@@ -38,20 +41,41 @@ interface AnimalCategory {
   data: Animal[];
 }
 
+interface Sighting {
+  _id: string;
+  animalId?: string | null;
+  aiIdentification?: string | null;
+  confidence?: number | null;
+  mediaUrls?: string[];
+  createdAt?: string;
+}
+
 export default function AnimalDexScreen() {
   const { user, token } = useAuth();
   const [search, setSearch] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [userSightings, setUserSightings] = useState<any[]>([]);
   const [userDiscoveries, setUserDiscoveries] = useState<any[]>([]);
   const [mapped, setMapped] = useState<Record<string, EntryMeta>>({});
   const [badgeModalVisible, setBadgeModalVisible] = useState(false);
   const [selectedAnimal, setSelectedAnimal] = useState<Animal | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [reopenSheetAfterPreview, setReopenSheetAfterPreview] = useState(false);
+  const [unknownGroupModalVisible, setUnknownGroupModalVisible] = useState(false);
+  const [reopenUnknownAfterPreview, setReopenUnknownAfterPreview] = useState(false);
+  const [selectedUnknownKey, setSelectedUnknownKey] = useState<string | null>(null);
   const [selectedTab, setSelectedTab] = useState('');
+  const [viewMode, setViewMode] = useState<'KNOWN' | 'UNKNOWN'>('KNOWN');
   const [infoLoading, setInfoLoading] = useState(false);
   const [animals, setAnimals] = useState<Animal[]>([]);
   const [loading, setLoading] = useState(true);
   const [animalCategories, setAnimalCategories] = useState<AnimalCategory[]>([]);
+  // Admin-only controls state
+  const isAdmin = (user?.role === 'admin');
+  const [adminSearch, setAdminSearch] = useState('');
+  const [adminResults, setAdminResults] = useState<Animal[]>([]);
+  const [linking, setLinking] = useState(false);
 
   const handlePanResponder = React.useRef(
     PanResponder.create({
@@ -68,72 +92,159 @@ export default function AnimalDexScreen() {
     })
   ).current;
 
-  // Fetch animals from database on component mount
+  // Fetch animals from database on mount and when the tab gains focus
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+
+      // Fetch animals, discoveries, and my sightings in parallel
+      const [animalsResponse, discoveriesResponse, mySightingsResponse] = await Promise.all([
+        apiGetAllAnimals(token),
+        apiGetUserDiscoveries(token).catch(() => ({ data: null })),
+        apiGetMySightings(token).catch(() => ({ data: [] }))
+      ]);
+
+      const fetchedAnimals = animalsResponse.data || [];
+      const userDiscoveryData = discoveriesResponse.data;
+      const mySightings = (mySightingsResponse.data || []) as Sighting[];
+
+      // Extract discoveries from the correct field
+      let discoveries = [] as any[];
+      if (userDiscoveryData && userDiscoveryData.animalDiscoveries) {
+        discoveries = userDiscoveryData.animalDiscoveries; // Use the detailed discoveries
+        console.log('🔍 Discovery data received:', {
+          totalDiscoveries: discoveries.length,
+          firstDiscovery: discoveries[0] || 'none',
+          sampleAnimal: discoveries[0]?.animal || 'no animal data'
+        });
+      } else {
+        console.log('❌ No discovery data found:', userDiscoveryData);
+      }
+
+      setAnimals(fetchedAnimals);
+      setUserDiscoveries(discoveries);
+      setUserSightings(mySightings);
+
+      // Group animals by category
+      const categories: AnimalCategory[] = [];
+      const categoryMap: Record<string, Animal[]> = {};
+
+      fetchedAnimals.forEach((animal: Animal) => {
+        if (!categoryMap[animal.category]) {
+          categoryMap[animal.category] = [];
+        }
+        categoryMap[animal.category].push(animal);
+      });
+
+      Object.entries(categoryMap).forEach(([title, data]) => {
+        categories.push({ title, data });
+      });
+
+      setAnimalCategories(categories);
+
+      // Set default selected tab to first category
+      if (categories.length > 0 && !selectedTab) {
+        setSelectedTab(categories[0].title);
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [token, selectedTab]);
+
   useEffect(() => {
-    const fetchData = async () => {
+    fetchData();
+  }, [fetchData]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchData();
+    }, [fetchData])
+  );
+
+  // Admin: search animals for linking
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!isAdmin) return;
+      const q = adminSearch.trim();
+      if (!q) {
+        setAdminResults([]);
+        return;
+      }
       try {
-        setLoading(true);
-
-        // Fetch animals and discoveries in parallel
-        const [animalsResponse, discoveriesResponse] = await Promise.all([
-          apiGetAllAnimals(token),
-          apiGetUserDiscoveries(token).catch(() => ({ data: null }))
-        ]);
-
-        const fetchedAnimals = animalsResponse.data || [];
-        const userDiscoveryData = discoveriesResponse.data;
-
-        // Extract discoveries from the correct field
-        let discoveries = [];
-        if (userDiscoveryData && userDiscoveryData.animalDiscoveries) {
-          discoveries = userDiscoveryData.animalDiscoveries; // Use the detailed discoveries
-          console.log('🔍 Discovery data received:', {
-            totalDiscoveries: discoveries.length,
-            firstDiscovery: discoveries[0] || 'none',
-            sampleAnimal: discoveries[0]?.animal || 'no animal data'
-          });
-        } else {
-          console.log('❌ No discovery data found:', userDiscoveryData);
-        }
-
-        setAnimals(fetchedAnimals);
-        setUserDiscoveries(discoveries);
-
-        // Group animals by category
-        const categories: AnimalCategory[] = [];
-        const categoryMap: Record<string, Animal[]> = {};
-
-        fetchedAnimals.forEach((animal: Animal) => {
-          if (!categoryMap[animal.category]) {
-            categoryMap[animal.category] = [];
-          }
-          categoryMap[animal.category].push(animal);
-        });
-
-        Object.entries(categoryMap).forEach(([title, data]) => {
-          categories.push({ title, data });
-        });
-
-        setAnimalCategories(categories);
-
-        // Set default selected tab to first category
-        if (categories.length > 0 && !selectedTab) {
-          setSelectedTab(categories[0].title);
-        }
-      } catch (error) {
-        console.error('Error fetching data:', error);
-      } finally {
-        setLoading(false);
+        const resp = await apiSearchAnimals(q, token || undefined);
+        if (!cancelled) setAdminResults(resp.data || []);
+      } catch (e) {
+        if (!cancelled) setAdminResults([]);
       }
     };
+    const t = setTimeout(run, 250);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [adminSearch, isAdmin, token]);
+  // Build a per-animal thumbnail from the user's own sightings (latest wins)
+  // Helper: choose the best image URL from media list (skip videos when possible)
+  function pickImageUrl(list?: string[]): string | undefined {
+    if (!Array.isArray(list) || list.length === 0) return undefined;
+    const isImage = (u: string) => /\.(jpg|jpeg|png|webp|heic|heif)$/i.test(u.split('?')[0]);
+    const img = list.find(isImage) || list[0];
+    return img;
+  }
 
-    fetchData();
-  }, [token]);
+  const userThumbByAnimalId = useMemo(() => {
+    const map: Record<string, string> = {};
+    const items = (userSightings as Sighting[])
+      .filter(s => !!s.animalId && Array.isArray(s.mediaUrls) && s.mediaUrls.length > 0);
+
+    // Sort newest first so latest sighting provides the thumb
+    items.sort((a, b) => {
+      const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return tb - ta;
+    });
+
+    items.forEach(s => {
+      const aid = String(s.animalId);
+      if (!map[aid]) {
+        const raw = pickImageUrl(s.mediaUrls);
+        if (raw) {
+          const tiny = toTinyPreview(raw, 112) || raw;
+          map[aid] = tiny;
+        }
+      }
+    });
+    return map;
+  }, [userSightings]);
+
+  // Prefer a tiny transformed Cloudinary URL when possible
+  function toTinyPreview(uri?: string, size = 112): string | undefined {
+    if (!uri || typeof uri !== 'string') return uri;
+    try {
+      const u = new URL(uri);
+      // Cloudinary URL pattern includes '/image/upload/' or '/video/upload/'
+      if (u.hostname.includes('cloudinary.com')) {
+        const injected = `/upload/c_fill,w_${size},h_${size},q_auto,f_auto/`;
+        const path = u.pathname;
+        const idx = path.indexOf('/upload/');
+        if (idx !== -1) {
+          const before = path.slice(0, idx);
+          const after = path.slice(idx + '/upload/'.length);
+          u.pathname = `${before}${injected}${after}`;
+          return u.toString();
+        }
+      }
+      return uri;
+    } catch {
+      return uri;
+    }
+  }
+
 
   const getAnimalImage = (animal: Animal) => {
     // Use the first image URL if available, otherwise fallback to Unsplash
     if (animal.imageUrls && animal.imageUrls.length > 0) {
-      return animal.imageUrls[0];
+      return toTinyPreview(animal.imageUrls[0], 144) || animal.imageUrls[0];
     }
     return `https://source.unsplash.com/56x56/?${encodeURIComponent(animal.commonName)},animal`;
   };
@@ -142,6 +253,14 @@ export default function AnimalDexScreen() {
     const out: Record<string, string> = {};
     animals.forEach(animal => {
       out[animal.commonName.toLowerCase()] = animal.commonName;
+    });
+    return out;
+  }, [animals]);
+
+  const idToCommon = useMemo(() => {
+    const out: Record<string, string> = {};
+    animals.forEach(animal => {
+      out[animal._id] = animal.commonName;
     });
     return out;
   }, [animals]);
@@ -227,6 +346,16 @@ export default function AnimalDexScreen() {
       else if (meta.userCount > 0 && meta.aiCount > 0) meta.level = 'COMMUNITY';
     });
 
+    // New: mark as discovered using sighting.animalId (mapping-aware)
+    (userSightings || []).forEach(s => {
+      const aId = s.animalId ? String(s.animalId) : '';
+      if (!aId) return;
+      const common = idToCommon[aId];
+      if (!common || !map[common]) return;
+      const meta = map[common];
+      meta.spotted = true;
+    });
+
     console.log('🎯 Final mapping results:', {
       totalAnimals: Object.keys(map).length,
       spottedAnimals: Object.values(map).filter(m => m.spotted).map(m => m.name),
@@ -254,13 +383,168 @@ export default function AnimalDexScreen() {
     // Since we're now using database animals, we can show the database info
     // Instead of external API, we'll show the animal's database information
     setInfoLoading(false);
-
-    const filtered = userSightings.filter(s => {
-      const ident = (s as any).identification;
-      return ident?.commonName && ident.commonName.toLowerCase().trim() === animal.commonName.toLowerCase();
-    });
     setBadgeModalVisible(true);
   };
+
+  const selectedAnimalSightings = useMemo(() => {
+    if (!selectedAnimal) return [] as Sighting[];
+    const list = (userSightings as Sighting[]).filter(s => String(s.animalId || '') === selectedAnimal._id);
+    // Fallback: legacy match by name if animalId missing
+    if (list.length === 0) {
+      const name = selectedAnimal.commonName.toLowerCase();
+      const legacy = (userSightings as any[]).filter(s => s?.identification?.commonName?.toLowerCase?.() === name);
+      return legacy.sort((a, b) => {
+        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return tb - ta;
+      });
+    }
+    return list.sort((a, b) => {
+      const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return tb - ta;
+    });
+  }, [selectedAnimal, userSightings]);
+
+  // Helpers to show/hide the full-screen preview without stacking Modals
+  const openPreview = useCallback((uri: string) => {
+    // Close any open sheet/modal while previewing to avoid nested Modals issues
+    if (badgeModalVisible) {
+      setReopenSheetAfterPreview(true);
+      setBadgeModalVisible(false);
+    } else if (unknownGroupModalVisible) {
+      setReopenUnknownAfterPreview(true);
+      setUnknownGroupModalVisible(false);
+    }
+    setPreviewImage(uri);
+  }, [badgeModalVisible, unknownGroupModalVisible]);
+
+  const closePreview = useCallback(() => {
+    setPreviewImage(null);
+    if (reopenUnknownAfterPreview) {
+      setReopenUnknownAfterPreview(false);
+      setUnknownGroupModalVisible(true);
+    } else if (reopenSheetAfterPreview) {
+      setReopenSheetAfterPreview(false);
+      setBadgeModalVisible(true);
+    }
+  }, [reopenSheetAfterPreview, reopenUnknownAfterPreview]);
+
+  const unknownGroups = useMemo(() => {
+    const list = (userSightings as Sighting[]).filter(s => !s.animalId);
+    const groups: Record<string, Sighting[]> = {};
+    list.forEach(s => {
+      const key = (s.aiIdentification || 'Unknown identification').trim().toLowerCase();
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(s);
+    });
+    // Sort each group newest first
+    Object.values(groups).forEach(arr => arr.sort((a, b) => {
+      const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return tb - ta;
+    }));
+    // Order groups by their latest sighting date
+    const ordered = Object.entries(groups).sort(([, a], [, b]) => {
+      const ta = a[0]?.createdAt ? new Date(a[0].createdAt!).getTime() : 0;
+      const tb = b[0]?.createdAt ? new Date(b[0].createdAt!).getTime() : 0;
+      return tb - ta;
+    });
+    return ordered.map(([key, arr]) => ({ key, title: arr[0]?.aiIdentification || 'Unknown identification', items: arr }));
+  }, [userSightings]);
+
+  const renderKnownUnknownToggle = () => (
+  <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, marginBottom: 8, justifyContent: 'center' }}>
+      <TouchableOpacity
+        onPress={() => setViewMode('KNOWN')}
+        style={{
+          paddingVertical: 8,
+          paddingHorizontal: 14,
+          borderRadius: 16,
+          backgroundColor: viewMode === 'KNOWN' ? Colors.light.accent : 'transparent',
+          borderWidth: 1,
+          borderColor: Colors.light.darkNeutral
+        }}
+      >
+  <Text style={{ color: viewMode === 'KNOWN' ? '#fff' : Colors.light.mainText, fontWeight: '600', fontSize: 14 }}>Known</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        onPress={() => setViewMode('UNKNOWN')}
+        style={{
+          paddingVertical: 8,
+          paddingHorizontal: 14,
+          borderRadius: 16,
+          backgroundColor: viewMode === 'UNKNOWN' ? Colors.light.accent : 'transparent',
+          borderWidth: 1,
+          borderColor: Colors.light.darkNeutral
+        }}
+      >
+  <Text style={{ color: viewMode === 'UNKNOWN' ? '#fff' : Colors.light.mainText, fontWeight: '600', fontSize: 14 }}>Unknown</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderUnknownList = () => (
+    <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
+      {unknownGroups.length === 0 ? (
+        <Text style={styles.empty}>No unknown sightings yet.</Text>
+      ) : (
+        <View style={{ paddingHorizontal: 16, gap: 12 }}>
+          {unknownGroups.map((g) => {
+            const first = g.items[0];
+            const raw = pickImageUrl(first?.mediaUrls);
+            const imageUri = toTinyPreview(raw, 96) || raw;
+            const title = g.title;
+            const count = g.items.length;
+            const date = first?.createdAt ? new Date(first.createdAt).toLocaleDateString() : '';
+            const avgConf = (() => {
+              const vals = g.items.map(s => (typeof s.confidence === 'number' ? s.confidence! : null)).filter(v => v != null) as number[];
+              if (vals.length === 0) return null;
+              const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+              return Math.round(avg);
+            })();
+            return (
+              <TouchableOpacity key={g.key} onPress={() => { setSelectedUnknownKey(g.key); setUnknownGroupModalVisible(true); }} activeOpacity={0.7}>
+                <View style={{ flexDirection: 'row', backgroundColor: Colors.light.cardBackground, borderRadius: 12, borderWidth: 1, borderColor: Colors.light.shadow, overflow: 'hidden', alignItems: 'center' }}>
+                  <View style={{ width: 96, height: 96, backgroundColor: Colors.light.lightGrey, margin: 6, borderRadius: 8, overflow: 'hidden' }}>
+                    {imageUri ? (
+                      <Image source={{ uri: imageUri }} style={{ width: '100%', height: '100%' }} />
+                    ) : (
+                      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.light.lightGrey }}>
+                        <Icon name="image" size={22} color={Colors.light.darkNeutral} />
+                      </View>
+                    )}
+                  </View>
+                  <View style={{ flex: 1, paddingVertical: 12, paddingRight: 10 }}>
+                    <Text style={{ color: Colors.light.mainText, fontWeight: '700' }} numberOfLines={1}>
+                      {title}
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                      <Text style={{ color: Colors.light.darkNeutral }}>
+                        {count} sighting{count > 1 ? 's' : ''}
+                      </Text>
+                      {avgConf != null && (
+                        <Text style={{ color: Colors.light.darkNeutral }}>
+                          {`  •  Avg ${avgConf}%`}
+                        </Text>
+                      )}
+                    </View>
+                    {date && <Text style={{ color: Colors.light.darkNeutral, marginTop: 2, fontSize: 12 }}>Latest: {date}</Text>}
+                    <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <View style={{ backgroundColor: Colors.light.lightGrey, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2 }}>
+                        <Text style={{ color: Colors.light.mainText, fontSize: 10, fontWeight: '600' }}>Unmapped</Text>
+                      </View>
+                      <Icon name="chevron-right" size={14} color={Colors.light.darkNeutral} />
+                    </View>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+    </ScrollView>
+  );
 
   if (loading) {
     return (
@@ -312,18 +596,25 @@ export default function AnimalDexScreen() {
       count: 0
     } as EntryMeta;
     const spotted = meta.spotted;
+    const userThumb = userThumbByAnimalId[animal._id];
+    const displayImage = userThumb || getAnimalImage(animal);
     return (
       <TouchableOpacity
         key={animal._id}
-        style={[styles.square, !spotted && styles.lockedSquare]}
+        style={[styles.square, spotted ? styles.spottedSquare : styles.lockedSquare]}
         onPress={() => openBadgeModal(animal)}
         activeOpacity={spotted ? 0.7 : 1}
       >
         {spotted ? (
-          <Image source={{ uri: getAnimalImage(animal) }} style={styles.animalImage} />
+          <Image source={{ uri: displayImage }} style={styles.animalImage} />
         ) : (
           <View style={styles.silhouette}>
             <Icon name="question" size={32} color={Colors.light.darkNeutral} />
+          </View>
+        )}
+        {spotted && (
+          <View style={styles.spottedChip}>
+            <Text style={styles.spottedChipText}>Spotted</Text>
           </View>
         )}
         <Text style={styles.animalName}>{animal.commonName}</Text>
@@ -336,45 +627,59 @@ export default function AnimalDexScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
       <View style={styles.header}>
-        <Text style={styles.title}>{'AnimalDex'}</Text>
-        <View style={styles.searchBox}>
-          <Icon name="search" size={16} color={Colors.light.darkNeutral} style={{ marginRight: 6 }} />
-          <TextInput
-            placeholder="Search animals..."
-            placeholderTextColor={Colors.light.darkNeutral}
-            style={styles.searchInput}
-            value={search}
-            onChangeText={setSearch}
-            autoCorrect={false}
-            autoCapitalize="none"
-          />
-          {search.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch('')}>
-              <Icon name="times" size={16} color={Colors.light.darkNeutral} />
-            </TouchableOpacity>
+        {/* Title row with search toggle */}
+        <View style={styles.headerRow}>
+          <Text style={styles.title}>{'AnimalDex'}</Text>
+          <TouchableOpacity style={styles.headerIconBtn} onPress={() => setSearchOpen(v => !v)}>
+            <Icon name={searchOpen ? 'times' : 'search'} size={18} color={Colors.light.mainText} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Optional inline search */}
+        {searchOpen && (
+          <View style={styles.searchBox}>
+            <Icon name="search" size={16} color={Colors.light.darkNeutral} style={{ marginRight: 6 }} />
+            <TextInput
+              placeholder="Search animals..."
+              placeholderTextColor={Colors.light.darkNeutral}
+              style={styles.searchInput}
+              value={search}
+              onChangeText={setSearch}
+              autoCorrect={false}
+              autoCapitalize="none"
+            />
+            {search.length > 0 && (
+              <TouchableOpacity onPress={() => setSearch('')}>
+                <Icon name="times" size={16} color={Colors.light.darkNeutral} />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {/* Controls row: Known/Unknown toggle + compact progress chip */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          {renderKnownUnknownToggle()}
+          {viewMode === 'KNOWN' && (
+            <View style={styles.progressChip}>
+              <Text style={styles.progressChipText}>{spotted}/{total} • {percent}%</Text>
+            </View>
           )}
         </View>
-        {renderTabs()}
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 6 }}>
-          <View style={styles.progressBarContainer}>
-            <View style={[styles.progressBarFill, { width: `${percent}%` }]} />
-            <Text style={styles.progressBarText}>
-              {percent}%
-            </Text>
-          </View>
-          <Text style={{ marginLeft: 10, color: Colors.light.mainText, fontWeight: '600', fontSize: 15 }}>
-            {spotted}/{total}
-          </Text>
-        </View>
+
+        {viewMode === 'KNOWN' && renderTabs()}
       </View>
-      <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
-        <View style={styles.grid}>
-          {currentSection.data.length > 0
-            ? currentSection.data.map(renderAnimalSquare)
-            : <Text style={styles.empty}>No animals match that search.</Text>
-          }
-        </View>
-      </ScrollView>
+      {viewMode === 'KNOWN' ? (
+        <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
+          <View style={styles.grid}>
+            {currentSection.data.length > 0
+              ? currentSection.data.map(renderAnimalSquare)
+              : <Text style={styles.empty}>No animals match that search.</Text>
+            }
+          </View>
+        </ScrollView>
+      ) : (
+        renderUnknownList()
+      )}
       <Modal
         visible={badgeModalVisible}
         transparent
@@ -394,7 +699,7 @@ export default function AnimalDexScreen() {
               <Text style={{ color: '#666', textAlign: 'center', marginBottom: 10 }}>Loading info...</Text>
             ) : selectedAnimal ? (
               <>
-                <ScrollView style={{ flexGrow: 0, maxHeight: 400, marginBottom: 10 }}>
+                <ScrollView style={{ flexGrow: 0, marginBottom: 10 }} contentContainerStyle={{ paddingBottom: 12 }}>
                   <View style={styles.swipeInfoContainer}>
                     <Text style={styles.swipeInfoTitle}>{selectedAnimal.commonName}</Text>
 
@@ -486,6 +791,39 @@ export default function AnimalDexScreen() {
                         {selectedAnimal.conservationStatus}
                       </Text>
                     )}
+
+                    {/* User Sightings Gallery */}
+                    {selectedAnimalSightings.length > 0 && (
+                      <View style={{ marginTop: 14 }}>
+                        <Text style={[styles.swipeInfoLabel, { marginBottom: 8 }]}>Your Sightings</Text>
+                        {/* Latest large preview */}
+                        {(() => {
+                          const first = selectedAnimalSightings[0];
+                          const raw = pickImageUrl(first.mediaUrls);
+                          const hero = toTinyPreview(raw, 512) || raw;
+                          return hero ? (
+                            <TouchableOpacity onPress={() => raw && openPreview(raw)}>
+                              <Image source={{ uri: hero }} style={{ width: '100%', height: 220, borderRadius: 10 }} />
+                            </TouchableOpacity>
+                          ) : null;
+                        })()}
+                        {/* Horizontal thumbnails */}
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
+                          <View style={{ flexDirection: 'row', gap: 8 }}>
+                            {selectedAnimalSightings.slice(0, 12).map(s => {
+                              const raw = pickImageUrl(s.mediaUrls);
+                              const thumb = toTinyPreview(raw, 96) || raw;
+                              if (!thumb) return null;
+                              return (
+                                <TouchableOpacity key={s._id} onPress={() => raw && openPreview(raw)}>
+                                  <Image source={{ uri: thumb }} style={{ width: 96, height: 96, borderRadius: 8 }} />
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        </ScrollView>
+                      </View>
+                    )}
                   </View>
                 </ScrollView>
               </>
@@ -493,6 +831,155 @@ export default function AnimalDexScreen() {
               <Text style={{ color: '#666', textAlign: 'center', marginBottom: 10 }}>No info found.</Text>
             )}
           </View>
+        </View>
+      </Modal>
+
+      {/* Unknown Group Modal */}
+      <Modal
+        visible={unknownGroupModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setUnknownGroupModalVisible(false)}
+      >
+        <View style={modalStyles.backdrop}>
+          <View style={modalStyles.sheet}>
+            <TouchableOpacity style={modalStyles.handle} onPress={() => setUnknownGroupModalVisible(false)} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+              <Text style={modalStyles.sheetTitle}>
+                {(unknownGroups.find(g => g.key === selectedUnknownKey)?.title) || 'Unknown identification'}
+              </Text>
+              <TouchableOpacity onPress={() => setUnknownGroupModalVisible(false)} style={{ marginLeft: 'auto', padding: 6 }}>
+                <Icon name="times" size={18} color="#aaa" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+              {(() => {
+                const group = unknownGroups.find(g => g.key === selectedUnknownKey);
+                if (!group) return null;
+                const count = group.items.length;
+                const vals = group.items.map(s => (typeof s.confidence === 'number' ? s.confidence! : null)).filter(v => v != null) as number[];
+                const avg = vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+                return (
+                  <View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                      <Text style={{ color: Colors.light.darkNeutral }}>
+                        {count} sighting{count > 1 ? 's' : ''}{avg != null ? ` • Avg ${avg}%` : ''}
+                      </Text>
+                      <View style={{ backgroundColor: Colors.light.lightGrey, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2 }}>
+                        <Text style={{ color: Colors.light.mainText, fontSize: 10, fontWeight: '600' }}>Unmapped</Text>
+                      </View>
+                    </View>
+                    {isAdmin && (
+                      <View style={{ marginBottom: 12, padding: 10, borderRadius: 8, backgroundColor: '#f6f6f9', borderWidth: 1, borderColor: Colors.light.shadow }}>
+                        <Text style={{ color: Colors.light.mainText, fontWeight: '700', marginBottom: 8 }}>Admin: Link to an Animal</Text>
+                        <Text style={{ color: Colors.light.darkNeutral, fontSize: 12, marginBottom: 6 }}>
+                          AI label: {(group.title || '').trim()}
+                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: Colors.light.shadow, paddingHorizontal: 8 }}>
+                          <Icon name="search" size={14} color={Colors.light.darkNeutral} />
+                          <TextInput
+                            style={{ flex: 1, paddingVertical: 6, paddingHorizontal: 8, color: Colors.light.mainText }}
+                            placeholder="Search animals..."
+                            placeholderTextColor={Colors.light.darkNeutral}
+                            value={adminSearch}
+                            onChangeText={setAdminSearch}
+                            autoCorrect={false}
+                            autoCapitalize="none"
+                          />
+                          {adminSearch.length > 0 && (
+                            <TouchableOpacity onPress={() => setAdminSearch('')} style={{ padding: 6 }}>
+                              <Icon name="times" size={14} color={Colors.light.darkNeutral} />
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                        <View style={{ marginTop: 8, maxHeight: 220 }}>
+                          <ScrollView>
+                            {(adminResults || []).slice(0, 25).map(a => {
+                              const thumb = getAnimalImage(a);
+                              return (
+                                <View key={a._id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: Colors.light.shadow }}>
+                                  <View style={{ width: 36, height: 36, borderRadius: 6, overflow: 'hidden', backgroundColor: Colors.light.lightGrey, marginRight: 8 }}>
+                                    <Image source={{ uri: thumb }} style={{ width: '100%', height: '100%' }} />
+                                  </View>
+                                  <View style={{ flex: 1 }}>
+                                    <Text style={{ color: Colors.light.mainText, fontWeight: '600' }} numberOfLines={1}>{a.commonName}</Text>
+                                    {!!a.scientificName && (
+                                      <Text style={{ color: Colors.light.darkNeutral, fontSize: 12 }} numberOfLines={1}>{a.scientificName}</Text>
+                                    )}
+                                  </View>
+                                  <TouchableOpacity
+                                    disabled={linking}
+                                    onPress={async () => {
+                                      if (!token) return;
+                                      try {
+                                        setLinking(true);
+                                        const aiLabel = (group.title || '').trim();
+                                        if (!aiLabel || aiLabel.toLowerCase() === 'unknown identification') {
+                                          console.warn('Cannot link an empty or unknown AI label');
+                                          return;
+                                        }
+                                        await apiCreateOrUpdateMapping(token, aiLabel, a._id, true);
+                                        await fetchData();
+                                        setUnknownGroupModalVisible(false);
+                                        setAdminSearch('');
+                                        setAdminResults([]);
+                                      } catch (e) {
+                                        console.warn('Failed to link mapping', e);
+                                      } finally {
+                                        setLinking(false);
+                                      }
+                                    }}
+                                    style={{ paddingHorizontal: 10, paddingVertical: 6, backgroundColor: Colors.light.accent, borderRadius: 6 }}
+                                  >
+                                    <Text style={{ color: '#fff', fontWeight: '700' }}>{linking ? 'Linking…' : 'Link'}</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              );
+                            })}
+                          </ScrollView>
+                        </View>
+                      </View>
+                    )}
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+                      {group.items.map(s => {
+                        const raw = pickImageUrl(s.mediaUrls);
+                        const thumb = toTinyPreview(raw, 144) || raw;
+                        const key = s._id;
+                        return (
+                          <TouchableOpacity key={key} onPress={() => raw && openPreview(raw)} style={{ width: '31%', aspectRatio: 1, marginBottom: 10, borderRadius: 8, overflow: 'hidden', backgroundColor: Colors.light.lightGrey }}>
+                            {thumb ? (
+                              <Image source={{ uri: thumb }} style={{ width: '100%', height: '100%' }} />
+                            ) : (
+                              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                                <Icon name="image" size={22} color={Colors.light.darkNeutral} />
+                              </View>
+                            )}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                );
+              })()}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Fullscreen Image Preview */}
+      <Modal
+        visible={!!previewImage}
+        transparent
+        animationType="fade"
+        onRequestClose={closePreview}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', alignItems: 'center' }}>
+          <TouchableOpacity onPress={closePreview} style={{ position: 'absolute', top: 40, right: 20, padding: 8 }}>
+            <Icon name="times" size={24} color="#fff" />
+          </TouchableOpacity>
+          {previewImage && (
+            <Image source={{ uri: previewImage }} style={{ width: SCREEN_WIDTH, height: SCREEN_WIDTH, resizeMode: 'contain' }} />
+          )}
         </View>
       </Modal>
     </View>

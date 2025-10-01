@@ -6,6 +6,7 @@ import commentRouter from './comment.routes.js';
 import followRouter from './follow.routes.js';
 import likeRouter from './like.routes.js';
 import loggingRouter from './logging.routes.js';
+import mappingRouter from './mapping.routes.js';
 import notificationRouter from './notification.routes.js';
 import sightingRouter from './sighting.routes.js';
 import uploadRouter from './upload.routes.js';
@@ -29,5 +30,6 @@ router.use('/userAchievements', userAchievementRouter);
 router.use('/notifications', notificationRouter);
 router.use('/loggings', loggingRouter);
 router.use('/uploads', uploadRouter);
+router.use('/mappings', mappingRouter);
 
 export default router;

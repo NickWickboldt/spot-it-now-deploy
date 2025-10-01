@@ -214,7 +214,7 @@ export default function SpotItScreen() {
       }
       `;
 
-      const analysis = await analyzeImage(uri, 'gemini-1.5-flash', prompt);
+      const analysis = await analyzeImage(uri, 'gemini-2.5-flash', prompt);
       const HIGH_CONFIDENCE_THRESHOLD = 55;
       const LOW_CONFIDENCE_THRESHOLD = 0;
 
@@ -298,7 +298,7 @@ const handleUploadImage = async () => {
       }
       `;
 
-      const analysis = await analyzeImage(result.assets[0].uri, 'gemini-1.5-flash', prompt);
+      const analysis = await analyzeImage(result.assets[0].uri, 'gemini-2.5-flash', prompt);
       const HIGH_CONFIDENCE_THRESHOLD = 55
       const LOW_CONFIDENCE_THRESHOLD = 0
       if (!analysis) {
@@ -356,7 +356,7 @@ const handleOverride = useCallback(async (uri?: string) => {
     setIsProcessing(true);
 
     try {
-      console.log("User requested override. Using gemini-2.5-flash.");
+      console.log("User requested override. Using gemini-2.5.");
 
       const promptForPro = `
         Re-analyze this image with a higher level of scrutiny. A previous, faster analysis was either incorrect or had very low confidence.
