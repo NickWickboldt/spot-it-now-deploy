@@ -9,6 +9,7 @@ import {
     getAnimalField,
     removeImageUrl,
     setAnimalField,
+    suggestAnimalData,
     updateAnimal,
 } from '../controllers/animal.controller.js';
 import { verifyAdmin } from '../middlewares/admin.middleware.js';
@@ -32,6 +33,7 @@ router.route('/match').post(findAnimalByIdentification);
 router.route('/create').post(verifyJWT, verifyAdmin(1), createAnimal);
 router.route('/:animalId/update').patch(verifyJWT, verifyAdmin(1), updateAnimal);
 router.route('/:animalId/delete').delete(verifyJWT, verifyAdmin(1), deleteAnimal);
+router.route('/suggest').post(verifyJWT, verifyAdmin(1), suggestAnimalData);
 
 // Setters for individual fields
 router.route('/:animalId/field/:fieldName').patch(verifyJWT, verifyAdmin(1), setAnimalField);

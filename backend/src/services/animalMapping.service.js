@@ -4,14 +4,31 @@ import { Sighting } from '../models/sighting.model.js';
 import { ApiError } from '../utils/ApiError.util.js';
 import { log } from '../utils/logger.util.js';
 
+// Normalizes AI names for storage and comparison.
+// - lowercases
+// - trims spaces
+// - removes punctuation: -, _, ., (, )
+// - collapses multiple spaces to one
 const normalizeAIName = (aiName) => {
-  if (typeof aiName !== 'string') {
-    return '';
-  }
-  return aiName.trim().toLowerCase();
+  if (typeof aiName !== 'string') return '';
+  const lowered = aiName.toLowerCase();
+  const noPunct = lowered.replace(/[\-_.()]/g, ' ');
+  const collapsed = noPunct.replace(/\s+/g, ' ').trim();
+  return collapsed;
 };
 
 const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// Builds a lenient regex for matching names, allowing flexible separators
+// between tokens and safely escaping regex special characters.
+const buildLenientNameRegex = (name = '') => {
+  const safe = String(name ?? '');
+  const tokens = safe.split(' ').filter(Boolean).map(escapeRegex);
+  // Allow whitespace or common punctuation as separators (avoid \s inside character class for Mongo regex compatibility)
+  const sep = '(?:\\s|[-_.()\\[\\]])*';
+  const pattern = tokens.length ? `^${tokens.join(sep)}$` : `^${escapeRegex(safe)}$`;
+  return new RegExp(pattern, 'i');
+};
 
 const ensureMappingForAIName = async (aiName) => {
   const normalizedName = normalizeAIName(aiName);
@@ -152,14 +169,15 @@ const applyMappingToSightings = async (aiName, animalId) => {
     return { matchedSightings: 0 };
   }
 
+  // Build a lenient regex that allows punctuation and spacing differences (safe against special chars)
+  const regex = buildLenientNameRegex(normalizedName);
+
   const result = await Sighting.updateMany(
     {
-      aiIdentification: { $regex: new RegExp(`^${escapeRegex(normalizedName)}$`, 'i') },
+      aiIdentification: { $regex: regex },
       animalId: null,
     },
-    {
-      $set: { animalId },
-    }
+    { $set: { animalId } }
   );
 
   return { matchedSightings: result.modifiedCount || 0 };
@@ -209,4 +227,6 @@ export const animalMappingService = {
   createOrUpdateMapping,
   applyMappingToSightings,
   updateMappingAnimalId,
+  // Expose normalization so other services can reuse the exact same logic
+  normalizeAIName,
 };

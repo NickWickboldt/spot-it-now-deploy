@@ -1,3 +1,4 @@
+import stringSimilarity from 'string-similarity';
 import { cloudinary, configureCloudinary } from '../config/cloudinary.config.js';
 import { Animal } from '../models/animal.model.js';
 import { Comment } from '../models/comment.model.js';
@@ -139,82 +140,185 @@ const deleteCloudinaryAssetsForSighting = async (mediaUrls = [], context = {}) =
 };
 
 const resolveAnimalMappingForAIIdentification = async (aiNameRaw) => {
-  const trimmedName = typeof aiNameRaw === 'string' ? aiNameRaw.trim() : null;
-  if (!trimmedName) {
+  const raw = typeof aiNameRaw === 'string' ? aiNameRaw : '';
+  const aiTrimmed = raw.trim();
+  if (!aiTrimmed) {
     return { aiName: null, canonicalName: null, animalId: null, mapping: null };
   }
 
-  const canonicalName = trimmedName.toLowerCase();
+  // Normalization consistent with mapping service
+  const canonicalName = animalMappingService.normalizeAIName(aiTrimmed);
 
+  // 1) Try existing mapping by normalized AI label
   let mapping = await animalMappingService.findMappingByAIName(canonicalName);
   if (mapping) {
     log.debug('sighting-service', 'Mapping found for AI identification', {
-      aiName: trimmedName,
+      aiName: aiTrimmed,
       canonicalName,
       mappingId: mapping._id,
       animalId: mapping.animalId || null,
     });
+    // Early return if mapping already points to an animal
+    if (mapping.animalId) {
+      log.info('sighting-service', 'AI name resolved via existing mapping', {
+        aiName: aiTrimmed,
+        normalizedAI: canonicalName,
+        animalId: mapping.animalId,
+        mode: 'mapping-existing',
+      });
+      return { aiName: aiTrimmed, canonicalName, animalId: mapping.animalId, mapping };
+    }
   }
 
   let resolvedAnimalId = mapping?.animalId || null;
 
-  // Always check for a direct match in the AnimalDex, regardless of mapping status.
-  // This handles cases where a placeholder mapping exists but the animal has since been added.
-  const existingAnimal = await Animal.findOne({ commonName: { $regex: `^${trimmedName}$`, $options: 'i' } })
-    .select('_id commonName');
-
-  if (existingAnimal) {
-    resolvedAnimalId = existingAnimal._id;
-  }
-
-  // If no mapping exists, create one. Link it to the animal if we found one.
-  if (!mapping) {
-    if (resolvedAnimalId) {
-      const { mapping: newMapping } = await animalMappingService.createOrUpdateMapping(
-        canonicalName,
-        resolvedAnimalId,
-        { retroactive: true }
-      );
-      mapping = newMapping;
-      log.debug('sighting-service', 'Created new mapping for AI identification', {
-        aiName: trimmedName,
-        canonicalName,
-        mappingId: mapping?._id,
-        animalId: resolvedAnimalId,
-      });
-    } else {
-      // No animal found, so create a placeholder mapping.
-      const placeholder = await animalMappingService.ensureMappingForAIName(canonicalName);
-      mapping = placeholder;
-      log.debug('sighting-service', 'Created placeholder mapping for unknown AI identification', {
-        aiName: trimmedName,
-        canonicalName,
-        mappingId: mapping?._id,
-      });
+  // 2) Try exact normalized match against animals.commonName
+  // Fetch all animals' commonName to normalize and compare
+  const animals = await Animal.find({}, { _id: 1, commonName: 1 }).lean();
+  const normalize = animalMappingService.normalizeAIName;
+  const normalizedToAnimal = new Map();
+  for (const a of animals) {
+    const norm = normalize(a.commonName || '');
+    if (norm) {
+      // first seen wins; avoids overwriting if duplicates exist
+      if (!normalizedToAnimal.has(norm)) normalizedToAnimal.set(norm, a);
     }
   }
-  // If a mapping DOES exist but isn't linked to the animal we just found, update it.
-  else if (existingAnimal && (!mapping.animalId || String(mapping.animalId) !== String(existingAnimal._id))) {
-    const { mapping: updatedMapping } = await animalMappingService.createOrUpdateMapping(
-      canonicalName,
-      existingAnimal._id,
-      { retroactive: true } // An admin or process added the animal, so we can safely backfill
-    );
-    mapping = updatedMapping;
-    log.debug('sighting-service', 'Updated existing placeholder mapping with found animal', {
-      aiName: trimmedName,
-      canonicalName,
-      mappingId: mapping?._id,
-      animalId: existingAnimal._id,
+
+  if (!resolvedAnimalId && normalizedToAnimal.has(canonicalName)) {
+    const animal = normalizedToAnimal.get(canonicalName);
+    resolvedAnimalId = animal._id;
+    // Upsert mapping to persist exact match
+    const { mapping: upserted } = await animalMappingService.createOrUpdateMapping(canonicalName, resolvedAnimalId, { retroactive: true });
+    mapping = upserted?.toObject?.() || upserted;
+    log.info('sighting-service', 'AI name exact-matched to animal', {
+      aiName: aiTrimmed,
+      normalizedAI: canonicalName,
+      animalCommonName: animal.commonName,
+      animalId: resolvedAnimalId,
+      mode: 'exact',
+    });
+    return { aiName: aiTrimmed, canonicalName, animalId: resolvedAnimalId, mapping };
+  }
+
+  // 3) Fuzzy match if still unresolved
+  if (!resolvedAnimalId) {
+    const normalize = animalMappingService.normalizeAIName;
+    const normalizeForFuzzy = (s = '') => normalize(s).replace(/\bgrey\b/g, 'gray');
+    const stripModifiers = (s = '') => normalizeForFuzzy(s)
+      .replace(/\b(eastern|western|northern|southern|common|american|european|asian|african)\b/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const toTokens = (s = '') => stripModifiers(s).split(' ').filter(Boolean);
+    const jaccard = (aTokens, bTokens) => {
+      const a = new Set(aTokens);
+      const b = new Set(bTokens);
+      const inter = new Set([...a].filter(x => b.has(x)));
+      const union = new Set([...a, ...b]);
+      return union.size ? inter.size / union.size : 0;
+    };
+
+    const aiNorm = normalizeForFuzzy(aiTrimmed);
+    const aiStripped = stripModifiers(aiTrimmed);
+    const aiTokens = toTokens(aiTrimmed);
+    const threshold = 0.85;
+
+    // Log fuzzy input forms
+    try {
+      log.debug('sighting-service', 'Fuzzy inputs prepared', {
+        aiName: aiTrimmed,
+        normalizedAI: canonicalName,
+        aiNorm,
+        aiStripped,
+        aiTokens,
+        threshold,
+      });
+    } catch {}
+
+    const scored = [];
+    for (const a of animals) {
+      const cn = a.commonName || '';
+      const candNorm = normalizeForFuzzy(cn);
+      const candStripped = stripModifiers(cn);
+      const candTokens = toTokens(cn);
+      const s1 = stringSimilarity.compareTwoStrings(aiNorm, candNorm);
+      const s2 = stringSimilarity.compareTwoStrings(aiStripped, candStripped);
+      const s3 = jaccard(aiTokens, candTokens);
+      const score = Math.max(s1, s2, s3);
+      scored.push({ animal: a, cn, candNorm, candStripped, candTokens, s1, s2, s3, score });
+    }
+    scored.sort((x, y) => y.score - x.score);
+
+    // Log top 5 candidates with their scores
+    try {
+      const top = scored.slice(0, 5).map((r) => ({
+        commonName: r.cn,
+        s1_normSim: Number(r.s1.toFixed(3)),
+        s2_strippedSim: Number(r.s2.toFixed(3)),
+        s3_tokenJaccard: Number(r.s3.toFixed(3)),
+        score: Number(r.score.toFixed(3)),
+        candNorm: r.candNorm,
+        candStripped: r.candStripped,
+        candTokens: r.candTokens,
+      }));
+      log.debug('sighting-service', 'Fuzzy scoring candidates (top 5)', {
+        totalCandidates: animals.length,
+        top,
+      });
+    } catch {}
+
+    const best = scored[0];
+    const bestCandidate = best?.animal || null;
+    const bestScore = best?.score || 0;
+
+    if (bestCandidate && bestScore >= threshold) {
+      resolvedAnimalId = bestCandidate._id;
+      const { mapping: upserted } = await animalMappingService.createOrUpdateMapping(canonicalName, resolvedAnimalId, { retroactive: true });
+      mapping = upserted?.toObject?.() || upserted;
+      log.info('sighting-service', 'AI name fuzzy-matched to animal', {
+        aiName: aiTrimmed,
+        normalizedAI: canonicalName,
+        matchedCommonName: bestCandidate.commonName,
+        score: Number(bestScore.toFixed(3)),
+        animalId: resolvedAnimalId,
+        mode: 'fuzzy',
+      });
+      return { aiName: aiTrimmed, canonicalName, animalId: resolvedAnimalId, mapping };
+    } else if (bestCandidate) {
+      try {
+        log.debug('sighting-service', 'Fuzzy best candidate below threshold', {
+          aiName: aiTrimmed,
+          normalizedAI: canonicalName,
+          bestCommonName: bestCandidate.commonName,
+          bestScore: Number(bestScore.toFixed(3)),
+          threshold,
+        });
+      } catch {}
+    }
+  }
+
+  // 4) Fallback: ensure placeholder mapping with null animalId
+  if (!mapping) {
+    const placeholder = await animalMappingService.ensureMappingForAIName(canonicalName);
+    mapping = placeholder;
+  }
+
+  if (!resolvedAnimalId) {
+    log.info('sighting-service', 'AI name left unmapped', {
+      aiName: aiTrimmed,
+      normalizedAI: canonicalName,
+      mode: 'unmapped',
+    });
+  } else {
+    log.info('sighting-service', 'AI name resolved after processing', {
+      aiName: aiTrimmed,
+      normalizedAI: canonicalName,
+      animalId: resolvedAnimalId,
+      mode: 'resolved',
     });
   }
 
-  return {
-    aiName: trimmedName,
-    canonicalName,
-    animalId: resolvedAnimalId,
-    mapping,
-  };
+  return { aiName: aiTrimmed, canonicalName, animalId: resolvedAnimalId || null, mapping };
 };
 
 /**

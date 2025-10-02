@@ -6,6 +6,7 @@ import { apiGetAllAnimals, apiSearchAnimals } from '../../api/animal';
 import { apiCreateOrUpdateMapping } from '../../api/mapping';
 import { apiGetMySightings } from '../../api/sighting';
 import { apiGetUserDiscoveries } from '../../api/userDiscovery';
+import AddAnimalButton from '../../components/AddAnimalButton';
 import { modalStyles, styles } from '../../constants/animalIndexStyle';
 import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
@@ -938,6 +939,10 @@ export default function AnimalDexScreen() {
                             })}
                           </ScrollView>
                         </View>
+                            {/* Add new animal shortcut */}
+                            <View style={{ marginTop: 12 }}>
+                              <AddAnimalButton defaultCommonName={(group.title || '').trim()} />
+                            </View>
                       </View>
                     )}
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
