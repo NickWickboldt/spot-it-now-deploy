@@ -9,8 +9,8 @@ export default function AddAnimalScreen(): React.JSX.Element {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Animal Management</Text>
-        <Text style={styles.subtitle}>Admin Tools</Text>
+  <Text style={styles.title}>Populate Animal DB</Text>
+  <Text style={styles.subtitle}>Create and seed animal entries</Text>
       </View>
 
       <View style={styles.content}>

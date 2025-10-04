@@ -2,16 +2,16 @@ import React, { useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import AddAnimalModal from './AddAnimalModal';
 
-type Props = { defaultCommonName?: string };
+type Props = { defaultCommonName?: string; mapAINameOnCreate?: string; onCreated?: (animal: any) => void };
 
-export const AddAnimalButton: React.FC<Props> = ({ defaultCommonName }) => {
+export const AddAnimalButton: React.FC<Props> = ({ defaultCommonName, mapAINameOnCreate, onCreated }) => {
   const [open, setOpen] = useState(false);
   return (
     <View>
       <TouchableOpacity style={styles.btn} onPress={() => setOpen(true)}>
         <Text style={styles.txt}>Add Animal To DB</Text>
       </TouchableOpacity>
-      <AddAnimalModal visible={open} onClose={() => setOpen(false)} defaultCommonName={defaultCommonName} />
+      <AddAnimalModal visible={open} onClose={() => setOpen(false)} defaultCommonName={defaultCommonName} mapAINameOnCreate={mapAINameOnCreate} onCreated={onCreated} />
     </View>
   );
 };

@@ -206,17 +206,16 @@ export default function ProfileScreen(): React.JSX.Element | null {
 
             {user.role === "admin" && (
               <>
-                <Pressable style={profileStyles.menuItem} onPress={() => { router.push('/manage-users'); setMenuVisible(false); }}>
-                  <Text style={profileStyles.menuText}>Manage Users</Text>
+                <Pressable style={profileStyles.menuItem} onPress={() => { router.push('/(admin)/admin'); setMenuVisible(false); }}>
+                  <Text style={profileStyles.menuText}>Admin Page</Text>
                 </Pressable>
-                <Pressable style={profileStyles.menuItem} onPress={() => { router.push('/manage-sightings'); setMenuVisible(false); }}>
-                  <Text style={profileStyles.menuText}>Manage Sightings</Text>
-                </Pressable>
-                <Pressable style={profileStyles.menuItem} onPress={() => { router.push('/(admin)/add-animal'); setMenuVisible(false); }}>
-                  <Text style={profileStyles.menuText}>Animals</Text>
-                </Pressable>
+    
               </>
             )}
+
+            <Pressable style={profileStyles.menuItem} onPress={() => { router.push('/(user)/challenges'); setMenuVisible(false); }}>
+              <Text style={profileStyles.menuText}>Today's Challenges</Text>
+            </Pressable>
 
             <Pressable style={profileStyles.menuItem} onPress={logout}>
               <Text style={profileStyles.menuText}>Logout</Text>

@@ -2,11 +2,9 @@ import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Dimensions, Image, Modal, PanResponder, ScrollView, StatusBar, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
-import { apiGetAllAnimals, apiSearchAnimals } from '../../api/animal';
-import { apiCreateOrUpdateMapping } from '../../api/mapping';
+import { apiGetAllAnimals } from '../../api/animal';
 import { apiGetMySightings } from '../../api/sighting';
 import { apiGetUserDiscoveries } from '../../api/userDiscovery';
-import AddAnimalButton from '../../components/AddAnimalButton';
 import { modalStyles, styles } from '../../constants/animalIndexStyle';
 import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
@@ -72,11 +70,7 @@ export default function AnimalDexScreen() {
   const [animals, setAnimals] = useState<Animal[]>([]);
   const [loading, setLoading] = useState(true);
   const [animalCategories, setAnimalCategories] = useState<AnimalCategory[]>([]);
-  // Admin-only controls state
-  const isAdmin = (user?.role === 'admin');
-  const [adminSearch, setAdminSearch] = useState('');
-  const [adminResults, setAdminResults] = useState<Animal[]>([]);
-  const [linking, setLinking] = useState(false);
+  // Admin-only linking moved to Admin page
 
   const handlePanResponder = React.useRef(
     PanResponder.create({
@@ -164,26 +158,7 @@ export default function AnimalDexScreen() {
     }, [fetchData])
   );
 
-  // Admin: search animals for linking
-  useEffect(() => {
-    let cancelled = false;
-    const run = async () => {
-      if (!isAdmin) return;
-      const q = adminSearch.trim();
-      if (!q) {
-        setAdminResults([]);
-        return;
-      }
-      try {
-        const resp = await apiSearchAnimals(q, token || undefined);
-        if (!cancelled) setAdminResults(resp.data || []);
-      } catch (e) {
-        if (!cancelled) setAdminResults([]);
-      }
-    };
-    const t = setTimeout(run, 250);
-    return () => { cancelled = true; clearTimeout(t); };
-  }, [adminSearch, isAdmin, token]);
+  // Admin linking UI removed from this screen; use Admin page instead
   // Build a per-animal thumbnail from the user's own sightings (latest wins)
   // Helper: choose the best image URL from media list (skip videos when possible)
   function pickImageUrl(list?: string[]): string | undefined {
@@ -870,81 +845,7 @@ export default function AnimalDexScreen() {
                         <Text style={{ color: Colors.light.mainText, fontSize: 10, fontWeight: '600' }}>Unmapped</Text>
                       </View>
                     </View>
-                    {isAdmin && (
-                      <View style={{ marginBottom: 12, padding: 10, borderRadius: 8, backgroundColor: '#f6f6f9', borderWidth: 1, borderColor: Colors.light.shadow }}>
-                        <Text style={{ color: Colors.light.mainText, fontWeight: '700', marginBottom: 8 }}>Admin: Link to an Animal</Text>
-                        <Text style={{ color: Colors.light.darkNeutral, fontSize: 12, marginBottom: 6 }}>
-                          AI label: {(group.title || '').trim()}
-                        </Text>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: Colors.light.shadow, paddingHorizontal: 8 }}>
-                          <Icon name="search" size={14} color={Colors.light.darkNeutral} />
-                          <TextInput
-                            style={{ flex: 1, paddingVertical: 6, paddingHorizontal: 8, color: Colors.light.mainText }}
-                            placeholder="Search animals..."
-                            placeholderTextColor={Colors.light.darkNeutral}
-                            value={adminSearch}
-                            onChangeText={setAdminSearch}
-                            autoCorrect={false}
-                            autoCapitalize="none"
-                          />
-                          {adminSearch.length > 0 && (
-                            <TouchableOpacity onPress={() => setAdminSearch('')} style={{ padding: 6 }}>
-                              <Icon name="times" size={14} color={Colors.light.darkNeutral} />
-                            </TouchableOpacity>
-                          )}
-                        </View>
-                        <View style={{ marginTop: 8, maxHeight: 220 }}>
-                          <ScrollView>
-                            {(adminResults || []).slice(0, 25).map(a => {
-                              const thumb = getAnimalImage(a);
-                              return (
-                                <View key={a._id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: Colors.light.shadow }}>
-                                  <View style={{ width: 36, height: 36, borderRadius: 6, overflow: 'hidden', backgroundColor: Colors.light.lightGrey, marginRight: 8 }}>
-                                    <Image source={{ uri: thumb }} style={{ width: '100%', height: '100%' }} />
-                                  </View>
-                                  <View style={{ flex: 1 }}>
-                                    <Text style={{ color: Colors.light.mainText, fontWeight: '600' }} numberOfLines={1}>{a.commonName}</Text>
-                                    {!!a.scientificName && (
-                                      <Text style={{ color: Colors.light.darkNeutral, fontSize: 12 }} numberOfLines={1}>{a.scientificName}</Text>
-                                    )}
-                                  </View>
-                                  <TouchableOpacity
-                                    disabled={linking}
-                                    onPress={async () => {
-                                      if (!token) return;
-                                      try {
-                                        setLinking(true);
-                                        const aiLabel = (group.title || '').trim();
-                                        if (!aiLabel || aiLabel.toLowerCase() === 'unknown identification') {
-                                          console.warn('Cannot link an empty or unknown AI label');
-                                          return;
-                                        }
-                                        await apiCreateOrUpdateMapping(token, aiLabel, a._id, true);
-                                        await fetchData();
-                                        setUnknownGroupModalVisible(false);
-                                        setAdminSearch('');
-                                        setAdminResults([]);
-                                      } catch (e) {
-                                        console.warn('Failed to link mapping', e);
-                                      } finally {
-                                        setLinking(false);
-                                      }
-                                    }}
-                                    style={{ paddingHorizontal: 10, paddingVertical: 6, backgroundColor: Colors.light.accent, borderRadius: 6 }}
-                                  >
-                                    <Text style={{ color: '#fff', fontWeight: '700' }}>{linking ? 'Linking…' : 'Link'}</Text>
-                                  </TouchableOpacity>
-                                </View>
-                              );
-                            })}
-                          </ScrollView>
-                        </View>
-                            {/* Add new animal shortcut */}
-                            <View style={{ marginTop: 12 }}>
-                              <AddAnimalButton defaultCommonName={(group.title || '').trim()} />
-                            </View>
-                      </View>
-                    )}
+                    {/* Admin linking controls have moved to the Admin page */}
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
                       {group.items.map(s => {
                         const raw = pickImageUrl(s.mediaUrls);

@@ -1,18 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { apiCreateAnimal, apiSuggestAnimal } from '../api/animalAdmin';
+import { apiCreateOrUpdateMapping } from '../api/mapping';
 import { useAuth } from '../context/AuthContext';
 
 type Props = {
   visible: boolean;
   onClose: () => void;
   defaultCommonName?: string;
+  // If provided, after creating the animal we will map this AI label to the new animal (retroactive = true)
+  mapAINameOnCreate?: string;
+  // Optional callback invoked with the created animal document
+  onCreated?: (animal: any) => void;
 };
 
 const categories = ['Mammals', 'Birds', 'Insects and Arachnids', 'Reptiles and Amphibians', 'Marine Animals'];
 const rarityLevels = ['Common', 'Uncommon', 'Rare', 'Legendary'];
 
-export const AddAnimalModal: React.FC<Props> = ({ visible, onClose, defaultCommonName = '' }) => {
+export const AddAnimalModal: React.FC<Props> = ({ visible, onClose, defaultCommonName = '', mapAINameOnCreate, onCreated }) => {
   const { token } = useAuth();
   const [commonName, setCommonName] = useState(defaultCommonName);
   const [scientificName, setScientificName] = useState('');
@@ -86,6 +91,18 @@ export const AddAnimalModal: React.FC<Props> = ({ visible, onClose, defaultCommo
       };
       const res = await apiCreateAnimal(token, payload);
       if (res?.data) {
+        const created = res.data;
+        // If requested, link the provided AI label to this new animal
+        const aiLabel = (mapAINameOnCreate || '').trim();
+        if (aiLabel) {
+          try {
+            await apiCreateOrUpdateMapping(token, aiLabel, created._id, true);
+          } catch (e) {
+            // Non-fatal: surface a mild warning but continue closing
+            console.warn('Mapping after create failed', e);
+          }
+        }
+        onCreated?.(created);
         Alert.alert('Success', 'Animal created successfully');
         onClose();
         reset();
@@ -109,7 +126,7 @@ export const AddAnimalModal: React.FC<Props> = ({ visible, onClose, defaultCommo
             onChangeText={setCommonName}
           />
           <View style={styles.row}>
-            <TouchableOpacity style={styles.secondary} onPress={handleSuggest} disabled={loading}>
+            <TouchableOpacity style={styles.secondary} onPress={handleSuggest} disabled={loading || !commonName.trim()}>
               {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.secondaryText}>AI Suggest</Text>}
             </TouchableOpacity>
           </View>
