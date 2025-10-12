@@ -1058,69 +1058,89 @@ export default function FeedScreen() {
                   <Text style={communityStyles.approveText}>VERIFIED</Text>
                 </Animated.View>
                 <Animated.View style={[communityStyles.swipeLabel, communityStyles.rejectLabel, { opacity: rejectOpacity }]}>
-                  <Text style={communityStyles.rejectText}>FLAG</Text>
+                  <Text style={communityStyles.rejectText}>FLAGGED</Text>
                 </Animated.View>
-                <View style={FeedScreenStyles.card}>
+                <View style={[communityStyles.communityCard, { height: postHeight * 0.75 }]}>
                   <View style={FeedScreenStyles.cardHeader}>
-                    <TouchableOpacity
-                      onPress={() => {
-                        const userId = communityCandidate?.user?._id || communityCandidate?.user;
-                        const username = communityCandidate?.user?.username || communityCandidate?.userName || '';
-                        const profilePictureUrl = communityCandidate?.user?.profilePictureUrl || communityCandidate?.userProfilePictureUrl || '';
-                        if (userId) {
-                          router.push({
-                            pathname: '/(user)/user_profile',
-                            params: { userId: String(userId), username: String(username), profilePictureUrl: String(profilePictureUrl) }
-                          });
-                        }
-                      }}
-                      style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
-                      activeOpacity={0.8}
-                    >
-                      <Image
-                        source={{ uri: (communityCandidate?.user?.profilePictureUrl || communityCandidate?.userProfilePictureUrl || 'https://ui-avatars.com/api/?name=User') }}
-                        style={FeedScreenStyles.avatar}
-                      />
-                      <View style={{ flex: 1 }}>
+                    <View style={FeedScreenStyles.headerLeft}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          const userId = communityCandidate?.user?._id || communityCandidate?.user;
+                          const username = communityCandidate?.user?.username || communityCandidate?.userName || '';
+                          const profilePictureUrl = communityCandidate?.user?.profilePictureUrl || communityCandidate?.userProfilePictureUrl || '';
+                          if (userId) {
+                            router.push({
+                              pathname: '/(user)/user_profile',
+                              params: { userId: String(userId), username: String(username), profilePictureUrl: String(profilePictureUrl) }
+                            });
+                          }
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <LinearGradient
+                          colors={[Colors.light.primaryGreen, Colors.light.secondaryGreen]}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 1 }}
+                          style={FeedScreenStyles.avatarRing}
+                        >
+                          <View style={FeedScreenStyles.avatar}>
+                            {communityCandidate?.user?.profilePictureUrl || communityCandidate?.userProfilePictureUrl ? (
+                              <Image
+                                source={{ uri: communityCandidate?.user?.profilePictureUrl || communityCandidate?.userProfilePictureUrl }}
+                                style={{ width: 44, height: 44, borderRadius: 22 }}
+                              />
+                            ) : (
+                              <Text style={FeedScreenStyles.avatarText}>
+                                {(communityCandidate?.user?.username || communityCandidate?.userName || 'U').charAt(0).toUpperCase()}
+                              </Text>
+                            )}
+                          </View>
+                        </LinearGradient>
+                      </TouchableOpacity>
+                      <View style={FeedScreenStyles.userInfo}>
                         <Text style={FeedScreenStyles.username}>{communityCandidate?.user?.username || communityCandidate?.userName || 'Unknown'}</Text>
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                           <Text style={FeedScreenStyles.time}>{getRelativeTime(communityCandidate.createdAt)}</Text>
                         </View>
                       </View>
-                    </TouchableOpacity>
+                    </View>
                   </View>
                   {renderImages(communityCandidate.mediaUrls, communityCandidate._id, true, undefined)}
-                  <Text style={FeedScreenStyles.cardCaption}>{communityCandidate.caption || 'No caption provided.'}</Text>
-                  {(communityCandidate.verifiedByAI || communityCandidate.verifiedByUser || communityCandidate.verifiedByCommunity) && (
-                    <View style={verificationStyles.badgeContainer}>
-                      {communityCandidate.verifiedByAI && (
-                        <View style={[verificationStyles.badge, verificationStyles.aiBadge]}>
-                          <Text style={verificationStyles.badgeText}>AI</Text>
-                        </View>
-                      )}
-                      {communityCandidate.verifiedByUser && (
-                        <View style={[verificationStyles.badge, verificationStyles.userBadge]}>
-                          <Text style={verificationStyles.badgeText}>User</Text>
-                        </View>
-                      )}
-                      {communityCandidate.verifiedByCommunity && (
-                        <View style={[verificationStyles.badge, verificationStyles.communityBadge]}>
-                          <Text style={verificationStyles.badgeText}>Community</Text>
-                        </View>
-                      )}
+                  <View style={FeedScreenStyles.cardContent}>
+                    <View style={FeedScreenStyles.captionRow}>
+                      <Text style={FeedScreenStyles.cardCaption}>{communityCandidate.caption || 'No caption provided.'}</Text>
                     </View>
-                  )}
-                  {communityCandidate.identification?.commonName && (
-                    <Text style={{ marginHorizontal: 12, marginTop: 6, color: '#9aa0a6', fontSize: 12 }}>
-                      Identified as {communityCandidate.identification.commonName}
-                      {communityCandidate.identification?.scientificName ? ' (' + communityCandidate.identification.scientificName + ')' : ''}
-                    </Text>
-                  )}
-                  {communityCandidate.communityReview && (
-                    <Text style={{ marginHorizontal: 12, marginTop: 6, color: '#666', fontSize: 11 }}>
-                      Community approvals: {communityCandidate.communityReview?.approvals || 0} | Flags: {communityCandidate.communityReview?.rejections || 0}
-                    </Text>
-                  )}
+                    {(communityCandidate.verifiedByAI || communityCandidate.verifiedByUser || communityCandidate.verifiedByCommunity) && (
+                      <View style={verificationStyles.badgeContainer}>
+                        {communityCandidate.verifiedByAI && (
+                          <View style={[verificationStyles.badge, verificationStyles.aiBadge]}>
+                            <Text style={verificationStyles.badgeText}>AI</Text>
+                          </View>
+                        )}
+                        {communityCandidate.verifiedByUser && (
+                          <View style={[verificationStyles.badge, verificationStyles.userBadge]}>
+                            <Text style={verificationStyles.badgeText}>User</Text>
+                          </View>
+                        )}
+                        {communityCandidate.verifiedByCommunity && (
+                          <View style={[verificationStyles.badge, verificationStyles.communityBadge]}>
+                            <Text style={verificationStyles.badgeText}>Community</Text>
+                          </View>
+                        )}
+                      </View>
+                    )}
+                    {communityCandidate.identification?.commonName && (
+                      <Text style={{ marginHorizontal: 12, marginTop: 6, color: '#9aa0a6', fontSize: 12 }}>
+                        Identified as {communityCandidate.identification.commonName}
+                        {communityCandidate.identification?.scientificName ? ' (' + communityCandidate.identification.scientificName + ')' : ''}
+                      </Text>
+                    )}
+                    {communityCandidate.communityReview && (
+                      <Text style={{ marginHorizontal: 12, marginTop: 6, color: '#666', fontSize: 11 }}>
+                        Community approvals: {communityCandidate.communityReview?.approvals || 0} | Flags: {communityCandidate.communityReview?.rejections || 0}
+                      </Text>
+                    )}
+                  </View>
                 </View>
               </Animated.View>
               <View style={communityStyles.buttonRow}>
@@ -1133,6 +1153,7 @@ export default function FeedScreen() {
                   onPress={() => animateAndVote('REJECT')}
                   disabled={communityProcessing || communityLoading}
                 >
+                  <Icon name="times" size={20} color="#fff" />
                   <Text style={communityStyles.voteButtonText}>Fake / Wrong ID</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -1144,7 +1165,8 @@ export default function FeedScreen() {
                   onPress={() => animateAndVote('APPROVE')}
                   disabled={communityProcessing || communityLoading}
                 >
-                  <Text style={[communityStyles.voteButtonText, { color: '#000' }]}>Looks Good</Text>
+                  <Icon name="check" size={20} color="#fff" />
+                  <Text style={communityStyles.voteButtonText}>Looks Good</Text>
                 </TouchableOpacity>
               </View>
               <Text style={communityStyles.instructions}>Swipe left to flag, swipe right to verify. Help the community validate sightings.</Text>
@@ -1419,6 +1441,7 @@ const communityStyles = StyleSheet.create({
   container: {
     flex: 1,
     paddingHorizontal: 20,
+    paddingTop: 20,
   },
   loadingContainer: {
     flex: 1,
@@ -1454,47 +1477,75 @@ const communityStyles = StyleSheet.create({
   },
   cardWrapper: {
     alignSelf: 'stretch',
+    marginBottom: 20,
+  },
+  communityCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
   },
   swipeLabel: {
     position: 'absolute',
-    top: 16,
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderWidth: 2,
-    borderRadius: 8,
-    zIndex: 2,
+    top: '45%',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 999,
+    zIndex: 100,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
   },
   approveLabel: {
-    left: 16,
-    borderColor: '#4CAF50',
+    right: 32,
+    backgroundColor: 'rgba(74, 222, 128, 0.9)',
+    transform: [{ rotate: '25deg' }],
   },
   approveText: {
-    color: '#4CAF50',
+    color: '#fff',
     fontWeight: '700',
-    letterSpacing: 1.1,
+    fontSize: 24,
+    letterSpacing: 1.5,
   },
   rejectLabel: {
-    right: 16,
-    borderColor: '#FF3B30',
+    left: 32,
+    backgroundColor: 'rgba(239, 68, 68, 0.9)',
+    transform: [{ rotate: '-25deg' }],
   },
   rejectText: {
-    color: '#FF3B30',
+    color: '#fff',
     fontWeight: '700',
-    letterSpacing: 1.1,
+    fontSize: 24,
+    letterSpacing: 1.5,
   },
   buttonRow: {
     flexDirection: 'row',
     marginTop: 24,
     gap: 16,
+    paddingHorizontal: 4,
   },
   voteButton: {
     flex: 1,
     paddingVertical: 16,
-    borderRadius: 12,
+    borderRadius: 999,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   rejectButton: {
-    backgroundColor: '#2f2f2f',
+    backgroundColor: '#1f2937',
   },
   approveButton: {
     backgroundColor: Colors.light.primaryGreen,
@@ -1502,6 +1553,7 @@ const communityStyles = StyleSheet.create({
   voteButtonText: {
     color: '#fff',
     fontWeight: '700',
+    fontSize: 15,
   },
   disabledButton: {
     opacity: 0.6,
@@ -1511,6 +1563,7 @@ const communityStyles = StyleSheet.create({
     color: '#9aa0a6',
     fontSize: 12,
     textAlign: 'center',
+    lineHeight: 18,
   },
 });
 
