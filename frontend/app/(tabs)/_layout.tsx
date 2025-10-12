@@ -7,9 +7,9 @@ import { Colors } from '../../constants/Colors';
 import { getTakePictureRef, subscribeCaptureState, type CaptureState } from '../captureRegistry';
 
 const TAB_ICONS = [
-  { name: 'feed', icon: 'file-text', label: 'Sightings' },
+  { name: 'feed', icon: 'file-text', label: 'Sighting' },
   { name: 'map', icon: 'map', label: 'Map' },
-  { name: 'spotit', icon: 'camera', label: 'Post', isCenter: true },
+  { name: 'spotit', icon: 'camera', label: '', isCenter: true },
   { name: 'animal_index', icon: 'book', label: 'Index' },
   { name: 'profile', icon: 'user', label: 'Profile' },
 ];
@@ -45,15 +45,15 @@ function CustomTabBar({ state, navigation }) {
               >
                 <View style={styles.iconWrapper}>
                   <LinearGradient
-                    colors={['#4ade80', '#16a34a']}
+                    colors={[Colors.light.primaryGreen, Colors.light.secondaryGreen]}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                     style={styles.postGradient}
                   >
                     {capState.isVideoMode ? (
-                      <Icon name={capState.isRecording ? 'stop' : 'dot-circle-o'} size={24} color={capState.isRecording ? '#ff4040' : '#fff'} />
+                      <Icon name={capState.isRecording ? 'stop' : 'dot-circle-o'} size={24} color={capState.isRecording ? '#ff4040' : Colors.light.softBeige} />
                     ) : (
-                      <Icon name={tab.icon} size={24} color="#fff" />
+                      <Icon name={tab.icon} size={24} color={Colors.light.softBeige} />
                     )}
                   </LinearGradient>
                 </View>
@@ -74,7 +74,7 @@ function CustomTabBar({ state, navigation }) {
               <View style={styles.iconWrapper}>
                 {focused && (
                   <LinearGradient
-                    colors={['#dcfce7', '#bbf7d0']}
+                    colors={[Colors.light.background, Colors.light.shadow]}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                     style={styles.activeBackground}
@@ -83,13 +83,13 @@ function CustomTabBar({ state, navigation }) {
                 <Icon
                   name={tab.icon}
                   size={24}
-                  color={focused ? Colors.light.primaryGreen : '#9ca3af'}
+                  color={focused ? Colors.light.primaryGreen : Colors.light.secondaryGreen}
                 />
               </View>
               <Text
                 style={[
                   styles.tabLabel,
-                  { color: focused ? Colors.light.primaryGreen : '#9ca3af' }
+                  { color: focused ? Colors.light.primaryGreen : Colors.light.secondaryGreen }
                 ]}
               >
                 {tab.label}
@@ -125,11 +125,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 0,
     width: '100%',
-    backgroundColor: '#ffffff',
+    backgroundColor: Colors.light.softBeige,
     borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
+    borderTopColor: Colors.light.shadow,
     paddingBottom: 0,
-    paddingTop: 8,
   },
   tabRow: {
     flexDirection: 'row',
@@ -141,7 +140,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 6,
     paddingHorizontal: 16,
   },
   iconWrapper: {

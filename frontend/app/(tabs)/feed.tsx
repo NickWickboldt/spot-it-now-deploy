@@ -1,4 +1,5 @@
 import { ResizeMode, Video } from 'expo-av';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, Dimensions, Easing, FlatList, Image, Modal, PanResponder, Platform, RefreshControl, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -23,11 +24,11 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
   const R = 3959; // Earth's radius in miles
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = 
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-    Math.sin(dLon/2) * Math.sin(dLon/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   const distance = R * c;
   return distance;
 };
@@ -45,7 +46,7 @@ const ComingSoonScreen = () => (
   </View>
 );
 
-const TABS = ['Community', 'Following','Local','Discover'] as const;
+const TABS = ['Community', 'Following', 'Local', 'Discover'] as const;
 type TabKey = typeof TABS[number];
 
 export default function FeedScreen() {
@@ -56,6 +57,10 @@ export default function FeedScreen() {
   const [loading, setLoading] = useState(true);
   const [menuVisible, setMenuVisible] = useState(false);
   const [selectedSighting, setSelectedSighting] = useState(null);
+  // Comments modal state
+  const [commentsModalVisible, setCommentsModalVisible] = useState(false);
+  const [activeCommentSighting, setActiveCommentSighting] = useState<any>(null);
+  const slideAnim = useRef(new Animated.Value(0)).current;
   // Embedded comments state (per sighting)
   const [commentsExpanded, setCommentsExpanded] = useState<Record<string, boolean>>({});
   const [commentsLoadingById, setCommentsLoadingById] = useState<Record<string, boolean>>({});
@@ -73,6 +78,7 @@ export default function FeedScreen() {
   const [localMessage, setLocalMessage] = useState<string | null>(null);
   const [likedMap, setLikedMap] = useState<Record<string, boolean>>({});
   const scaleMapRef = useRef<Record<string, Animated.Value>>({});
+  const [floatingHearts, setFloatingHearts] = useState<Record<string, Array<{ id: string; anim: Animated.Value; x: number; y: number }>>>({});
   // Track which posts are currently visible to control video autoplay
   const [visibleMap, setVisibleMap] = useState<Record<string, boolean>>({});
   const viewabilityConfig = useRef({ viewAreaCoveragePercentThreshold: 60 }).current;
@@ -104,6 +110,29 @@ export default function FeedScreen() {
       Animated.timing(scale, { toValue: 1.2, duration: 120, useNativeDriver: true, easing: Easing.out(Easing.quad) }),
       Animated.spring(scale, { toValue: 1, friction: 4, useNativeDriver: true }),
     ]).start();
+  };
+
+  const createFloatingHeart = (sightingId: string, x: number, y: number) => {
+    const heartId = `${sightingId}_${Date.now()}_${Math.random()}`;
+    const anim = new Animated.Value(0);
+    
+    setFloatingHearts(prev => ({
+      ...prev,
+      [sightingId]: [...(prev[sightingId] || []), { id: heartId, anim, x, y }]
+    }));
+
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: 1200,
+      useNativeDriver: true,
+      easing: Easing.out(Easing.ease),
+    }).start(() => {
+      // Remove the heart after animation completes
+      setFloatingHearts(prev => ({
+        ...prev,
+        [sightingId]: (prev[sightingId] || []).filter(h => h.id !== heartId)
+      }));
+    });
   };
 
   const loadCommunityCandidate = useCallback(async () => {
@@ -409,7 +438,38 @@ export default function FeedScreen() {
     setMenuVisible(true);
   };
 
-  const handleToggleLike = async (item) => {
+  const lastTapRef = useRef<{ time: number; sightingId: string } | null>(null);
+
+  const handleDoubleTap = async (item, event: any) => {
+    const now = Date.now();
+    const sightingId = item._id;
+    
+    if (
+      lastTapRef.current &&
+      lastTapRef.current.sightingId === sightingId &&
+      now - lastTapRef.current.time < 300
+    ) {
+      // Double tap detected
+      const isAlreadyLiked = likedMap[sightingId];
+      
+      // Always show heart animation on double tap
+      const tapX = event?.nativeEvent?.locationX || event?.nativeEvent?.pageX || 50;
+      const tapY = event?.nativeEvent?.locationY || event?.nativeEvent?.pageY || 50;
+      createFloatingHeart(sightingId, tapX, tapY);
+      pulseHeart(sightingId);
+      
+      // Only like if not already liked
+      if (!isAlreadyLiked) {
+        await handleToggleLike(item, event);
+      }
+      
+      lastTapRef.current = null;
+    } else {
+      lastTapRef.current = { time: now, sightingId };
+    }
+  };
+
+  const handleToggleLike = async (item, event?: any) => {
     const sightingId = item._id;
     if (!sightingId) return;
     if (!token || token === 'local-admin-fake-token') {
@@ -417,6 +477,15 @@ export default function FeedScreen() {
       return;
     }
     const currentlyLiked = !!likedMap[sightingId];
+    
+    // Get tap coordinates if available
+    let tapX = 50; // default position
+    let tapY = 50; // default position
+    if (event?.nativeEvent) {
+      tapX = event.nativeEvent.locationX || event.nativeEvent.pageX || 50;
+      tapY = event.nativeEvent.locationY || event.nativeEvent.pageY || 50;
+    }
+    
     // optimistic update
     setLikedMap(prev => ({ ...prev, [sightingId]: !currentlyLiked }));
     setSightings(prev => prev.map(s => s._id === sightingId ? { ...s, likes: Math.max(0, (Number(s.likes) || 0) + (currentlyLiked ? -1 : 1)) } : s));
@@ -436,6 +505,10 @@ export default function FeedScreen() {
     }
     // Gentle pulse animation
     pulseHeart(sightingId);
+    // Create floating heart only when liking (not unliking)
+    if (!currentlyLiked) {
+      createFloatingHeart(sightingId, tapX, tapY);
+    }
   };
 
   const handleMenuClose = () => {
@@ -467,7 +540,7 @@ export default function FeedScreen() {
     ]);
   };
 
-const loadCommentsFor = async (sightingId: string) => {
+  const loadCommentsFor = async (sightingId: string) => {
     setCommentsLoadingById(prev => ({ ...prev, [sightingId]: true }));
     try {
       const resp = await apiGetCommentsForSighting(sightingId);
@@ -483,11 +556,33 @@ const loadCommentsFor = async (sightingId: string) => {
 
   const toggleComments = async (item) => {
     const sightingId = item._id;
-    setCommentsExpanded(prev => ({ ...prev, [sightingId]: !prev[sightingId] }));
-    const willExpand = !commentsExpanded[sightingId];
-    if (willExpand && !commentsById[sightingId]) {
+    setActiveCommentSighting(item);
+    
+    // Load comments if not already loaded
+    if (!commentsById[sightingId]) {
       await loadCommentsFor(sightingId);
     }
+    
+    // Show modal with slide-up animation
+    setCommentsModalVisible(true);
+    Animated.spring(slideAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 65,
+      friction: 11,
+    }).start();
+  };
+
+  const closeCommentsModal = () => {
+    Animated.timing(slideAnim, {
+      toValue: 0,
+      duration: 250,
+      useNativeDriver: true,
+      easing: Easing.out(Easing.ease),
+    }).start(() => {
+      setCommentsModalVisible(false);
+      setActiveCommentSighting(null);
+    });
   };
 
   const setInputFor = (sightingId: string, text: string) => {
@@ -554,18 +649,20 @@ const loadCommentsFor = async (sightingId: string) => {
     if (!token) return;
     Alert.alert('Delete comment', 'Are you sure you want to delete this comment?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => {
-        try {
-          await apiDeleteComment(token, c._id);
-          setCommentsById(prev => ({
-            ...prev,
-            [sightingId]: (prev[sightingId] || []).filter((x: any) => x._id !== c._id)
-          }));
-          setSightings(prev => prev.map(s => s._id === sightingId ? { ...s, comments: Math.max(0, Number(s.comments || 0) - 1) } : s));
-        } catch (e) {
-          console.error('Failed to delete comment', e);
+      {
+        text: 'Delete', style: 'destructive', onPress: async () => {
+          try {
+            await apiDeleteComment(token, c._id);
+            setCommentsById(prev => ({
+              ...prev,
+              [sightingId]: (prev[sightingId] || []).filter((x: any) => x._id !== c._id)
+            }));
+            setSightings(prev => prev.map(s => s._id === sightingId ? { ...s, comments: Math.max(0, Number(s.comments || 0) - 1) } : s));
+          } catch (e) {
+            console.error('Failed to delete comment', e);
+          }
         }
-      } }
+      }
     ]);
   };
 
@@ -610,21 +707,21 @@ const loadCommentsFor = async (sightingId: string) => {
   // Helper function to calculate and format distance for local posts
   const getDistanceText = (item: any): string | null => {
     if (activeTab !== 'Local' || !user) return null;
-    
+
     const userLat = user.latitude ?? user?.location?.coordinates?.[1];
     const userLon = user.longitude ?? user?.location?.coordinates?.[0];
     const sightingLat = item?.location?.coordinates?.[1] || item?.latitude;
     const sightingLon = item?.location?.coordinates?.[0] || item?.longitude;
-    
+
     if (!userLat || !userLon || !sightingLat || !sightingLon) return null;
-    
+
     const distance = calculateDistance(
-      Number(userLat), 
-      Number(userLon), 
-      Number(sightingLat), 
+      Number(userLat),
+      Number(userLon),
+      Number(sightingLat),
       Number(sightingLon)
     );
-    
+
     if (distance < 0.1) {
       return '< 0.1 mi away';
     } else if (distance < 1) {
@@ -634,7 +731,7 @@ const loadCommentsFor = async (sightingId: string) => {
     }
   };
 
-  const renderImages = (mediaUrls, sightingId, forceVisible = false) => {
+  const renderImages = (mediaUrls, sightingId, forceVisible = false, onDoubleTap?: (e: any) => void) => {
     if (!mediaUrls || mediaUrls.length === 0) return null;
     const isVideoUrl = (url: string) => /\.(mp4|mov|m4v|webm)$/i.test(url) || /\/video\/upload\//i.test(url);
     const derivePoster = (url: string): string | undefined => {
@@ -658,7 +755,11 @@ const loadCommentsFor = async (sightingId: string) => {
       if (isVideoUrl(url)) {
         const poster = derivePoster(url);
         return (
-          <View style={FeedScreenStyles.cardImageContainer}>
+          <TouchableOpacity 
+            activeOpacity={1} 
+            onPress={onDoubleTap}
+            style={FeedScreenStyles.cardImageContainer}
+          >
             <VideoComponent
               source={{ uri: url }}
               style={FeedScreenStyles.cardImage}
@@ -669,22 +770,30 @@ const loadCommentsFor = async (sightingId: string) => {
               isMuted
               {...(poster ? { usePoster: true, posterSource: { uri: poster } } : {})}
             />
-          </View>
+          </TouchableOpacity>
         );
       }
       return (
-        <View style={FeedScreenStyles.cardImageContainer}>
+        <TouchableOpacity 
+          activeOpacity={1} 
+          onPress={onDoubleTap}
+          style={FeedScreenStyles.cardImageContainer}
+        >
           <Image
             source={{ uri: url }}
             style={FeedScreenStyles.cardImage}
             resizeMode="contain"
           />
-        </View>
+        </TouchableOpacity>
       );
     }
     // Carousel for multiple images
     return (
-      <View style={FeedScreenStyles.cardImageContainer}>
+      <TouchableOpacity 
+        activeOpacity={1} 
+        onPress={onDoubleTap}
+        style={FeedScreenStyles.cardImageContainer}
+      >
         <ScrollView
           horizontal
           pagingEnabled
@@ -696,7 +805,7 @@ const loadCommentsFor = async (sightingId: string) => {
           scrollEventThrottle={16}
         // No style needed on the ScrollView itself for this to work
         >
-      {mediaUrls.map((url, idx) => {
+          {mediaUrls.map((url, idx) => {
             const video = isVideoUrl(url);
             return video ? (
               <VideoComponent
@@ -704,11 +813,11 @@ const loadCommentsFor = async (sightingId: string) => {
                 source={{ uri: url }}
                 style={[FeedScreenStyles.cardImage, { width }]}
                 resizeMode={ResizeMode.CONTAIN}
-        useNativeControls
-        shouldPlay={isVisible && (carouselIndex[sightingId] === idx)}
-        isLooping
-        isMuted
-        {...(() => { const p = derivePoster(url); return p ? { usePoster: true, posterSource: { uri: p } } : {}; })()}
+                useNativeControls
+                shouldPlay={isVisible && (carouselIndex[sightingId] === idx)}
+                isLooping
+                isMuted
+                {...(() => { const p = derivePoster(url); return p ? { usePoster: true, posterSource: { uri: p } } : {}; })()}
               />
             ) : (
               <Image
@@ -720,55 +829,108 @@ const loadCommentsFor = async (sightingId: string) => {
             );
           })}
         </ScrollView>
-      </View>
+      </TouchableOpacity>
     );
   };
 
   const renderItem = ({ item }) => (
-    <View style={FeedScreenStyles.card}>
+    <View style={[FeedScreenStyles.card, { height: postHeight }]}>
+      {/* Floating hearts container */}
+      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'none', zIndex: 10 }}>
+        {(floatingHearts[item._id] || []).map(({ id, anim, x, y }) => {
+          const translateY = anim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0, -150]
+          });
+          const opacity = anim.interpolate({
+            inputRange: [0, 0.3, 0.7, 1],
+            outputRange: [0, 1, 1, 0]
+          });
+          const scale = anim.interpolate({
+            inputRange: [0, 0.3, 1],
+            outputRange: [0.5, 1.2, 0.8]
+          });
+          const randomX = (Math.random() - 0.5) * 60;
+
+          return (
+            <Animated.View
+              key={id}
+              style={{
+                position: 'absolute',
+                left: x - 16,
+                top: y - 16,
+                transform: [
+                  { translateY },
+                  { translateX: randomX },
+                  { scale }
+                ],
+                opacity
+              }}
+            >
+              <Icon name="heart" size={32} color="#e0245e" />
+            </Animated.View>
+          );
+        })}
+      </View>
       <View style={FeedScreenStyles.cardHeader}>
-        <TouchableOpacity
-          onPress={() => {
-            const userId = item?.user?._id || item?.user; // populated object or ObjectId
-            const username = item?.user?.username || item?.userName || '';
-            const profilePictureUrl = item?.user?.profilePictureUrl || item?.userProfilePictureUrl || '';
-            if (userId) {
-              router.push({
-                pathname: '/(user)/user_profile',
-                params: { userId: String(userId), username: String(username), profilePictureUrl: String(profilePictureUrl) }
-              });
-            }
-          }}
-          style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
-          activeOpacity={0.8}
-        >
-          <Image
-            source={{ uri: (item?.user?.profilePictureUrl || item.userProfilePictureUrl || 'https://ui-avatars.com/api/?name=User') }}
-            style={FeedScreenStyles.avatar}
-          />
-          <View style={{ flex: 1 }}>
+        <View style={FeedScreenStyles.headerLeft}>
+          <TouchableOpacity
+            onPress={() => {
+              const userId = item?.user?._id || item?.user;
+              const username = item?.user?.username || item?.userName || '';
+              const profilePictureUrl = item?.user?.profilePictureUrl || item?.userProfilePictureUrl || '';
+              if (userId) {
+                router.push({
+                  pathname: '/(user)/user_profile',
+                  params: { userId: String(userId), username: String(username), profilePictureUrl: String(profilePictureUrl) }
+                });
+              }
+            }}
+            activeOpacity={0.8}
+          >
+            <LinearGradient
+              colors={[Colors.light.primaryGreen, Colors.light.secondaryGreen]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={FeedScreenStyles.avatarRing}
+            >
+              <View style={FeedScreenStyles.avatar}>
+                {item?.user?.profilePictureUrl || item.userProfilePictureUrl ? (
+                  <Image
+                    source={{ uri: item?.user?.profilePictureUrl || item.userProfilePictureUrl }}
+                    style={{ width: 44, height: 44, borderRadius: 22 }}
+                  />
+                ) : (
+                  <Text style={FeedScreenStyles.avatarText}>
+                    {(item?.user?.username || item.userName || 'U').charAt(0).toUpperCase()}
+                  </Text>
+                )}
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
+          <View style={FeedScreenStyles.userInfo}>
             <Text style={FeedScreenStyles.username}>{item?.user?.username || item.userName || 'Unknown'}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Text style={FeedScreenStyles.time}>{getRelativeTime(item.createdAt)}</Text>
               {getDistanceText(item) && (
                 <>
                   <Text style={[FeedScreenStyles.time, { marginHorizontal: 4 }]}>•</Text>
-                  <Text style={[FeedScreenStyles.time, { color: '#666' }]}>{getDistanceText(item)}</Text>
+                  <Text style={FeedScreenStyles.time}>{getDistanceText(item)}</Text>
                 </>
               )}
             </View>
           </View>
-        </TouchableOpacity>
+        </View>
         <TouchableOpacity
           onPress={() => handleMenuOpen(item)}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          style={{ padding: 6 }}
+          style={FeedScreenStyles.menuButton}
           activeOpacity={0.7}
         >
-          <Icon name="ellipsis-h" size={22} color={Colors.light.darkNeutral} />
+          <Icon name="ellipsis-h" size={20} color="#6b7280" />
         </TouchableOpacity>
       </View>
-      {renderImages(item.mediaUrls, item._id)}
+      {renderImages(item.mediaUrls, item._id, false, (e) => handleDoubleTap(item, e))}
       {/* Carousel indicators */}
       {item.mediaUrls && item.mediaUrls.length > 1 && (
         <View style={FeedScreenStyles.carouselIndicators}>
@@ -783,157 +945,103 @@ const loadCommentsFor = async (sightingId: string) => {
           ))}
         </View>
       )}
-      <Text style={FeedScreenStyles.cardCaption}>{item.caption}</Text>
-      
-      {/* Verification badges */}
-      {(item.verifiedByAI || item.verifiedByUser || item.verifiedByCommunity) && (
-        <View style={verificationStyles.badgeContainer}>
+      <View style={FeedScreenStyles.cardContent}>
+        <View style={FeedScreenStyles.captionRow}>
+          <Text style={FeedScreenStyles.cardCaption}>{item.caption}</Text>
+          {/* Verification badges inline with caption */}
           {item.verifiedByAI && (
-            <View style={[verificationStyles.badge, verificationStyles.aiBadge]}>
-              <Text style={verificationStyles.badgeText}>✓ AI</Text>
-            </View>
+            <LinearGradient
+              colors={[Colors.light.primaryGreen, Colors.light.secondaryGreen]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={verificationStyles.inlineBadge}
+            >
+              <Text style={verificationStyles.inlineBadgeText}>AI</Text>
+            </LinearGradient>
           )}
-          {item.verifiedByUser && (
-            <View style={[verificationStyles.badge, verificationStyles.userBadge]}>
-              <Text style={verificationStyles.badgeText}>✓ User</Text>
-            </View>
-          )}
-          {item.verifiedByCommunity && (
-            <View style={[verificationStyles.badge, verificationStyles.communityBadge]}>
-              <Text style={verificationStyles.badgeText}>✓ Community</Text>
-            </View>
-          )}
-        </View>
-      )}
-      
-      <View style={FeedScreenStyles.cardActions}>
-        <TouchableOpacity style={FeedScreenStyles.cardActionBtn} onPress={() => handleToggleLike(item)} activeOpacity={0.8}>
-          <Text style={{ marginRight: 10, color: Colors.light.primaryGreen }}>{Number(item.likes || 0)}</Text>
-          <Animated.View style={{ transform: [{ scale: getScale(item._id) }] }}>
-            <Icon
-              name={likedMap[item._id] ? 'heart' : 'heart-o'}
-              size={18}
-              color={likedMap[item._id] ? '#e0245e' : Colors.light.buttonText}
-            />
-          </Animated.View>
-        </TouchableOpacity>
-        <View style={{ flexDirection: 'row', marginLeft: 'auto' }}>
-          <TouchableOpacity style={FeedScreenStyles.cardActionBtn} onPress={() => toggleComments(item)}>
-            <Text style={{ marginRight: 10, color: Colors.light.buttonText }}>{Number(item.comments || 0)}</Text>
-            <Icon name="comment" size={18} color={Colors.light.buttonText} />
-          </TouchableOpacity>
-          <TouchableOpacity style={FeedScreenStyles.cardActionBtn}>
-            <Icon name="share" size={18} color={Colors.light.buttonText} />
-          </TouchableOpacity>
         </View>
 
-      </View>
-      {commentsExpanded[item._id] && (
-        <View style={{ paddingHorizontal: 12, paddingBottom: 12 }}>
-          {commentsLoadingById[item._id] ? (
-            <Text style={{ color: '#aaa', paddingVertical: 8 }}>Loading comments...</Text>
-          ) : (
-            <>
-              {(commentsById[item._id] || []).map((c) => {
-                const commentUserId = typeof c.user === 'string' ? c.user : c?.user?._id;
-                const isMine = commentUserId && user?._id && String(commentUserId) === String(user._id);
-                const isEditing = editingCommentId === c._id;
-                return (
-                  <View key={c._id} style={{ flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 6 }}>
-                    <Image
-                      source={{ uri: (c?.user?.profilePictureUrl || 'https://ui-avatars.com/api/?name=User') }}
-                      style={{ width: 24, height: 24, borderRadius: 12, marginRight: 8 }}
-                    />
-                    <View style={{ flex: 1 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Text style={{ color: '#111', fontWeight: '600', flex: 1 }}>{c?.user?.username || 'User'}</Text>
-                        {isMine && !isEditing && (
-                          <View style={{ flexDirection: 'row' }}>
-                            <TouchableOpacity onPress={() => startEditComment(c)} style={{ paddingHorizontal: 6 }}>
-                              <Icon name="pencil" size={14} color="#aaa" />
-                            </TouchableOpacity>
-                            <TouchableOpacity onPress={() => deleteComment(item._id, c)} style={{ paddingHorizontal: 6 }}>
-                              <Icon name="trash" size={14} color="#f55" />
-                            </TouchableOpacity>
-                          </View>
-                        )}
-                      </View>
-                      {isEditing ? (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
-                          <TextInput
-                            value={editingText}
-                            onChangeText={setEditingText}
-                            placeholder="Edit comment"
-                            placeholderTextColor="#777"
-                            style={{ flex: 1, backgroundColor: '#2a2a2e', color: '#fff', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, marginRight: 6 }}
-                          />
-                          <TouchableOpacity onPress={() => saveEditComment(item._id)} style={{ paddingHorizontal: 10, paddingVertical: 8, backgroundColor: Colors.light.primaryGreen, borderRadius: 8, marginRight: 6 }}>
-                            <Text style={{ color: '#000', fontWeight: '700' }}>Save</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity onPress={cancelEditComment} style={{ paddingHorizontal: 10, paddingVertical: 8, backgroundColor: '#333', borderRadius: 8 }}>
-                            <Text style={{ color: '#fff', fontWeight: '700' }}>Cancel</Text>
-                          </TouchableOpacity>
-                        </View>
-                      ) : (
-                        <Text style={{ color: '#000' }}>{c?.commentText}</Text>
-                      )}
-                    </View>
-                  </View>
-                );
-              })}
-              {((commentsById[item._id] || []).length === 0) && (
-                <Text style={{ color: '#aaa', paddingVertical: 8 }}>No comments yet.</Text>
-              )}
-            </>
-          )}
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
-            <TextInput
-              value={commentInputById[item._id] || ''}
-              onChangeText={(t) => setInputFor(item._id, t)}
-              placeholder="Add a comment"
-              placeholderTextColor="#777"
-              style={{ flex: 1, backgroundColor: '#2a2a2e', color: '#fff', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, marginRight: 8 }}
-            />
-            <TouchableOpacity onPress={() => submitCommentFor(item)} style={{ paddingHorizontal: 12, paddingVertical: 10, backgroundColor: Colors.light.primaryGreen, borderRadius: 8 }}>
-              <Text style={{ color: '#000', fontWeight: '700' }}>Send</Text>
-            </TouchableOpacity>
+        <View style={FeedScreenStyles.cardActions}>
+          <View style={{ flexDirection: 'row', gap: 16 }}>
+            <View style={FeedScreenStyles.actionGroup}>
+              <TouchableOpacity 
+                style={FeedScreenStyles.cardActionBtn} 
+                onPress={(e) => handleToggleLike(item, e)} 
+                activeOpacity={0.8}
+              >
+                <Animated.View style={{ transform: [{ scale: getScale(item._id) }] }}>
+                  <Icon
+                    name={likedMap[item._id] ? 'heart' : 'heart-o'}
+                    size={24}
+                    color={likedMap[item._id] ? '#e0245e' : '#6b7280'}
+                  />
+                </Animated.View>
+              </TouchableOpacity>
+              <Text style={FeedScreenStyles.actionText}>{Number(item.likes || 0)}</Text>
+            </View>
+            <View style={FeedScreenStyles.actionGroup}>
+              <TouchableOpacity style={FeedScreenStyles.cardActionBtn} onPress={() => toggleComments(item)}>
+                <Icon name="comment-o" size={24} color="#6b7280" />
+              </TouchableOpacity>
+              <Text style={FeedScreenStyles.actionText}>{Number(item.comments || 0)}</Text>
+            </View>
           </View>
+          <TouchableOpacity style={FeedScreenStyles.cardActionBtn} onPress={() => {/* TODO: hook up share */ }}>
+            <Icon name="share" size={24} color="#6b7280" />
+          </TouchableOpacity>
         </View>
-      )}
+      </View>
     </View>
   );
 
   // Derive a base status padding; on iOS StatusBar.currentHeight is often undefined so we add a manual safe area offset
   const baseStatus = Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0;
-  const iosExtra = Platform.OS === 'ios' ? 20 : 0; // additional space for notch/dynamic island
+  const iosExtra = Platform.OS === 'ios' ? 44 : 0; // additional space for notch/dynamic island
   const statusPad = baseStatus + iosExtra;
-  // Increase the vertical offset so the tab bar sits further below notches/dynamic island
-  const extraOffset = 36; // previously 12
-  const tabBarHeight = 38; // slightly slimmer
+  const tabBarHeight = 56; // Height of the gradient header
+  const bottomTabHeight = 80; // Height of bottom navigation
+  const screenHeight = Dimensions.get('window').height;
+  const postHeight = screenHeight - statusPad - tabBarHeight - bottomTabHeight;
+
   return (
     <View style={FeedScreenStyles.container}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="dark-content" />
 
-      {/* TikTok-style absolute tabs */}
-  <View style={[tabStyles.absoluteBar, { top: statusPad + extraOffset }]}> 
-        {TABS.map(tab => {
-          const active = tab === activeTab;
-          return (
+      {/* Gradient header with tabs */}
+      <LinearGradient
+        colors={[Colors.light.background, Colors.light.softBeige]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={[tabStyles.gradientHeader, { paddingTop: statusPad }]}
+      >
+        <View style={tabStyles.tabRow}>
+          {TABS.map((tab) => (
             <TouchableOpacity
               key={tab}
-              style={tabStyles.absTabItem}
               onPress={() => setActiveTab(tab)}
-              activeOpacity={0.75}
+              style={tabStyles.tabButton}
             >
-              <Text style={[tabStyles.absTabText, active && tabStyles.absTabTextActive]} numberOfLines={1}>{tab}</Text>
-              {active && <View style={tabStyles.absIndicator} />}
+              <Text style={[
+                tabStyles.tabButtonText,
+                activeTab === tab && tabStyles.tabButtonTextActive
+              ]}>
+                {tab}
+              </Text>
+              {activeTab === tab && (
+                <LinearGradient
+                  colors={[Colors.light.primaryGreen, Colors.light.secondaryGreen]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={tabStyles.activeIndicator}
+                />
+              )}
             </TouchableOpacity>
-          );
-        })}
-      </View>
+          ))}
+        </View>
+      </LinearGradient>
 
       {activeTab === 'Community' ? (
-        <View style={[communityStyles.container, { paddingTop: tabBarHeight + statusPad + extraOffset }]}> 
+        <View style={communityStyles.container}>
           {communityLoading && !communityCandidate ? (
             <View style={communityStyles.loadingContainer}>
               <ActivityIndicator color={Colors.light.primaryGreen} size="large" />
@@ -981,7 +1089,7 @@ const loadCommentsFor = async (sightingId: string) => {
                       </View>
                     </TouchableOpacity>
                   </View>
-                  {renderImages(communityCandidate.mediaUrls, communityCandidate._id, true)}
+                  {renderImages(communityCandidate.mediaUrls, communityCandidate._id, true, undefined)}
                   <Text style={FeedScreenStyles.cardCaption}>{communityCandidate.caption || 'No caption provided.'}</Text>
                   {(communityCandidate.verifiedByAI || communityCandidate.verifiedByUser || communityCandidate.verifiedByCommunity) && (
                     <View style={verificationStyles.badgeContainer}>
@@ -1052,10 +1160,10 @@ const loadCommentsFor = async (sightingId: string) => {
         </View>
       ) : activeTab === 'Discover' || activeTab === 'Following' ? (
         loading && sightings.length === 0 ? (
-          <Text style={{ color: Colors.light.primaryGreen, paddingTop: tabBarHeight + statusPad + extraOffset + 8 }}>Loading...</Text>
+          <Text style={{ color: Colors.light.primaryGreen, paddingTop: 8 }}>Loading...</Text>
         ) : (
           (activeTab === 'Following' && (!token || token === 'local-admin-fake-token') && sightings.length === 0) ? (
-            <View style={{ flex: 1, alignItems: 'center', paddingTop: tabBarHeight + statusPad + extraOffset + 32 }}>
+            <View style={{ flex: 1, alignItems: 'center', paddingTop: 32 }}>
               <Text style={{ color: '#aaa' }}>Log in to see posts from people you follow.</Text>
             </View>
           ) : (
@@ -1065,9 +1173,13 @@ const loadCommentsFor = async (sightingId: string) => {
               renderItem={renderItem}
               onEndReached={() => { if (hasMore && !loading) loadPage(page + 1); }}
               onEndReachedThreshold={0.5}
-              onViewableItemsChanged={onViewableItemsChanged.current}
+              onViewableItemsChanged={onViewableItemsChanged.current} 
               viewabilityConfig={viewabilityConfig}
-              contentContainerStyle={{ paddingTop: tabBarHeight + statusPad + extraOffset + 8, paddingBottom: 32 }}
+              pagingEnabled
+              snapToInterval={postHeight}
+              snapToAlignment="start"
+              decelerationRate="fast"
+              showsVerticalScrollIndicator={false}
               refreshControl={
                 <RefreshControl
                   refreshing={refreshing}
@@ -1076,16 +1188,16 @@ const loadCommentsFor = async (sightingId: string) => {
                   tintColor={Colors.light.primaryGreen}
                 />
               }
-              ListFooterComponent={hasMore ? <Text style={{ textAlign: 'center', padding: 8 }}>Loading more...</Text> : null}
+              ListFooterComponent={hasMore ? <View style={{ height: postHeight, justifyContent: 'center', alignItems: 'center' }}><Text style={{ textAlign: 'center', padding: 8 }}>Loading more...</Text></View> : null}
             />
           )
         )
       ) : activeTab === 'Local' ? (
         <View style={{ flex: 1 }}>
           {loading && sightings.length === 0 ? (
-            <Text style={{ color: Colors.light.primaryGreen, paddingTop: tabBarHeight + statusPad + extraOffset + 8, textAlign: 'center' }}>Loading...</Text>
+            <Text style={{ color: Colors.light.primaryGreen, paddingTop: 8, textAlign: 'center' }}>Loading...</Text>
           ) : localMessage ? (
-            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingTop: tabBarHeight + statusPad + extraOffset }}>
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }}>
               <Text style={{ color: '#aaa', textAlign: 'center', lineHeight: 22 }}>{localMessage}</Text>
               <TouchableOpacity onPress={() => loadLocal()} style={{ marginTop: 16, paddingHorizontal: 18, paddingVertical: 10, backgroundColor: Colors.light.primaryGreen, borderRadius: 8 }}>
                 <Text style={{ color: '#000', fontWeight: '700' }}>Refresh</Text>
@@ -1098,7 +1210,11 @@ const loadCommentsFor = async (sightingId: string) => {
               renderItem={renderItem}
               onViewableItemsChanged={onViewableItemsChanged.current}
               viewabilityConfig={viewabilityConfig}
-              contentContainerStyle={{ paddingTop: tabBarHeight + statusPad + extraOffset + 8, paddingBottom: 32 }}
+              pagingEnabled
+              snapToInterval={postHeight}
+              snapToAlignment="start"
+              decelerationRate="fast"
+              showsVerticalScrollIndicator={false}
               refreshControl={
                 <RefreshControl
                   refreshing={refreshing}
@@ -1111,7 +1227,7 @@ const loadCommentsFor = async (sightingId: string) => {
           )}
         </View>
       ) : (
-        <View style={{ flex: 1, paddingTop: tabBarHeight + statusPad + extraOffset }}>
+        <View style={{ flex: 1 }}>
           <ComingSoonScreen />
         </View>
       )}
@@ -1153,6 +1269,145 @@ const loadCommentsFor = async (sightingId: string) => {
               );
             })()}
           </View>
+        </View>
+      </Modal>
+
+      {/* Comments Modal */}
+      <Modal
+        visible={commentsModalVisible}
+        transparent
+        animationType="none"
+        onRequestClose={closeCommentsModal}
+      >
+        <View style={commentsModalStyles.overlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFillObject as any}
+            activeOpacity={1}
+            onPress={closeCommentsModal}
+          />
+          <Animated.View
+            style={[
+              commentsModalStyles.modalContainer,
+              {
+                transform: [
+                  {
+                    translateY: slideAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [600, 0],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            {/* Modal Header */}
+            <View style={commentsModalStyles.header}>
+              <View style={commentsModalStyles.dragHandle} />
+              <Text style={commentsModalStyles.headerTitle}>Comments</Text>
+              <TouchableOpacity onPress={closeCommentsModal} style={commentsModalStyles.closeButton}>
+                <Icon name="times" size={24} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Comments List */}
+            <ScrollView style={commentsModalStyles.commentsContainer}>
+              {activeCommentSighting && commentsLoadingById[activeCommentSighting._id] ? (
+                <Text style={commentsModalStyles.loadingText}>Loading comments...</Text>
+              ) : (
+                <>
+                  {activeCommentSighting && (commentsById[activeCommentSighting._id] || []).map((c) => {
+                    const commentUserId = typeof c.user === 'string' ? c.user : c?.user?._id;
+                    const isMine = commentUserId && user?._id && String(commentUserId) === String(user._id);
+                    const isEditing = editingCommentId === c._id;
+                    return (
+                      <View key={c._id} style={commentsModalStyles.commentItem}>
+                        <TouchableOpacity
+                          onPress={() => {
+                            const userId = c?.user?._id || c?.user;
+                            const username = c?.user?.username || 'User';
+                            const profilePictureUrl = c?.user?.profilePictureUrl || '';
+                            if (userId) {
+                              closeCommentsModal();
+                              router.push({
+                                pathname: '/(user)/user_profile',
+                                params: { userId: String(userId), username: String(username), profilePictureUrl: String(profilePictureUrl) }
+                              });
+                            }
+                          }}
+                          activeOpacity={0.8}
+                        >
+                          <Image
+                            source={{ uri: (c?.user?.profilePictureUrl || 'https://ui-avatars.com/api/?name=User') }}
+                            style={commentsModalStyles.commentAvatar}
+                          />
+                        </TouchableOpacity>
+                        <View style={commentsModalStyles.commentContent}>
+                          <View style={commentsModalStyles.commentHeader}>
+                            <Text style={commentsModalStyles.commentUsername}>{c?.user?.username || 'User'}</Text>
+                            {isMine && !isEditing && (
+                              <View style={commentsModalStyles.commentActions}>
+                                <TouchableOpacity onPress={() => startEditComment(c)} style={{ paddingHorizontal: 6 }}>
+                                  <Icon name="pencil" size={14} color="#6b7280" />
+                                </TouchableOpacity>
+                                <TouchableOpacity onPress={() => deleteComment(activeCommentSighting._id, c)} style={{ paddingHorizontal: 6 }}>
+                                  <Icon name="trash" size={14} color="#ef4444" />
+                                </TouchableOpacity>
+                              </View>
+                            )}
+                          </View>
+                          {isEditing ? (
+                            <View style={commentsModalStyles.editContainer}>
+                              <TextInput
+                                value={editingText}
+                                onChangeText={setEditingText}
+                                placeholder="Edit comment"
+                                placeholderTextColor="#9ca3af"
+                                style={commentsModalStyles.editInput}
+                                multiline
+                              />
+                              <View style={commentsModalStyles.editButtons}>
+                                <TouchableOpacity onPress={() => saveEditComment(activeCommentSighting._id)} style={commentsModalStyles.saveButton}>
+                                  <Text style={commentsModalStyles.saveButtonText}>Save</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity onPress={cancelEditComment} style={commentsModalStyles.cancelButton}>
+                                  <Text style={commentsModalStyles.cancelButtonText}>Cancel</Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                          ) : (
+                            <Text style={commentsModalStyles.commentText}>{c?.commentText}</Text>
+                          )}
+                        </View>
+                      </View>
+                    );
+                  })}
+                  {activeCommentSighting && ((commentsById[activeCommentSighting._id] || []).length === 0) && (
+                    <Text style={commentsModalStyles.emptyText}>No comments yet. Be the first to comment!</Text>
+                  )}
+                </>
+              )}
+            </ScrollView>
+
+            {/* Comment Input */}
+            {activeCommentSighting && (
+              <View style={commentsModalStyles.inputContainer}>
+                <TextInput
+                  value={commentInputById[activeCommentSighting._id] || ''}
+                  onChangeText={(t) => setInputFor(activeCommentSighting._id, t)}
+                  placeholder="Add a comment..."
+                  placeholderTextColor="#9ca3af"
+                  style={commentsModalStyles.input}
+                  multiline
+                />
+                <TouchableOpacity 
+                  onPress={() => submitCommentFor(activeCommentSighting)} 
+                  style={commentsModalStyles.sendButton}
+                >
+                  <Icon name="send" size={20} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            )}
+          </Animated.View>
         </View>
       </Modal>
 
@@ -1260,39 +1515,46 @@ const communityStyles = StyleSheet.create({
 });
 
 const tabStyles = StyleSheet.create({
-  // New absolute bar mimicking TikTok top tabs
-  absoluteBar: {
+  gradientHeader: {
+    width: '100%',
+    paddingBottom: 12,
+    shadowColor: Colors.light.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  tabRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  tabButton: {
+    position: 'relative',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabButtonText: {
+    fontSize: 18,
+    color: Colors.light.secondaryGreen,
+    fontWeight: '500',
+  },
+  tabButtonTextActive: {
+    color: Colors.light.primaryGreen,
+    fontWeight: '700',
+  },
+  activeIndicator: {
     position: 'absolute',
-    top: 0,
+    bottom: -8,
     left: 0,
     right: 0,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-    zIndex: 20,
-  },
-  absTabItem: {
-    paddingHorizontal: 14,
-    paddingTop: 4,
-    paddingBottom: 6,
-    alignItems: 'center',
-  },
-  absTabText: {
-  color: '#888',
-  fontSize: 16,
-  fontWeight: '600',
-  letterSpacing: 0.3,
-  },
-  absTabTextActive: {
-  color: '#fff',
-  fontWeight: '700',
-  },
-  absIndicator: {
-  marginTop: 3,
-  height: 2,
-  width: 18,
-  borderRadius: 2,
-  backgroundColor: Colors.light.primaryGreen,
+    height: 3,
+    borderTopLeftRadius: 2,
+    borderTopRightRadius: 2,
   },
 });
 
@@ -1333,6 +1595,180 @@ const verificationStyles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.3)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 1,
+  },
+  inlineBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    marginLeft: 8,
+    alignSelf: 'flex-start',
+  },
+  inlineBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+});
+
+const commentsModalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContainer: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '80%',
+    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+    position: 'relative',
+  },
+  dragHandle: {
+    position: 'absolute',
+    top: 8,
+    width: 40,
+    height: 4,
+    backgroundColor: '#d1d5db',
+    borderRadius: 2,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1f2937',
+  },
+  closeButton: {
+    position: 'absolute',
+    right: 16,
+    padding: 4,
+  },
+  commentsContainer: {
+    maxHeight: 400,
+    paddingHorizontal: 16,
+  },
+  loadingText: {
+    color: '#9ca3af',
+    textAlign: 'center',
+    paddingVertical: 24,
+  },
+  commentItem: {
+    flexDirection: 'row',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  commentAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginRight: 12,
+  },
+  commentContent: {
+    flex: 1,
+  },
+  commentHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  commentUsername: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1f2937',
+  },
+  commentActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  commentText: {
+    fontSize: 14,
+    color: '#374151',
+    lineHeight: 20,
+  },
+  editContainer: {
+    marginTop: 8,
+  },
+  editInput: {
+    backgroundColor: '#f9fafb',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 14,
+    color: '#1f2937',
+    minHeight: 60,
+    textAlignVertical: 'top',
+  },
+  editButtons: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  saveButton: {
+    backgroundColor: Colors.light.primaryGreen,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  saveButtonText: {
+    color: '#000',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  cancelButton: {
+    backgroundColor: '#e5e7eb',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  cancelButtonText: {
+    color: '#374151',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  emptyText: {
+    color: '#9ca3af',
+    textAlign: 'center',
+    paddingVertical: 32,
+    fontSize: 14,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    backgroundColor: '#ffffff',
+  },
+  input: {
+    flex: 1,
+    backgroundColor: '#f9fafb',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#1f2937',
+    maxHeight: 100,
+    marginRight: 8,
+  },
+  sendButton: {
+    backgroundColor: Colors.light.primaryGreen,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 
