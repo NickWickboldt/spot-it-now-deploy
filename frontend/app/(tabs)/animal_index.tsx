@@ -430,32 +430,45 @@ export default function AnimalDexScreen() {
   }, [userSightings]);
 
   const renderKnownUnknownToggle = () => (
-  <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, marginBottom: 8, justifyContent: 'center' }}>
+    <View style={{ flexDirection: 'row', gap: 8, marginTop: 0, marginBottom: 12, justifyContent: 'flex-start' }}>
       <TouchableOpacity
         onPress={() => setViewMode('KNOWN')}
         style={{
-          paddingVertical: 8,
-          paddingHorizontal: 14,
-          borderRadius: 16,
-          backgroundColor: viewMode === 'KNOWN' ? Colors.light.accent : 'transparent',
+          paddingVertical: 10,
+          paddingHorizontal: 20,
+          borderRadius: 20,
+          backgroundColor: viewMode === 'KNOWN' ? Colors.light.darkNeutral : 'transparent',
           borderWidth: 1,
           borderColor: Colors.light.darkNeutral
         }}
       >
-  <Text style={{ color: viewMode === 'KNOWN' ? '#fff' : Colors.light.mainText, fontWeight: '600', fontSize: 14 }}>Known</Text>
+        <Text style={{ color: viewMode === 'KNOWN' ? '#fff' : Colors.light.darkNeutral, fontWeight: '700', fontSize: 15 }}>All</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        onPress={() => setViewMode('KNOWN')}
+        style={{
+          paddingVertical: 10,
+          paddingHorizontal: 20,
+          borderRadius: 20,
+          backgroundColor: 'transparent',
+          borderWidth: 1,
+          borderColor: Colors.light.darkNeutral
+        }}
+      >
+        <Text style={{ color: Colors.light.darkNeutral, fontWeight: '700', fontSize: 15 }}>Known</Text>
       </TouchableOpacity>
       <TouchableOpacity
         onPress={() => setViewMode('UNKNOWN')}
         style={{
-          paddingVertical: 8,
-          paddingHorizontal: 14,
-          borderRadius: 16,
-          backgroundColor: viewMode === 'UNKNOWN' ? Colors.light.accent : 'transparent',
+          paddingVertical: 10,
+          paddingHorizontal: 20,
+          borderRadius: 20,
+          backgroundColor: viewMode === 'UNKNOWN' ? Colors.light.darkNeutral : 'transparent',
           borderWidth: 1,
           borderColor: Colors.light.darkNeutral
         }}
       >
-  <Text style={{ color: viewMode === 'UNKNOWN' ? '#fff' : Colors.light.mainText, fontWeight: '600', fontSize: 14 }}>Unknown</Text>
+        <Text style={{ color: viewMode === 'UNKNOWN' ? '#fff' : Colors.light.darkNeutral, fontWeight: '700', fontSize: 15 }}>Unknown</Text>
       </TouchableOpacity>
     </View>
   );
@@ -601,20 +614,20 @@ export default function AnimalDexScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="dark-content" />
       <View style={styles.header}>
-        {/* Title row with search toggle */}
-        <View style={styles.headerRow}>
-          <Text style={styles.title}>{'AnimalDex'}</Text>
-          <TouchableOpacity style={styles.headerIconBtn} onPress={() => setSearchOpen(v => !v)}>
-            <Icon name={searchOpen ? 'times' : 'search'} size={18} color={Colors.light.mainText} />
+        {/* Title row with search icon */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <Text style={styles.title}>AnimalDex</Text>
+          <TouchableOpacity onPress={() => setSearchOpen(v => !v)} style={{ padding: 6 }}>
+            <Icon name={searchOpen ? 'times' : 'search'} size={20} color={Colors.light.darkNeutral} />
           </TouchableOpacity>
         </View>
 
-        {/* Optional inline search */}
+        {/* Search bar */}
         {searchOpen && (
           <View style={styles.searchBox}>
-            <Icon name="search" size={16} color={Colors.light.darkNeutral} style={{ marginRight: 6 }} />
+            <Icon name="search" size={16} color={Colors.light.darkNeutral} style={{ marginRight: 8 }} />
             <TextInput
               placeholder="Search animals..."
               placeholderTextColor={Colors.light.darkNeutral}
@@ -631,17 +644,18 @@ export default function AnimalDexScreen() {
             )}
           </View>
         )}
+        
+        {/* Progress chip */}
+        {viewMode === 'KNOWN' && (
+          <View style={styles.progressChipContainer}>
+            <Text style={styles.progressChipText}>{spotted}/{total} · {percent}%</Text>
+          </View>
+        )}
 
-        {/* Controls row: Known/Unknown toggle + compact progress chip */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          {renderKnownUnknownToggle()}
-          {viewMode === 'KNOWN' && (
-            <View style={styles.progressChip}>
-              <Text style={styles.progressChipText}>{spotted}/{total} • {percent}%</Text>
-            </View>
-          )}
-        </View>
+        {/* Known/Unknown toggle */}
+        {renderKnownUnknownToggle()}
 
+        {/* Category tabs */}
         {viewMode === 'KNOWN' && renderTabs()}
       </View>
       {viewMode === 'KNOWN' ? (
