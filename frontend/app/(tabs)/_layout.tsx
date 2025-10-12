@@ -1,3 +1,4 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import { Tabs } from 'expo-router';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -36,20 +37,30 @@ function CustomTabBar({ state, navigation }) {
             };
 
             return (
-              <View key={tab.name} style={styles.centerTabContainer}>
-                <TouchableOpacity
-                  onPress={handlePress}
-                  activeOpacity={0.7}
-                  style={styles.centerIconBg}
-                >
-                  {capState.isVideoMode ? (
-                    <Icon name={capState.isRecording ? 'stop' : 'dot-circle-o'} size={32} color={capState.isRecording ? '#ff4040' : '#ff9f9f'} />
-                  ) : (
-                    <Icon name={tab.icon} size={32} color={Colors.light.buttonText} />
-                  )}
-                </TouchableOpacity>
-                <Text style={styles.centerTabLabel}>{tab.label}</Text>
-              </View>
+              <TouchableOpacity
+                key={tab.name}
+                onPress={handlePress}
+                activeOpacity={0.7}
+                style={styles.tabItem}
+              >
+                <View style={styles.iconWrapper}>
+                  <LinearGradient
+                    colors={['#4ade80', '#16a34a']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.postGradient}
+                  >
+                    {capState.isVideoMode ? (
+                      <Icon name={capState.isRecording ? 'stop' : 'dot-circle-o'} size={24} color={capState.isRecording ? '#ff4040' : '#fff'} />
+                    ) : (
+                      <Icon name={tab.icon} size={24} color="#fff" />
+                    )}
+                  </LinearGradient>
+                </View>
+                <Text style={[styles.tabLabel, { color: focused ? Colors.light.primaryGreen : Colors.light.darkNeutral }]}>
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
             );
           }
 
@@ -60,15 +71,25 @@ function CustomTabBar({ state, navigation }) {
               style={styles.tabItem}
               activeOpacity={0.7}
             >
-              <Icon
-                name={tab.icon}
-                size={24}
-                color={focused ? Colors.light.primaryGreen : Colors.light.darkNeutral}
-              />
+              <View style={styles.iconWrapper}>
+                {focused && (
+                  <LinearGradient
+                    colors={['#dcfce7', '#bbf7d0']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.activeBackground}
+                  />
+                )}
+                <Icon
+                  name={tab.icon}
+                  size={24}
+                  color={focused ? Colors.light.primaryGreen : '#9ca3af'}
+                />
+              </View>
               <Text
                 style={[
                   styles.tabLabel,
-                  { color: focused ? Colors.light.primaryGreen : Colors.light.darkNeutral }
+                  { color: focused ? Colors.light.primaryGreen : '#9ca3af' }
                 ]}
               >
                 {tab.label}
@@ -104,58 +125,49 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 0,
     width: '100%',
-    height: 120,
-    backgroundColor: Colors.light.softBeige,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    shadowColor: Colors.light.shadow,
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: '#ffffff',
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    paddingBottom: 0,
+    paddingTop: 8,
   },
   tabRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    width: '100%',
-    height: '100%',
+    paddingHorizontal: 8,
   },
   tabItem: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    height: 80,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  iconWrapper: {
+    position: 'relative',
+    padding: 8,
+    borderRadius: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  activeBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 50,
+  },
+  postGradient: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   tabLabel: {
     fontSize: 12,
     marginTop: 4,
-  },
-  centerTabContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  centerIconBg: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: Colors.light.shadow,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.18,
-    shadowRadius: 3.84,
-    color: '#fff',               // <-- raise above tab bar
-    zIndex: 2,
-  },
-  centerTabLabel: {
-    fontSize: 12,
-    color: Colors.light.darkNeutral,
-    marginTop: 4,
-    textAlign: 'center',
   },
 });
