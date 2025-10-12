@@ -157,39 +157,95 @@ export default function ProfileScreen(): React.JSX.Element | null {
       <View style={profileStyles.header}>
         <Text style={profileStyles.screenTitle}>Profile</Text>
         <Pressable onPress={() => setMenuVisible(true)}>
-          <Icon name="ellipsis-h" size={28} color="#333" />
+          <Icon name="ellipsis-v" size={24} color="#333" />
         </Pressable>
       </View>
 
       <FlatList
         style={profileStyles.profileContainer}
         ListHeaderComponent={
-          <View style={profileStyles.infoContainer}>
-            {user.profilePictureUrl ? (
-              <Image
-                source={{ uri: user.profilePictureUrl }}
-                style={profileStyles.avatar}
-              />
-            ) : (
-              <View style={[profileStyles.avatar, { backgroundColor: "#ddd", alignItems: "center", justifyContent: "center" }]}>
-                <Text>No Image</Text>
+          <>
+            {/* Profile Info Section */}
+            <View style={profileStyles.profileHeader}>
+              {/* Profile Picture with Grid Overlay */}
+              <View style={profileStyles.avatarContainer}>
+                {user.profilePictureUrl ? (
+                  <Image
+                    source={{ uri: user.profilePictureUrl }}
+                    style={profileStyles.avatar}
+                  />
+                ) : (
+                  <View style={[profileStyles.avatar, { backgroundColor: "#ddd", alignItems: "center", justifyContent: "center" }]}>
+                    <Icon name="user" size={40} color="#999" />
+                  </View>
+                )}
+                {/* Green checkmark badge */}
+                <View style={profileStyles.verifiedBadge}>
+                  <Icon name="check" size={12} color="#fff" />
+                </View>
               </View>
-            )}
-            <View style={profileStyles.rightContainer}>
-              <Text style={profileStyles.userInfo}>{user.username}</Text>
-              <Text style={profileStyles.userInfo}>Bio: {user.bio || "N/A"}</Text>
-              <Text style={profileStyles.userInfo}>Experience Points: {user.experiencePoints}</Text>
+
+              {/* User Info */}
+              <View style={profileStyles.userInfoContainer}>
+                <Text style={profileStyles.username}>{user.username}</Text>
+                <Text style={profileStyles.bio}>Bio: {user.bio || "this is zack admin"}</Text>
+                
+                {/* Experience and Role Badges */}
+                <View style={profileStyles.badgesRow}>
+                  <View style={profileStyles.badge}>
+                    <Icon name="star" size={14} color="#666" />
+                    <Text style={profileStyles.badgeText}>Experience Points: {user.experiencePoints}</Text>
+                  </View>
+                  <View style={profileStyles.badge}>
+                    <Icon name="leaf" size={14} color="#666" />
+                    <Text style={profileStyles.badgeText}>Wildlife Enthusiast</Text>
+                  </View>
+                </View>
+
+                {/* Share Button */}
+                <Pressable style={profileStyles.shareButton}>
+                  <Icon name="share-alt" size={14} color="#333" />
+                  <Text style={profileStyles.shareButtonText}>Share</Text>
+                </Pressable>
+              </View>
             </View>
-          </View>
+
+            {/* Stats Section */}
+            <View style={profileStyles.statsContainer}>
+              <View style={profileStyles.statItem}>
+                <Text style={profileStyles.statNumber}>{sightings.length}</Text>
+                <Text style={profileStyles.statLabel}>Sightings</Text>
+              </View>
+              <View style={profileStyles.statDivider} />
+              <View style={profileStyles.statItem}>
+                <Text style={profileStyles.statNumber}>14</Text>
+                <Text style={profileStyles.statLabel}>Species</Text>
+              </View>
+              <View style={profileStyles.statDivider} />
+              <View style={profileStyles.statItem}>
+                <Text style={profileStyles.statNumber}>3</Text>
+                <Text style={profileStyles.statLabel}>Badges</Text>
+              </View>
+            </View>
+
+            {/* Recent Sightings Header */}
+            <View style={profileStyles.sectionHeader}>
+              <Text style={profileStyles.sectionTitle}>Recent Sightings</Text>
+              <Pressable onPress={() => {}}>
+                <Text style={profileStyles.seeAllText}>See All</Text>
+              </Pressable>
+            </View>
+          </>
         }
         data={sightings}
         renderItem={renderSightingGridItem}
         keyExtractor={(item) => item._id}
         numColumns={3}
+        columnWrapperStyle={profileStyles.gridRow}
         ListEmptyComponent={
           isLoading ? <ActivityIndicator style={{ marginTop: 20 }} /> : <Text style={profileStyles.emptyListText}>No sightings found.</Text>
         }
-        contentContainerStyle={{ paddingBottom: 16 }}
+        contentContainerStyle={{ paddingBottom: 100 }}
       />
 
       <Modal

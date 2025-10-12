@@ -1,4 +1,4 @@
-import { StyleSheet, Dimensions  } from "react-native";
+import { Dimensions, StyleSheet } from "react-native";
 import { Colors } from "./Colors";
 
 
@@ -19,22 +19,186 @@ export const profileStyles = StyleSheet.create({
         width: '100%',
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
-        paddingTop: 30,
+        justifyContent: 'space-between',
+        paddingTop: 50,
         paddingHorizontal: 20,
+        paddingBottom: 16,
     },
     screenTitle: {
         fontSize: 28,
-        color: Colors.light.primaryGreen,
-        marginTop: 20,
-        width: '100%',
-        paddingBottom: 10,
+        fontWeight: '700',
+        color: Colors.light.darkNeutral,
     },
-    profileContainer: { width: '100%', backgroundColor: Colors.light.cardBackground },
+    profileContainer: { 
+        width: '100%', 
+        backgroundColor: Colors.light.background 
+    },
+    
+    // New Profile Header Styles
+    profileHeader: {
+        paddingHorizontal: 20,
+        paddingTop: 10,
+        paddingBottom: 16,
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+    },
+    avatarContainer: {
+        position: 'relative',
+        marginRight: 16,
+    },
+    avatar: { 
+        width: 80, 
+        height: 80, 
+        borderRadius: 40,
+        borderWidth: 2,
+        borderColor: Colors.light.shadow,
+    },
+    verifiedBadge: {
+        position: 'absolute',
+        bottom: 0,
+        right: 0,
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        backgroundColor: Colors.light.primaryGreen,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 2,
+        borderColor: '#fff',
+    },
+    userInfoContainer: {
+        flex: 1,
+    },
+    username: {
+        fontSize: 20,
+        fontWeight: '700',
+        color: Colors.light.darkNeutral,
+        marginBottom: 4,
+    },
+    bio: {
+        fontSize: 13,
+        color: Colors.light.darkNeutral,
+        marginBottom: 8,
+    },
+    badgesRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+        marginBottom: 12,
+    },
+    badge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: Colors.light.cardBackground,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: Colors.light.shadow,
+        gap: 6,
+    },
+    badgeText: {
+        fontSize: 11,
+        color: Colors.light.darkNeutral,
+        fontWeight: '600',
+    },
+    shareButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: Colors.light.cardBackground,
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: Colors.light.shadow,
+        gap: 6,
+        alignSelf: 'flex-start',
+    },
+    shareButtonText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: Colors.light.darkNeutral,
+    },
+
+    // Stats Section
+    statsContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-around',
+        alignItems: 'center',
+        paddingVertical: 20,
+        paddingHorizontal: 20,
+        marginHorizontal: 20,
+        backgroundColor: '#fff',
+        borderRadius: 12,
+        marginBottom: 20,
+        elevation: 1,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+    },
+    statItem: {
+        alignItems: 'center',
+        flex: 1,
+    },
+    statNumber: {
+        fontSize: 24,
+        fontWeight: '700',
+        color: Colors.light.darkNeutral,
+        marginBottom: 4,
+    },
+    statLabel: {
+        fontSize: 13,
+        color: Colors.light.darkNeutral,
+    },
+    statDivider: {
+        width: 1,
+        height: 40,
+        backgroundColor: Colors.light.shadow,
+    },
+
+    // Section Header
+    sectionHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        marginBottom: 12,
+    },
+    sectionTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: Colors.light.darkNeutral,
+    },
+    seeAllText: {
+        fontSize: 14,
+        color: Colors.light.primaryGreen,
+        fontWeight: '600',
+    },
+
+    // Grid Styles
+    gridRow: {
+        paddingHorizontal: 20,
+        gap: 2,
+    },
+    sightingGridItem: {
+        flex: 1,
+        aspectRatio: 1,
+        maxWidth: (width - 44) / 3, // 20px padding on each side + 2px gap * 2
+        borderRadius: 8,
+        overflow: 'hidden',
+        backgroundColor: Colors.light.cardBackground,
+    },
+    sightingGridImage: {
+        width: '100%',
+        height: '100%',
+    },
+    
+    // Old styles kept for compatibility
     infoContainer: { width: '100%', padding: 10, backgroundColor: 'white', display: 'flex', alignItems: 'center', flexDirection: 'row' },
     rightContainer: { display: 'flex', flexDirection: 'column', marginLeft: 20, flex: 1 },
     userInfo: { fontSize: 18, marginBottom: 10 },
-    avatar: { width: 120, height: 120, borderRadius: 60, marginBottom: 10 },
     fieldLabel: { fontSize: 14, color: '#333', marginTop: 10, marginBottom: 6 },
     input: { borderWidth: 1, borderColor: '#ddd', padding: 10, borderRadius: 8, width: 300, marginBottom: 8 },
     adminContainer: { width: '100%', padding: 20, backgroundColor: '#fff0f0', borderRadius: 10, marginBottom: 20 },
@@ -79,17 +243,6 @@ export const profileStyles = StyleSheet.create({
         color: '#666',
         marginTop: 20,
         fontSize: 16,
-    },
-    sightingGridItem: {
-      width: itemSize,
-      height: itemSize, // Make it a square
-      padding: 1,
-      backgroundColor:Colors.light.cardBackground
-    },
-    sightingGridImage: {
-      width: '100%',
-      height: '100%',
-      borderRadius: 4, // Optional: for slightly rounded corners
     },
     sightingContainer: {
       marginVertical: 10, // Adds space above and below each image
