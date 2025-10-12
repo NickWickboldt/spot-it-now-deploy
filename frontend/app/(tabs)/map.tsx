@@ -1,11 +1,12 @@
 import * as Location from 'expo-location';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Animated, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { Callout, Marker, Region } from 'react-native-maps';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { apiGetSightingsNear } from '../../api/sighting';
 import AnimalMarker from '../../components/ui/AnimalMarker';
+import { Colors } from '../../constants/Colors';
 import MapStyles from '../../constants/MapStyles';
 
 // FontAwesome glyphmap and icon validator
@@ -39,7 +40,47 @@ const AnimalTrackerScreen = () => {
   const [errorMsg, setErrorMsg] = useState(null);
   const [animals, setAnimals] = useState([]);
   const [distance, setDistance] = useState(1000); // default to 5km
+  const [distanceMenuVisible, setDistanceMenuVisible] = useState(false);
+  const [sightingsMenuVisible, setSightingsMenuVisible] = useState(false);
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const sightingsSlideAnim = useRef(new Animated.Value(0)).current;
   const mapRef = useRef<MapView>(null);
+
+  const openDistanceMenu = () => {
+    setDistanceMenuVisible(true);
+    Animated.spring(slideAnim, {
+      toValue: 1,
+      tension: 65,
+      friction: 11,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const closeDistanceMenu = () => {
+    Animated.timing(slideAnim, {
+      toValue: 0,
+      duration: 250,
+      useNativeDriver: true,
+    }).start(() => setDistanceMenuVisible(false));
+  };
+
+  const openSightingsMenu = () => {
+    setSightingsMenuVisible(true);
+    Animated.spring(sightingsSlideAnim, {
+      toValue: 1,
+      tension: 65,
+      friction: 11,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const closeSightingsMenu = () => {
+    Animated.timing(sightingsSlideAnim, {
+      toValue: 0,
+      duration: 250,
+      useNativeDriver: true,
+    }).start(() => setSightingsMenuVisible(false));
+  };
 
   // Define the zoom boundaries using deltas for pinch-to-zoom gestures.
   const MIN_ZOOM_DELTA = 0.004;
@@ -201,43 +242,109 @@ const AnimalTrackerScreen = () => {
 
 
       {renderContent()}
-      {/* Distance select buttons */}
-      <View style={MapStyles.distanceSelectorWrap}>
-        <View style={{ flexDirection: 'row' }}>
-          {[100, 500, 1000].map(val => {
-            const isActive = distance === val;
-            return (
-              <TouchableOpacity
-                key={val}
-                style={[MapStyles.distanceSelectorButton, isActive && MapStyles.distanceSelectorButtonActive]}
-                onPress={() => setDistance(val)}
-              >
-                <Text style={[MapStyles.distanceSelectorText, isActive && MapStyles.distanceSelectorTextActive]}>{val} km</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </View>
-      {/* Sightings bar */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={MapStyles.sightingsBar}
-        contentContainerStyle={{ alignItems: 'flex-start', paddingHorizontal: 8 }}
+      {/* Distance menu modal */}
+      <Modal
+        visible={distanceMenuVisible}
+        transparent
+        animationType="none"
+        onRequestClose={closeDistanceMenu}
       >
-        {animals.map(sighting => (
+        <View style={menuStyles.overlay}>
           <TouchableOpacity
-            key={sighting.id}
-            style={MapStyles.sightingItem}
-            onPress={() => goToSighting(sighting)}
-          >
-            <View style={MapStyles.sightingIconWrap}>
-              <Icon name={isValidIcon(sighting.animal) ? sighting.animal : 'question'} size={22} color="#fff" />
-            </View>
-            <Text style={MapStyles.sightingName} numberOfLines={1}>{sighting.animal || 'Unknown'}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+            style={StyleSheet.absoluteFillObject as any}
+            activeOpacity={1}
+            onPress={closeDistanceMenu}
+          />
+          <Animated.View style={[
+            menuStyles.menuContainer,
+            {
+              transform: [{
+                translateY: slideAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [600, 0],
+                }),
+              }],
+            },
+          ]}>
+            <View style={menuStyles.dragHandle} />
+            <Text style={menuStyles.menuTitle}>Search Radius</Text>
+            {[100, 500, 1000, 2000, 5000].map(val => {
+              const isActive = distance === val;
+              return (
+                <TouchableOpacity
+                  key={val}
+                  style={menuStyles.menuItem}
+                  onPress={() => {
+                    setDistance(val);
+                    closeDistanceMenu();
+                  }}
+                >
+                  <Text style={[menuStyles.menuText, isActive && menuStyles.menuTextActive]}>
+                    {val} km
+                  </Text>
+                  {isActive && <Icon name="check" size={16} color={Colors.light.primaryGreen} />}
+                </TouchableOpacity>
+              );
+            })}
+          </Animated.View>
+        </View>
+      </Modal>
+      {/* Sightings menu modal */}
+      <Modal
+        visible={sightingsMenuVisible}
+        transparent
+        animationType="none"
+        onRequestClose={closeSightingsMenu}
+      >
+        <View style={menuStyles.overlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFillObject as any}
+            activeOpacity={1}
+            onPress={closeSightingsMenu}
+          />
+          <Animated.View style={[
+            menuStyles.sightingsContainer,
+            {
+              transform: [{
+                translateY: sightingsSlideAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [600, 0],
+                }),
+              }],
+            },
+          ]}>
+            <View style={menuStyles.dragHandle} />
+            <Text style={menuStyles.menuTitle}>Nearby Sightings</Text>
+            <ScrollView 
+              style={menuStyles.sightingsScrollView}
+              showsVerticalScrollIndicator={false}
+            >
+              {animals.length > 0 ? (
+                <View style={menuStyles.gridContainer}>
+                  {animals.map(sighting => (
+                    <TouchableOpacity
+                      key={sighting.id}
+                      style={menuStyles.gridItem}
+                      onPress={() => {
+                        goToSighting(sighting);
+                        closeSightingsMenu();
+                      }}
+                    >
+                      <View style={menuStyles.gridIconWrap}>
+                        <Icon name={isValidIcon(sighting.animal) ? sighting.animal : 'question'} size={28} color="#fff" />
+                      </View>
+                      <Text style={menuStyles.gridText} numberOfLines={2}>{sighting.animal || 'Unknown'}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : (
+                <Text style={menuStyles.noSightingsText}>No sightings nearby</Text>
+              )}
+            </ScrollView>
+          </Animated.View>
+        </View>
+      </Modal>
+      {/* Sightings bar - removed, now in modal */}
       {location && (
         <View style={MapStyles.buttonContainer}>
           <View style={MapStyles.zoomControls}>
@@ -254,9 +361,178 @@ const AnimalTrackerScreen = () => {
           </TouchableOpacity>
         </View>
       )}
+      {location && (
+        <TouchableOpacity 
+          style={menuStyles.distanceButtonBottomRight} 
+          onPress={openDistanceMenu}
+        >
+          <Icon name="sliders" size={20} color="#fff" />
+        </TouchableOpacity>
+      )}
+      {location && (
+        <TouchableOpacity 
+          style={menuStyles.sightingsButtonBottomRight} 
+          onPress={openSightingsMenu}
+        >
+          <Icon name="paw" size={20} color="#fff" />
+        </TouchableOpacity>
+      )}
     </View>
   );
 };
+
+const menuStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  menuContainer: {
+    backgroundColor: Colors.light.softBeige,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 30,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  dragHandle: {
+    width: 40,
+    height: 5,
+    backgroundColor: Colors.light.shadow,
+    borderRadius: 3,
+    alignSelf: 'center',
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  menuTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.light.primaryGreen,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.shadow,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+  },
+  menuText: {
+    fontSize: 16,
+    color: Colors.light.darkNeutral,
+  },
+  menuTextActive: {
+    color: Colors.light.primaryGreen,
+    fontWeight: '700',
+  },
+  distanceButtonBottomRight: {
+    position: 'absolute',
+    bottom: 140,
+    right: 16,
+    backgroundColor: Colors.light.primaryGreen,
+    borderRadius: 20,
+    padding: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  sightingsButtonBottomRight: {
+    position: 'absolute',
+    bottom: 200,
+    right: 16,
+    backgroundColor: Colors.light.primaryGreen,
+    borderRadius: 20,
+    padding: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  sightingsContainer: {
+    backgroundColor: Colors.light.softBeige,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 30,
+    maxHeight: '70%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  sightingsScrollView: {
+    maxHeight: 400,
+  },
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 10,
+    paddingTop: 10,
+  },
+  gridItem: {
+    width: '33.333%',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+  },
+  gridIconWrap: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: Colors.light.primaryGreen,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  gridText: {
+    fontSize: 12,
+    color: Colors.light.darkNeutral,
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  sightingMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.shadow,
+  },
+  sightingIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.light.primaryGreen,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  sightingText: {
+    fontSize: 16,
+    color: Colors.light.darkNeutral,
+    flex: 1,
+  },
+  noSightingsText: {
+    fontSize: 16,
+    color: Colors.light.secondaryGreen,
+    textAlign: 'center',
+    paddingVertical: 40,
+  },
+});
 
 export default AnimalTrackerScreen;
 

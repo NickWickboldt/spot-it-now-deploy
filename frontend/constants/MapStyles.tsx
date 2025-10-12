@@ -66,6 +66,17 @@ const MapStyles = StyleSheet.create({
         right: 15,
         alignItems: 'center',
     },
+    distanceButton: {
+        marginBottom: 10,
+        backgroundColor: theme.softBeige,
+        borderRadius: 20,
+        padding: 10,
+        elevation: 4,
+        shadowColor: theme.shadow,
+        shadowOpacity: 0.3,
+        shadowRadius: 5,
+        shadowOffset: { width: 0, height: 2 },
+    },
     zoomControls: {
         backgroundColor: theme.softBeige,
         borderRadius: 20,
