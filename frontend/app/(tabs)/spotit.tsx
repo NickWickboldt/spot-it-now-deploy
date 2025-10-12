@@ -14,6 +14,7 @@ import { isRemoteUrl, uploadToCloudinarySigned } from '../../api/upload';
 import ConfirmationModal from "../../components/ConfirmationModal";
 import ImageCropModal from '../../components/ImageCropModal';
 import VideoFramePickerModal from '../../components/VideoFramePickerModal';
+import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
 import { setCaptureState, setTakePictureRef } from '../captureRegistry';
 
@@ -694,49 +695,63 @@ return (
           animationType="slide"
           onRequestClose={() => setShowSightingForm(false)}
         >
-          <ScrollView contentContainerStyle={styles.formContainer}>
-            <Text style={styles.formTitle}>Post Sighting</Text>
-            
-            {photoUri && (
-              <Image
-                source={{ uri: photoUri }}
-                style={styles.previewImage}
-                resizeMode="contain"
-              />
-            )}
-
-            <Text style={styles.label}>Caption</Text>
-            <TextInput
-              value={sightingForm.caption}
-              onChangeText={(text) => setSightingForm(prev => ({ ...prev, caption: text }))}
-              style={styles.input}
-              multiline
-            />
-
-            <View style={styles.privateContainer}>
-              <Text style={styles.label}>Private Sighting</Text>
-              <Switch
-                value={sightingForm.isPrivate}
-                onValueChange={(value) => setSightingForm(prev => ({ ...prev, isPrivate: value }))}
-              />
+          <View style={styles.formWrapper}>
+            {/* Header */}
+            <View style={styles.formHeader}>
+              <Text style={styles.formTitle}>Post Sighting</Text>
+              <TouchableOpacity onPress={handleRetake} style={styles.closeButton}>
+                <MaterialIcons name="close" size={28} color={Colors.light.darkNeutral} />
+              </TouchableOpacity>
             </View>
 
-            <View style={styles.buttonContainer}>
+            <ScrollView contentContainerStyle={styles.formContainer}>
+              {photoUri && (
+                <Image
+                  source={{ uri: photoUri }}
+                  style={styles.previewImage}
+                  resizeMode="cover"
+                />
+              )}
+
+              <View style={styles.formSection}>
+                <Text style={styles.label}>Caption</Text>
+                <TextInput
+                  value={sightingForm.caption}
+                  onChangeText={(text) => setSightingForm(prev => ({ ...prev, caption: text }))}
+                  style={styles.input}
+                  placeholder="Share your sighting story..."
+                  placeholderTextColor="#999"
+                  multiline
+                  numberOfLines={4}
+                />
+              </View>
+
+              <View style={styles.formSection}>
+                <View style={styles.privateRow}>
+                  <View>
+                    <Text style={styles.label}>Private Sighting</Text>
+                    <Text style={styles.helperText}>Only you can see this sighting</Text>
+                  </View>
+                  <Switch
+                    value={sightingForm.isPrivate}
+                    onValueChange={(value) => setSightingForm(prev => ({ ...prev, isPrivate: value }))}
+                    trackColor={{ false: '#d1d5db', true: Colors.light.primaryGreen }}
+                    thumbColor="#fff"
+                  />
+                </View>
+              </View>
+            </ScrollView>
+
+            {/* Fixed Bottom Button */}
+            <View style={styles.formFooter}>
               <TouchableOpacity 
-                style={[styles.button, styles.submitButton]}
+                style={styles.submitButton}
                 onPress={handleSubmitSighting}
               >
-                <Text style={styles.buttonText}>Post Sighting</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.button, styles.cancelButton]}
-                onPress={handleRetake}
-              >
-                <Text style={styles.buttonText}>Cancel</Text>
+                <Text style={styles.submitButtonText}>Post Sighting</Text>
               </TouchableOpacity>
             </View>
-          </ScrollView>
+          </View>
         </Modal>
       {/* Show a loading spinner while processing */}
       {isProcessing && (
@@ -894,48 +909,101 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
   },
-formContainer: {
-    padding: 20,
+formWrapper: {
+    flex: 1,
+    backgroundColor: Colors.light.background,
+  },
+  formHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 50,
+    paddingBottom: 16,
+    backgroundColor: Colors.light.background,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
   },
   formTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 20,
+    fontSize: 28,
+    fontWeight: '700',
+    color: Colors.light.darkNeutral,
+  },
+  closeButton: {
+    padding: 4,
+  },
+  formContainer: {
+    padding: 20,
+    paddingBottom: 100,
   },
   previewImage: {
-    alignSelf: 'center',
-    width: '90%',
-    height: undefined as unknown as number,
-    aspectRatio: 4/3,
-    borderRadius: 8,
-    marginBottom: 20,
+    width: '100%',
+    height: 300,
+    borderRadius: 16,
+    marginBottom: 24,
+    backgroundColor: Colors.light.lightGrey,
+  },
+  formSection: {
+    marginBottom: 24,
   },
   label: {
     fontSize: 16,
+    fontWeight: '600',
+    color: Colors.light.darkNeutral,
     marginBottom: 8,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    minHeight: 100,
+    borderColor: '#d1d5db',
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 15,
+    color: Colors.light.darkNeutral,
+    backgroundColor: '#fff',
+    textAlignVertical: 'top',
+    minHeight: 120,
   },
-  privateContainer: {
+  privateRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
   },
-  buttonContainer: {
-    gap: 10,
+  helperText: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  formFooter: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: Colors.light.background,
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
   },
   submitButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: Colors.light.primaryGreen,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 2,
+    shadowColor: Colors.light.primaryGreen,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
   },
-  cancelButton: {
-    backgroundColor: '#FF3B30',
+  submitButtonText: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '600',
   },
   buttonText: {
     color: 'white',
@@ -967,7 +1035,7 @@ formContainer: {
   // Bottom-left upload already exists. Add capture and toggle buttons
   captureButton: {
     position: 'absolute',
-    bottom: 40,
+    bottom: 120,
     alignSelf: 'center',
     width: 74,
     height: 74,
@@ -995,7 +1063,7 @@ formContainer: {
   },
   modeToggleButton: {
     position: 'absolute',
-    bottom: 125,
+    bottom: 205,
     right: 30,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
     width: 48,
@@ -1006,7 +1074,7 @@ formContainer: {
   },
     uploadButton: {
     position: 'absolute',
-    bottom: 125,
+    bottom: 205,
     left: 30,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
     width: 60,
