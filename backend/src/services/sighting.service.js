@@ -328,7 +328,7 @@ const resolveAnimalMappingForAIIdentification = async (aiNameRaw) => {
  * @returns {Promise<Sighting>} The created sighting object.
  */
 const createSighting = async (userId, userName, sightingData) => {
-  const { mediaUrls, latitude, longitude, caption, isPrivate, identification } = sightingData || {};
+  const { mediaUrls, latitude, longitude, caption, isPrivate, identification, imageVerification, captureMethod } = sightingData || {};
 
   const mediaUrlsValid = Array.isArray(mediaUrls) && mediaUrls.length > 0 && mediaUrls.every(u => typeof u === 'string' && u.trim().length > 0);
   const latNum = latitude !== undefined && latitude !== null ? Number(latitude) : null;
@@ -417,6 +417,27 @@ const createSighting = async (userId, userName, sightingData) => {
     }
   }
 
+  // Determine if sighting requires admin review based on verification
+  let requiresAdminReview = false;
+  let initialReputationScore = 50;
+  
+  if (imageVerification) {
+    // High fraud score or many suspicious flags warrant review
+    if (imageVerification.fraudScore > 0.7 || (imageVerification.verificationFlags && imageVerification.verificationFlags.length > 2)) {
+      requiresAdminReview = true;
+      initialReputationScore = 30; // Lower reputation for suspicious images
+    } else if (imageVerification.fraudScore > 0.5) {
+      initialReputationScore = 40; // Medium reputation
+    } else if (imageVerification.fraudScore < 0.3) {
+      initialReputationScore = 70; // Higher reputation for verified authentic images
+    }
+  }
+
+  // Camera captures get higher initial reputation
+  if (captureMethod === 'CAMERA') {
+    initialReputationScore = Math.min(100, initialReputationScore + 15);
+  }
+
   const sighting = await Sighting.create({
     user: userId,
     userName,
@@ -429,6 +450,18 @@ const createSighting = async (userId, userName, sightingData) => {
     aiIdentification: aiName,
     confidence: aiConfidence,
     ...verificationFlags,
+    // Image verification tracking
+    imageVerification: imageVerification ? {
+      verified: !imageVerification.isSuspicious,
+      fraudScore: imageVerification.fraudScore || 0,
+      isSuspicious: imageVerification.isSuspicious || false,
+      verificationDetails: imageVerification.details || {},
+      verificationFlags: imageVerification.verificationFlags || [],
+      verifiedAt: new Date()
+    } : undefined,
+    captureMethod: captureMethod || 'UNKNOWN',
+    reputationScore: initialReputationScore,
+    requiresAdminReview
   });
 
   // Auto-add discovery if animal is identified and linked

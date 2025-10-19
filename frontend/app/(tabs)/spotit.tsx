@@ -11,6 +11,7 @@ import { ActivityIndicator, Alert, Image, Modal, ScrollView, StyleSheet, Switch,
 import { PinchGestureHandler, State } from 'react-native-gesture-handler';
 import { apiCreateSighting } from '../../api/sighting';
 import { isRemoteUrl, uploadToCloudinarySigned } from '../../api/upload';
+import { apiVerifyImage } from '../../api/verification';
 import ConfirmationModal from "../../components/ConfirmationModal";
 import ImageCropModal from '../../components/ImageCropModal';
 import VideoFramePickerModal from '../../components/VideoFramePickerModal';
@@ -43,6 +44,8 @@ type AnalysisResult = {
   species: string;
   confidence: number;
   reasoning: string;
+  isScreenshot?: boolean;
+  screenshotEvidence?: string | null;
 };
 
 function guessMimeType(uri: string): string {
@@ -109,6 +112,12 @@ export default function SpotItScreen() {
   const [showManualInputModal, setShowManualInputModal] = useState(false);
   const [manualCommonName, setManualCommonName] = useState('');
   const [manualScientificName, setManualScientificName] = useState('');
+
+  // Image verification states
+  const [imageVerification, setImageVerification] = useState<any>(null);
+  const [showVerificationWarning, setShowVerificationWarning] = useState(false);
+  const [verificationWarningMessage, setVerificationWarningMessage] = useState('');
+  const [captureMethod, setCaptureMethod] = useState<'CAMERA' | 'UPLOAD'>('CAMERA');
 
   const resetManualInputs = () => {
     setManualCommonName('');
@@ -184,19 +193,41 @@ export default function SpotItScreen() {
   const analyzeAndHandle = useCallback(async (uri: string) => {
     setIsProcessing(true);
     try {
-      const prompt = `
-      Analyze the image and provide your output in a single, clean JSON object.
+      // Verify image authenticity first
+      const isVerified = await verifyImageBeforeAnalysis(uri);
+      if (!isVerified) {
+        setIsProcessing(false);
+        return; // User chose to retake
+      }
 
+      const prompt = `
+      Analyze the image carefully and provide your output in a single, clean JSON object.
+
+      CRITICAL: First check if this image is a screenshot, photo of a photo, unnatural scenario, or image of a screen:
+      - Look for browser UI elements, status bars, menu bars, or window frames
+      - Look for visible screen bezels, reflections, or screen distortion
+      - Look for photos printed/displayed on screens or other surfaces being photographed
+      - Look for watermarks, logos, or text overlays typical of online images
+      - Look for animals wearing unnatural objects (sunglasses, hats, clothing unless domestic animals)
+      - Look for animals making unnatural gestures (peace signs, rock-on gestures, waving hands)
+      - Look for impossibly posed or arranged animals
+      - Look for animated characters, cartoons, or illustrations instead of real animals
+      - Look for impossible anatomical features or proportions for that species
+      - If any of these are detected, set "isScreenshot" to true and explain in "screenshotEvidence"
+      
       **JSON Key Definitions and Structure:**
+      - **"isScreenshot"**: Boolean - true if image is a screenshot, photo of photo, from online source, or shows unnatural/impossible animals. false if authentic direct capture of real animal.
+      - **"screenshotEvidence"**: String - if isScreenshot is true, explain what made you think this (e.g., "Visible browser bar at top", "Watermark present", "Animal wearing sunglasses", "Cartoon character", "Unnatural pose"). null if isScreenshot is false.
       - **"type"**: A broad category like 'Bird', 'Mammal', 'Insect', 'Reptile'.
       - **"animal"**: The specific common name of the animal, e.g., 'Bald Eagle', 'Grizzly Bear'.
       - **"species"**: The scientific (Latin) name, enclosed in parentheses, e.g., '(Haliaeetus leucocephalus)'.
-      - **"confidence"**: Your confidence in the identification from 0-100, be as exact as possible try to really nail down the score.
+      - **"confidence"**: Your confidence in the identification from 0-100, be as exact as possible try to really nail down the score. Set to 0 if isScreenshot is true.
       - **"reasoning"**: A brief justification for your identification.
 
-      **Example Output:**
-      If the image contained a clear picture of a Lilac-breasted Roller, your output should be formatted EXACTLY like this:
+      **Example Output - Authentic Animal:**
       {
+        "isScreenshot": false,
+        "screenshotEvidence": null,
         "type": "Bird",
         "animal": "Lilac-breasted Roller",
         "species": "Coracias caudatus",
@@ -204,9 +235,32 @@ export default function SpotItScreen() {
         "reasoning": "The image shows a bird with vibrant, multi-colored plumage including a lilac throat and blue belly, which are key identifiers."
       }
 
-      **No Animal Case:**
-      If no animal is present, return this exact JSON:
+      **Example Output - Screenshot/Photo of Photo:**
       {
+        "isScreenshot": true,
+        "screenshotEvidence": "Image shows Wikipedia article page with browser UI visible and article text clearly readable",
+        "type": "N/A",
+        "animal": "None",
+        "species": "N/A",
+        "confidence": 0,
+        "reasoning": "Image is a screenshot of an online article, not an authentic fresh capture."
+      }
+
+      **Example Output - Unnatural Animal (Fake):**
+      {
+        "isScreenshot": true,
+        "screenshotEvidence": "Animal wearing sunglasses and making rock-on gesture - this is unnatural and appears to be a composite or cartoon image",
+        "type": "N/A",
+        "animal": "None",
+        "species": "N/A",
+        "confidence": 0,
+        "reasoning": "Image shows an animal in an impossible/unnatural scenario that indicates it is not an authentic wildlife photo."
+      }
+
+      **No Animal Case (Authentic Image):**
+      {
+        "isScreenshot": false,
+        "screenshotEvidence": null,
         "type": "N/A",
         "animal": "None",
         "species": "N/A",
@@ -220,6 +274,30 @@ export default function SpotItScreen() {
       const LOW_CONFIDENCE_THRESHOLD = 0;
 
       if (!analysis) throw new Error('Analysis returned null');
+
+      // Check if AI detected this as a screenshot/photo of photo/unnatural
+      if (analysis.isScreenshot) {
+        Alert.alert(
+          'Invalid Image Detected',
+          `This image is not a valid authentic wildlife photo:\n\n${analysis.screenshotEvidence || 'Image contains elements that indicate it is not an authentic capture'}\n\nPlease capture a fresh photo directly with your camera instead.`,
+          [
+            {
+              text: 'Retake',
+              style: 'default',
+              onPress: () => {
+                setPhotoUri(null);
+                setImageVerification(null);
+                setAnalysisResult(null);
+              }
+            },
+            {
+              text: 'Cancel',
+              style: 'cancel'
+            }
+          ]
+        );
+        return; // Stop processing
+      }
 
       if (analysis.confidence >= HIGH_CONFIDENCE_THRESHOLD) {
         setAnalysisResult(analysis);
@@ -245,6 +323,117 @@ export default function SpotItScreen() {
     }
   }, [analyzeImage]);
 
+/**
+ * Verify an image for fraud indicators before proceeding with analysis
+ */
+const verifyImageBeforeAnalysis = async (uri: string): Promise<boolean> => {
+  if (!token || isRemoteUrl(uri)) {
+    // Skip verification for remote URLs (already uploaded) or if no token
+    console.log('Skipping verification - remote URL or no token');
+    setImageVerification({
+      fraudScore: 0,
+      isSuspicious: false,
+      summary: 'Verification skipped for remote URLs',
+      recommendations: [],
+      details: {}
+    });
+    return true;
+  }
+
+  try {
+    console.log('Verifying image for fraud indicators...');
+    // NOTE: Do NOT set isProcessing here - let parent function manage it
+    
+    // Upload to temporary location first for verification
+    console.log('Uploading image to Cloudinary for verification...');
+    const uploadForVerification = await uploadToCloudinarySigned(uri, token, 'image', 'spotitnow/verification');
+    const verificationUrl = uploadForVerification.secure_url;
+    console.log('Image uploaded for verification:', verificationUrl);
+
+    // Run verification checks
+    console.log('Calling verification API...');
+    const verification = await apiVerifyImage(token, verificationUrl);
+    
+    console.log('Verification API response:', verification);
+    setImageVerification(verification);
+    
+    if (verification && verification.isSuspicious) {
+      // Image failed verification - show warning
+      const detailedMessage = verification.summary || 'Image quality concern detected';
+      setVerificationWarningMessage(detailedMessage);
+      setShowVerificationWarning(true);
+      
+      console.warn('Image verification failed:', verification);
+      
+      // Screenshot or online image detected - BLOCK these
+      const screenshotDetected = verification.verifications?.screenshotDetection?.likelyScreenshot === true;
+      const onlineImageDetected = verification.verifications?.reverseSearch?.foundOnline === true;
+      
+      if (screenshotDetected || onlineImageDetected) {
+        // Hard block - screenshots and online images are not allowed
+        Alert.alert(
+          'Image Not Allowed',
+          'This image is not a fresh camera capture.\n\n' +
+          (screenshotDetected ? 'Detected: Screenshot' : 'Detected: Image from internet') +
+          '\n\nPlease use photos taken directly with your camera:\n' +
+          '• Fresh wildlife photos only\n' +
+          '• Not screenshots or downloads\n' +
+          '• Good lighting and focus required',
+          [
+            {
+              text: 'Retake Photo',
+              style: 'default',
+              onPress: () => {
+                setPhotoUri(null);
+                setImageVerification(null);
+                setShowVerificationWarning(false);
+              }
+            }
+          ]
+        );
+        
+        return false; // Block - do not allow to continue
+      } else {
+        // High fraud score but not explicitly screenshot/online - soft warning
+        Alert.alert(
+          'Image Quality Note',
+          detailedMessage + '\n\nYou can continue, but fresh camera photos are preferred.',
+          [
+            {
+              text: 'Retake Photo',
+              style: 'default',
+              onPress: () => {
+                setPhotoUri(null);
+                setImageVerification(null);
+                setShowVerificationWarning(false);
+              }
+            },
+            {
+              text: 'Continue Anyway',
+              style: 'cancel'
+            }
+          ]
+        );
+        
+        return true; // Allow with warning
+      }
+    }
+    
+    console.log('Image verification passed');
+    return true; // Image passed verification
+  } catch (error) {
+    console.error('Error during image verification:', error);
+    // Don't block on verification errors - allow user to continue
+    // but log the error
+    Alert.alert(
+      'Verification Note',
+      'Could not verify image quality due to a network issue, but you can continue.',
+      [{ text: 'OK', onPress: () => {} }]
+    );
+    return true;
+  }
+  // NOTE: Removed finally block - parent function manages isProcessing state
+};
 
     // Add with other functions in SpotItScreen
 const handleUploadImage = async () => {
@@ -265,22 +454,45 @@ const handleUploadImage = async () => {
 
     if (!result.canceled && result.assets[0]) {
       setPhotoUri(result.assets[0].uri);
+      setCaptureMethod('UPLOAD'); // Mark as uploaded image
+      
+      // Verify image authenticity first
+      const isVerified = await verifyImageBeforeAnalysis(result.assets[0].uri);
+      if (!isVerified) {
+        return; // User chose to retake
+      }
+      
       // Analyze the selected image
       setIsProcessing(true);
 
       const prompt = `
-      Analyze the image and provide your output in a single, clean JSON object.
+      Analyze the image carefully and provide your output in a single, clean JSON object.
 
+      CRITICAL: First check if this image is a screenshot, photo of a photo, unnatural scenario, or image of a screen:
+      - Look for browser UI elements, status bars, menu bars, or window frames
+      - Look for visible screen bezels, reflections, or screen distortion
+      - Look for photos printed/displayed on screens or other surfaces being photographed
+      - Look for watermarks, logos, or text overlays typical of online images
+      - Look for animals wearing unnatural objects (sunglasses, hats, clothing unless domestic animals)
+      - Look for animals making unnatural gestures (peace signs, rock-on gestures, waving hands)
+      - Look for impossibly posed or arranged animals
+      - Look for animated characters, cartoons, or illustrations instead of real animals
+      - Look for impossible anatomical features or proportions for that species
+      - If any of these are detected, set "isScreenshot" to true and explain in "screenshotEvidence"
+      
       **JSON Key Definitions and Structure:**
+      - **"isScreenshot"**: Boolean - true if image is a screenshot, photo of photo, from online source, or shows unnatural/impossible animals. false if authentic direct capture of real animal.
+      - **"screenshotEvidence"**: String - if isScreenshot is true, explain what made you think this (e.g., "Visible browser bar at top", "Watermark present", "Animal wearing sunglasses", "Cartoon character", "Unnatural pose"). null if isScreenshot is false.
       - **"type"**: A broad category like 'Bird', 'Mammal', 'Insect', 'Reptile'.
       - **"animal"**: The specific common name of the animal, e.g., 'Bald Eagle', 'Grizzly Bear'.
       - **"species"**: The scientific (Latin) name, enclosed in parentheses, e.g., '(Haliaeetus leucocephalus)'.
-      - **"confidence"**: Your confidence in the identification from 0-100, be as exact as possible try to really nail down the score.
+      - **"confidence"**: Your confidence in the identification from 0-100, be as exact as possible try to really nail down the score. Set to 0 if isScreenshot is true.
       - **"reasoning"**: A brief justification for your identification.
 
-      **Example Output:**
-      If the image contained a clear picture of a Lilac-breasted Roller, your output should be formatted EXACTLY like this:
+      **Example Output - Authentic Animal:**
       {
+        "isScreenshot": false,
+        "screenshotEvidence": null,
         "type": "Bird",
         "animal": "Lilac-breasted Roller",
         "species": "Coracias caudatus",
@@ -288,9 +500,32 @@ const handleUploadImage = async () => {
         "reasoning": "The image shows a bird with vibrant, multi-colored plumage including a lilac throat and blue belly, which are key identifiers."
       }
 
-      **No Animal Case:**
-      If no animal is present, return this exact JSON:
+      **Example Output - Screenshot/Photo of Photo:**
       {
+        "isScreenshot": true,
+        "screenshotEvidence": "Image shows Wikipedia article page with browser UI visible and article text clearly readable",
+        "type": "N/A",
+        "animal": "None",
+        "species": "N/A",
+        "confidence": 0,
+        "reasoning": "Image is a screenshot of an online article, not an authentic fresh capture."
+      }
+
+      **Example Output - Unnatural Animal (Fake):**
+      {
+        "isScreenshot": true,
+        "screenshotEvidence": "Animal wearing sunglasses and making rock-on gesture - this is unnatural and appears to be a composite or cartoon image",
+        "type": "N/A",
+        "animal": "None",
+        "species": "N/A",
+        "confidence": 0,
+        "reasoning": "Image shows an animal in an impossible/unnatural scenario that indicates it is not an authentic wildlife photo."
+      }
+
+      **No Animal Case (Authentic Image):**
+      {
+        "isScreenshot": false,
+        "screenshotEvidence": null,
         "type": "N/A",
         "animal": "None",
         "species": "N/A",
@@ -304,6 +539,30 @@ const handleUploadImage = async () => {
       const LOW_CONFIDENCE_THRESHOLD = 0
       if (!analysis) {
         throw new Error("Analysis returned null.");
+      }
+
+      // Check if AI detected this as invalid (screenshot/unnatural/etc)
+      if (analysis.isScreenshot) {
+        Alert.alert(
+          'Invalid Image Detected',
+          `This image is not a valid authentic wildlife photo:\n\n${analysis.screenshotEvidence || 'Image contains elements that indicate it is not an authentic capture'}\n\nPlease select a fresh photo instead.`,
+          [
+            {
+              text: 'Choose Another',
+              style: 'default',
+              onPress: () => {
+                setPhotoUri(null);
+                setImageVerification(null);
+                setAnalysisResult(null);
+              }
+            },
+            {
+              text: 'Cancel',
+              style: 'cancel'
+            }
+          ]
+        );
+        return;
       }
       
       if (analysis.confidence >= HIGH_CONFIDENCE_THRESHOLD) {
@@ -423,9 +682,8 @@ const handleOverride = useCallback(async (uri?: string) => {
       const photo: CameraCapturedPicture = await cameraRef.current.takePictureAsync({ quality: 0.9 });
       console.log("Photo taken:", photo.uri);
 
-
-
-      setPhotoUri(photo.uri)
+      setPhotoUri(photo.uri);
+      setCaptureMethod('CAMERA'); // Mark as camera capture
       await analyzeAndHandle(photo.uri);
     
 
@@ -575,7 +833,10 @@ const handleOverride = useCallback(async (uri?: string) => {
         commonName: analysisResult.animal,
         scientificName: analysisResult.species,
         confidence: analysisResult.confidence
-      } : undefined)
+      } : undefined),
+      // Include image verification data for server-side fraud detection
+      imageVerification: imageVerification || undefined,
+      captureMethod: captureMethod // Use the tracked capture method (CAMERA or UPLOAD)
     };
 
     await apiCreateSighting(token, sightingData);
@@ -593,6 +854,7 @@ const handleOverride = useCallback(async (uri?: string) => {
   setRecordedVideoUri(null);
   setFrameUri(null);
     setAnalysisResult(null);
+    setImageVerification(null);
   } catch (error) {
     console.error("Error posting sighting:", error);
     Alert.alert("Error", "Failed to post sighting");
@@ -611,6 +873,9 @@ const handleOverride = useCallback(async (uri?: string) => {
   setPhotoUri(null); // Clear current photo so camera is ready
   setRecordedVideoUri(null);
   setFrameUri(null);
+  setImageVerification(null);
+  setShowVerificationWarning(false);
+  setCaptureMethod('CAMERA'); // Reset to default
   };
 
   // Accept ambiguous low-confidence AI guess

@@ -14,6 +14,7 @@ import uploadRouter from './upload.routes.js';
 import userRouter from './user.routes.js';
 import userAchievementRouter from './userAchievement.routes.js';
 import userDiscoveryRouter from './userDiscovery.routes.js';
+import verificationRouter from './verification.routes.js';
 
 const router = Router();
 
@@ -33,5 +34,6 @@ router.use('/notifications', notificationRouter);
 router.use('/loggings', loggingRouter);
 router.use('/uploads', uploadRouter);
 router.use('/mappings', mappingRouter);
+router.use('/verify', verificationRouter);
 
 export default router;

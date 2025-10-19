@@ -114,6 +114,39 @@ const sightingSchema = new Schema(
       commonName: { type: String, trim: true },
       scientificName: { type: String, trim: true },
       confidence: { type: Number }
+    },
+    // Image verification and authenticity tracking
+    imageVerification: {
+      verified: { type: Boolean, default: false },
+      fraudScore: { type: Number, min: 0, max: 1, default: 0 },
+      isSuspicious: { type: Boolean, default: false },
+      verificationDetails: {
+        hasExifMetadata: { type: Boolean, default: false },
+        likelyAIGenerated: { type: Boolean, default: false },
+        likelyScreenshot: { type: Boolean, default: false },
+        foundOnline: { type: Boolean, default: false }
+      },
+      verificationFlags: [String], // Array of flags like 'MISSING_EXIF', 'AI_GENERATED', etc.
+      verifiedAt: { type: Date, default: null }
+    },
+    // Track if image was captured directly from device camera
+    captureMethod: {
+      type: String,
+      enum: ['CAMERA', 'UPLOAD', 'UNKNOWN'],
+      default: 'UNKNOWN'
+    },
+    // Reputation score based on verification and community feedback (0-100)
+    reputationScore: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 50
+    },
+    // Flag if sighting requires admin review due to fraud concerns
+    requiresAdminReview: {
+      type: Boolean,
+      default: false,
+      index: true
     }
   },
   // The `timestamps` option automatically adds `createdAt` and `updatedAt` fields

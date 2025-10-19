@@ -7,7 +7,7 @@ import { Colors } from '../../constants/Colors';
 import { getTakePictureRef, subscribeCaptureState, type CaptureState } from '../captureRegistry';
 
 const TAB_ICONS = [
-  { name: 'feed', icon: 'file-text', label: 'Sighting' },
+  { name: 'feed', icon: 'file-text', label: 'Feed' },
   { name: 'map', icon: 'map', label: 'Map' },
   { name: 'spotit', icon: 'camera', label: '', isCenter: true },
   { name: 'animal_index', icon: 'book', label: 'Index' },
