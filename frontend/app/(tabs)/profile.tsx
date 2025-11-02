@@ -157,7 +157,7 @@ export default function ProfileScreen(): React.JSX.Element | null {
       <View style={profileStyles.header}>
         <Text style={profileStyles.screenTitle}>Profile</Text>
         <Pressable onPress={() => setMenuVisible(true)}>
-          <Icon name="ellipsis-v" size={24} color="#333" />
+          <Icon name="ellipsis-h" size={32} color="#333" />
         </Pressable>
       </View>
 

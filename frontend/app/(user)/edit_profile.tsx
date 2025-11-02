@@ -7,6 +7,7 @@ import { apiUpdateUserDetails } from '../../api/user';
 import { Colors } from '../../constants/Colors';
 import { EditProfileStyles } from '../../constants/EditProfileStyles';
 import { useAuth } from '../../context/AuthContext';
+import { useNotification } from '../../hooks/useNotification';
 
 type EditProfileForm = {
   username: string;
@@ -21,6 +22,7 @@ type EditProfileForm = {
 export default function EditProfileScreen(): React.JSX.Element | null {
   const { user, token, refreshUser } = useAuth();
   const router = useRouter();
+  const notification = useNotification();
 
   if (!user || !token) {
     if (router.canGoBack()) router.back();
@@ -54,7 +56,7 @@ export default function EditProfileScreen(): React.JSX.Element | null {
   const handleSave = async (): Promise<void> => {
     const radiusVal = Number(form.radius);
     if (Number.isNaN(radiusVal) || radiusVal < 0) {
-      Alert.alert('Invalid Radius', 'Radius must be a non-negative number.');
+      notification.warning('Invalid Input', 'Radius must be a non-negative number.');
       return;
     }
 
@@ -71,14 +73,13 @@ export default function EditProfileScreen(): React.JSX.Element | null {
       router.back();
       return;
     }
-
     try {
       await apiUpdateUserDetails(token, updates);
       if (refreshUser) await refreshUser();
-      Alert.alert('Success', 'Profile updated successfully!');
+      notification.success('Profile Updated!', 'Your changes have been saved');
       router.back();
     } catch (e: any) {
-      Alert.alert('Error', String(e?.message || e));
+      notification.error('Update Failed', String(e?.message || e));
     }
   };
 
@@ -132,6 +133,7 @@ export default function EditProfileScreen(): React.JSX.Element | null {
     }));
     setLocationQuery(formatGeocodedAddress(result));
     setLocationResults([]);
+    notification.success('Location Selected', 'Location updated successfully');
     setLocationMessage('Location updated. Remember to save your changes.');
     Alert.alert('Location Updated', 'Location has been set from your search selection.');
   };
@@ -142,7 +144,7 @@ export default function EditProfileScreen(): React.JSX.Element | null {
       setLocationMessage(null);
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Location permission is required to capture your current location.');
+        notification.warning('Permission Denied', 'Location permission is required to capture your current location.');
         return;
       }
 
@@ -157,11 +159,11 @@ export default function EditProfileScreen(): React.JSX.Element | null {
         }));
         setLocationQuery('');
         setLocationResults([]);
+        notification.success('Location Captured', 'Your current location has been set');
         setLocationMessage('Location updated using your current GPS coordinates. Remember to save your changes.');
-        Alert.alert('Location Updated', 'Your current location has been captured for the local feed.');
       }
     } catch (error: any) {
-      Alert.alert('Error', String(error?.message || 'Unable to fetch current location right now.'));
+      notification.error('Location Error', String(error?.message || 'Unable to fetch current location right now.'));
     } finally {
       setIsLocating(false);
     }
