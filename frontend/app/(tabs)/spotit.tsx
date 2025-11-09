@@ -17,7 +17,7 @@ import ImageCropModal from '../../components/ImageCropModal';
 import VideoFramePickerModal from '../../components/VideoFramePickerModal';
 import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
-import { setCaptureState, setTakePictureRef } from '../captureRegistry';
+import { setCaptureState, setTakePictureRef } from '../../utils/captureRegistry';
 
 
 const API_KEY = "AIzaSyCZOLCu2c-fTsGqN2oy2Gl_hSPaFTq2V30";

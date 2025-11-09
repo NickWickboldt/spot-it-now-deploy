@@ -24,9 +24,19 @@ const getAllUsers = asyncHandler(async (req, res) => {
 
 const registerUser = asyncHandler(async (req, res) => {
   const createdUser = await userService.registerUser(req.body);
+  
+  // Generate tokens for new user
+  const accessToken = createdUser.generateAccessToken();
+  const refreshToken = createdUser.generateRefreshToken();
+  
+  // Save refresh token to user
+  createdUser.refreshToken = refreshToken;
+  await createdUser.save({ validateBeforeSave: false });
+  
+  // Return user with tokens (same structure as login)
   return res
     .status(201)
-    .json(new ApiResponse(201, createdUser, "User registered Successfully"));
+    .json(new ApiResponse(201, { ...createdUser.toObject(), accessToken, refreshToken }, "User registered Successfully"));
 });
 
 const loginUser = asyncHandler(async (req, res) => {
@@ -160,26 +170,35 @@ const adminForceLogoutUser = asyncHandler(async (req, res) => {
   return res.status(200).json(new ApiResponse(200, {}, 'User forcefully logged out'));
 });
 
+const completeOnboarding = asyncHandler(async (req, res) => {
+  const updatedUser = await userService.completeOnboarding(req.user._id, req.body);
+  return res.status(200).json(new ApiResponse(200, updatedUser, 'Onboarding completed successfully'));
+});
+
 
 export {
-  adminDeleteUser,
-  adminForceLogoutUser,
-  // admin exports
-  adminGetUserById,
-  adminUpdateUser, deleteUserAccount, getAllUsers, getCurrentUser,
-  getUserBio,
-  getUserEmail,
-  getUserExperiencePoints,
-  getUserProfilePicture,
-  getUserUsername,
-  loginUser,
-  logoutUser,
-  registerUser,
-  setUserBio,
-  setUserEmail,
-  setUserExperiencePoints,
-  setUserProfilePicture,
-  setUserUsername,
-  updateUserDetails
+    adminDeleteUser,
+    adminForceLogoutUser,
+    // admin exports
+    adminGetUserById,
+    adminUpdateUser,
+    completeOnboarding,
+    deleteUserAccount,
+    getAllUsers,
+    getCurrentUser,
+    getUserBio,
+    getUserEmail,
+    getUserExperiencePoints,
+    getUserProfilePicture,
+    getUserUsername,
+    loginUser,
+    logoutUser,
+    registerUser,
+    setUserBio,
+    setUserEmail,
+    setUserExperiencePoints,
+    setUserProfilePicture,
+    setUserUsername,
+    updateUserDetails
 };
 

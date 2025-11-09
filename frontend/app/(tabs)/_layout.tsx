@@ -4,7 +4,7 @@ import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { Colors } from '../../constants/Colors';
-import { getTakePictureRef, subscribeCaptureState, type CaptureState } from '../captureRegistry';
+import { getTakePictureRef, subscribeCaptureState, type CaptureState } from '../../utils/captureRegistry';
 
 const TAB_ICONS = [
   { name: 'feed', icon: 'file-text', label: 'Feed' },

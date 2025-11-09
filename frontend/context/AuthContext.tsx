@@ -4,7 +4,7 @@
 import { useRouter, useSegments } from "expo-router";
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Platform } from 'react-native';
-import { apiLoginUser } from '../api/auth';
+import { apiCompleteOnboarding, apiLoginUser, apiRegisterUser } from '../api/auth';
 import { setAuthToken } from '../api/client';
 import { apiGetCurrentUser } from '../api/user';
 // AsyncStorage is used on native platforms to persist the token between sessions
@@ -24,8 +24,10 @@ interface AuthContextType {
   user: any | null;
   token: string | null;
   login: (credentials: any) => Promise<void>;
+  register: (credentials: any) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
+  completeOnboarding: (onboardingData: any) => Promise<void>;
   isLoading: boolean;
 }
 
@@ -70,10 +72,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     if (token === null && inTabsGroup) {
       router.replace('/');
     } 
-    else if (token && onLoginPage) {
-      router.replace('/feed');
+    else if (token && user && onLoginPage) {
+      // If onboarding is not complete, go to registration flow
+      if (!user.onboardingCompleted) {
+        router.navigate({ pathname: '/(user)/onboarding_register' } as any);
+      } else {
+        router.navigate({ pathname: '/(tabs)/feed' } as any);
+      }
     }
-  }, [token, segments]);
+  }, [token, segments, user?.onboardingCompleted]);
 
   const login = async (credentials: {email: string, password: string}) => {
     setIsLoading(true);
@@ -84,6 +91,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         username: 'Local Admin',
         email: 'admin@local.dev',
         role: 'admin',
+        onboardingCompleted: true,
       };
       setUser(localAdminUser);
       const fake = 'local-admin-fake-token';
@@ -133,6 +141,68 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
+  const register = async (credentials: {username: string, email: string, password: string}) => {
+    setIsLoading(true);
+    try {
+      const response = await apiRegisterUser(credentials);
+      console.log('Register response:', response);
+      
+      // Backend response structure: { data: { ...user, accessToken, refreshToken }, statusCode, success, message }
+      const responseData = response.data;
+      
+      if (!responseData) {
+        throw new Error('Invalid registration response');
+      }
+      
+      // Extract accessToken and refreshToken, rest is user data
+      const { accessToken, refreshToken, ...userData } = responseData;
+      
+      if (!accessToken) {
+        throw new Error('No access token received from registration');
+      }
+      
+      console.log('Extracted from registration:', { hasUser: !!userData, hasToken: !!accessToken });
+      
+      setToken(accessToken);
+      setAuthToken(accessToken);
+      
+      try {
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+          window.localStorage.setItem('authToken', accessToken);
+        } else if (AsyncStorage) {
+          await AsyncStorage.setItem('authToken', accessToken);
+        }
+      } catch (e) {
+        console.warn('Failed to persist auth token', e);
+      }
+      
+      setUser(userData);
+      console.log('User and token set successfully after registration');
+    } catch (error) {
+      console.error("Registration failed:", error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const completeOnboarding = async (onboardingData: any) => {
+    setIsLoading(true);
+    try {
+      if (!token) throw new Error('No auth token found');
+      
+      const response = await apiCompleteOnboarding(onboardingData, token);
+      const { data: updatedUser } = response;
+      
+      setUser(updatedUser);
+    } catch (error) {
+      console.error("Onboarding completion failed:", error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const refreshUser = async () => {
     if (!token) return;
     try {
@@ -161,7 +231,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-  <AuthContext.Provider value={{ user, token, login, logout, isLoading, refreshUser }}>
+  <AuthContext.Provider value={{ user, token, login, logout, isLoading, refreshUser, register, completeOnboarding }}>
       {children}
     </AuthContext.Provider>
   );

@@ -211,6 +211,47 @@ const updateUserField = async (userId, fieldsToUpdate) => {
     return user;
 };
 
+/**
+ * Completes user onboarding by updating profile details and animal preferences.
+ * @param {string} userId - The ID of the user.
+ * @param {object} onboardingData - Contains username, bio, profilePictureUrl, animalPreferences (array of animal IDs)
+ * @returns {Promise<User>} The updated user object with onboarding marked as completed.
+ */
+const completeOnboarding = async (userId, onboardingData) => {
+  const { username, bio, profilePictureUrl, animalPreferences } = onboardingData;
+  
+  // Validate that at least username is provided
+  if (!username || username.trim() === '') {
+    throw new ApiError(400, "Username is required to complete onboarding");
+  }
+
+  const updateData = {
+    username: username.toLowerCase(),
+    bio: bio || '',
+    profilePictureUrl: profilePictureUrl || '',
+    onboardingCompleted: true,
+  };
+
+  // Set animal preferences (empty array for 'see all', or array of animal IDs)
+  if (Array.isArray(animalPreferences)) {
+    updateData.animalPreferences = animalPreferences;
+  } else {
+    updateData.animalPreferences = [];
+  }
+
+  const user = await User.findByIdAndUpdate(
+    userId,
+    { $set: updateData },
+    { new: true }
+  ).select('-password -refreshToken');
+
+  if (!user) {
+    throw new ApiError(404, 'User not found');
+  }
+
+  return user;
+};
+
 export const userService = {
   registerUser,
   loginUser,
@@ -223,5 +264,6 @@ export const userService = {
   getUserField,
   updateUserField,
   getAllUsers,
-  getUsersPage
+  getUsersPage,
+  completeOnboarding
 };

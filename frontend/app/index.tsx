@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Image, Pressable, Text, TextInput, View } from 'react-native';
 import { Colors } from '../constants/Colors';
@@ -6,6 +7,7 @@ import { LoginScreenStyles } from '../constants/LoginStyles';
 import { useAuth } from '../context/AuthContext';
 
 export default function LoginScreen() {
+  const router = useRouter();
   const { login, isLoading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -131,7 +133,7 @@ export default function LoginScreen() {
         <Pressable onPress={() => {/* Handle forgot password */}}>
           <Text style={LoginScreenStyles.linkText}>Forgot password?</Text>
         </Pressable>
-        <Pressable onPress={() => {/* Handle create account */}}>
+        <Pressable onPress={() => router.navigate({ pathname: '/(user)/onboarding_register' } as any)}>
           <Text style={LoginScreenStyles.linkText}>Create account</Text>
         </Pressable>
       </View>

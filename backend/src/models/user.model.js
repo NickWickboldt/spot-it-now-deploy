@@ -59,6 +59,16 @@ const userSchema = new Schema(
     },
     refreshToken: {
         type: String,
+    },
+    animalPreferences: {
+      // Array of animal IDs. Empty array means 'see all'
+      type: [mongoose.Schema.Types.ObjectId],
+      ref: 'Animal',
+      default: [],
+    },
+    onboardingCompleted: {
+      type: Boolean,
+      default: false,
     }
   },
   {

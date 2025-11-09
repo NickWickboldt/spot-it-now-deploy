@@ -1,24 +1,25 @@
 import { Router } from 'express';
 import {
-  adminDeleteUser,
-  adminForceLogoutUser,
-  adminGetUserById,
-  adminUpdateUser,
-  deleteUserAccount,
-  getAllUsers,
-  getCurrentUser,
-  getUserBio,
-  getUserExperiencePoints,
-  getUserProfilePicture,
-  getUserUsername,
-  loginUser,
-  logoutUser,
-  registerUser,
-  setUserBio,
-  setUserEmail,
-  setUserProfilePicture,
-  setUserUsername,
-  updateUserDetails
+    adminDeleteUser,
+    adminForceLogoutUser,
+    adminGetUserById,
+    adminUpdateUser,
+    completeOnboarding,
+    deleteUserAccount,
+    getAllUsers,
+    getCurrentUser,
+    getUserBio,
+    getUserExperiencePoints,
+    getUserProfilePicture,
+    getUserUsername,
+    loginUser,
+    logoutUser,
+    registerUser,
+    setUserBio,
+    setUserEmail,
+    setUserProfilePicture,
+    setUserUsername,
+    updateUserDetails
 } from '../controllers/user.controller.js';
 import { verifyAdmin } from '../middlewares/admin.middleware.js';
 import { verifyJWT } from '../middlewares/auth.middleware.js';
@@ -31,6 +32,7 @@ router.route('/login').post(loginUser);
 
 // --- Secured Auth Routes ---
 router.route('/logout').post(verifyJWT, logoutUser);
+router.route('/onboarding').post(verifyJWT, completeOnboarding);
 
 // --- Secured General CRUD Routes ---
 router.route('/me').get(verifyJWT, getCurrentUser);
