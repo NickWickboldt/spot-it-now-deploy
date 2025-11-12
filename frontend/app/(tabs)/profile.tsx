@@ -188,7 +188,7 @@ export default function ProfileScreen(): React.JSX.Element | null {
               {/* User Info */}
               <View style={profileStyles.userInfoContainer}>
                 <Text style={profileStyles.username}>{user.username}</Text>
-                <Text style={profileStyles.bio}>Bio: {user.bio || "this is zack admin"}</Text>
+                <Text style={profileStyles.bio}>Bio: {user.bio || "No bio yet"}</Text>
                 
                 {/* Experience and Role Badges */}
                 <View style={profileStyles.badgesRow}>

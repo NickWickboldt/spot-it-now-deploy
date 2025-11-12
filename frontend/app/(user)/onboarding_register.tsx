@@ -186,7 +186,7 @@ export default function OnboardingRegisterScreen() {
       </Pressable>
 
       {/* Back to Login */}
-      <Pressable onPress={() => router.back()} style={{ marginTop: 20 }}>
+      <Pressable onPress={() => router.replace('/')} style={{ marginTop: 20 }}>
         <Text style={[LoginScreenStyles.linkText, { textAlign: 'center' }]}>Back to Login</Text>
       </Pressable>
     </View>

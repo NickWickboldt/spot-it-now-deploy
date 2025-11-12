@@ -34,7 +34,10 @@ const loginUser = async (loginData) => {
   if (!username) {
     throw new ApiError(400, "Username or email is required");
   }
-  const user = await User.findOne({ username });
+  // Allow login with either username or email
+  const user = await User.findOne({ 
+    $or: [{ username: username.toLowerCase() }, { email: username.toLowerCase() }] 
+  });
   if (!user) {
     throw new ApiError(404, "User not found");
   }
@@ -225,8 +228,36 @@ const completeOnboarding = async (userId, onboardingData) => {
     throw new ApiError(400, "Username is required to complete onboarding");
   }
 
+  // Get the current user to check if username is changing
+  const currentUser = await User.findById(userId);
+  if (!currentUser) {
+    throw new ApiError(404, 'User not found');
+  }
+
+  const normalizedUsername = username.toLowerCase();
+  
+  console.log('DEBUG completeOnboarding:', {
+    userId: userId.toString(),
+    currentUsername: currentUser.username,
+    newUsername: normalizedUsername,
+    usernameChanged: currentUser.username !== normalizedUsername
+  });
+  
+  // Check if username is changing and if it's already taken by another user
+  if (currentUser.username !== normalizedUsername) {
+    const existingUser = await User.findOne({ username: normalizedUsername });
+    console.log('DEBUG found existing user:', existingUser ? {
+      id: existingUser._id.toString(),
+      username: existingUser.username,
+      isSameUser: existingUser._id.toString() === userId.toString()
+    } : 'none');
+    if (existingUser && existingUser._id.toString() !== userId.toString()) {
+      throw new ApiError(409, 'Username is already taken');
+    }
+  }
+
   const updateData = {
-    username: username.toLowerCase(),
+    username: normalizedUsername,
     bio: bio || '',
     profilePictureUrl: profilePictureUrl || '',
     onboardingCompleted: true,
