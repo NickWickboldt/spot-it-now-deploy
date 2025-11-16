@@ -18,16 +18,41 @@ export const verifyJWT = asyncHandler(async (req, _, next) => {
     } catch (logErr) {
       // swallow logging errors
     }
+    // CRITICAL: Check Authorization header FIRST before cookies
+    // Frontend sends token via header, cookies may contain stale tokens
     const token =
-      req.cookies?.accessToken ||
-      req.header("Authorization")?.replace("Bearer ", "");
+      req.header("Authorization")?.replace("Bearer ", "") ||
+      req.cookies?.accessToken;
 
     if (!token) {
       log.warn('auth-middleware', 'No token found on request', { path: req.originalUrl, method: req.method });
       throw new ApiError(401, "Unauthorized request");
     }
 
+    log.debug('auth-middleware', 'Extracted token string', {
+      tokenPrefix: token.substring(0, 30),
+      tokenLength: token.length,
+      source: req.cookies?.accessToken ? 'cookie' : 'header'
+    });
+
     const decodedToken = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+    
+    log.debug('auth-middleware', 'Token verified successfully', {
+      decodedUserId: decodedToken?._id,
+      decodedUsername: decodedToken?.username
+    });
+
+    log.debug('auth-middleware', 'Raw decoded JWT', {
+      fullToken: decodedToken,
+      path: req.originalUrl
+    });
+
+    log.debug('auth-middleware', 'Decoded JWT token', {
+      tokenId: decodedToken?._id,
+      tokenUsername: decodedToken?.username,
+      tokenEmail: decodedToken?.email,
+      path: req.originalUrl
+    });
 
     const user = await User.findById(decodedToken?._id).select(
       "-password -refreshToken"

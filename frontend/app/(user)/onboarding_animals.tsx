@@ -2,13 +2,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    KeyboardAvoidingView,
-    Platform,
-    Pressable,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
 import { apiGetAllAnimals } from '../../api/animal';
 import { apiCompleteOnboarding } from '../../api/auth';
@@ -121,7 +121,7 @@ export default function OnboardingAnimalsScreen() {
   };
 
   const handleComplete = async () => {
-    console.log('handleComplete called', { user: !!user, token: !!token, bio: bioFromParams, picture: pictureFromParams });
+    console.log('handleComplete called', { userId: user?._id, token: !!token, bio: bioFromParams, picture: pictureFromParams });
     
     if (!token) {
       setError('Authentication required. Please log in again.');
@@ -143,13 +143,22 @@ export default function OnboardingAnimalsScreen() {
       const usernameToSend = user.username;
 
       console.log('Submitting onboarding with:', {
+        userId: user._id,
         username: usernameToSend,
         bio: bioToSend,
         profilePictureUrl: picToSend,
         animalPreferences: seeAllMode ? [] : selectedAnimals,
+        tokenPrefix: token ? token.substring(0, 20) : 'no token',
       });
 
       const animalPreferences = seeAllMode ? [] : selectedAnimals;
+
+      console.log('[ONBOARDING_ANIMALS] About to call API with token:', {
+        tokenPrefix: token?.substring(0, 20),
+        tokenLength: token?.length,
+        userId: user._id,
+        username: user.username
+      });
 
       const result = await apiCompleteOnboarding(
         {

@@ -2,7 +2,7 @@
 // File: context/AuthContext.tsx
 // ==================================================================
 import { useRouter, useSegments } from "expo-router";
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import { apiCompleteOnboarding, apiLoginUser, apiRegisterUser } from '../api/auth';
 import { setAuthToken } from '../api/client';
@@ -25,7 +25,7 @@ interface AuthContextType {
   token: string | null;
   login: (credentials: any) => Promise<void>;
   register: (credentials: any) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   completeOnboarding: (onboardingData: any) => Promise<void>;
   isLoading: boolean;
@@ -39,27 +39,53 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const segments = useSegments();
+  const hasRestoredRef = useRef(false);
 
   useEffect(() => {
-    // Try to restore token from storage on startup
+    // Try to restore token from storage ONLY on app startup
+    // Use ref to ensure this NEVER runs more than once, even if component remounts
+    if (hasRestoredRef.current) {
+      console.log('Restore: Already restored, skipping');
+      return;
+    }
+    
     const restore = async () => {
+      hasRestoredRef.current = true;
       try {
         let storedToken: string | null = null;
         if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
           storedToken = window.localStorage.getItem('authToken');
+          console.log('Restore: Checked web localStorage for token', { hasToken: !!storedToken, tokenPrefix: storedToken?.substring(0, 20) });
         } else if (AsyncStorage) {
           storedToken = await AsyncStorage.getItem('authToken');
+          console.log('Restore: Checked AsyncStorage for token', { hasToken: !!storedToken, tokenPrefix: storedToken?.substring(0, 20) });
         }
         if (storedToken) {
+          console.log('Restored token from storage on app startup', { tokenPrefix: storedToken.substring(0, 20) });
+          console.log('SETTING TOKEN (restore):', storedToken.substring(0, 20));
           setToken(storedToken);
           setAuthToken(storedToken);
+        } else {
+          console.log('No token found in storage on startup - user will need to login');
         }
       } catch (e) {
         console.warn('Failed to restore auth token', e);
       }
     };
     restore();
+    // Empty dependency array means this only runs once on mount
+  }, []);
 
+  // DEBUG: Log whenever token changes
+  useEffect(() => {
+    console.log('TOKEN STATE CHANGED:', { 
+      hasToken: !!token, 
+      tokenPrefix: token?.substring(0, 20),
+      timestamp: new Date().toISOString()
+    });
+  }, [token]);
+
+  useEffect(() => {
     const inTabsGroup = segments[0] === '(tabs)';
     const inUserGroup = segments[0] === '(user)';
     const inAdminGroup = segments[0] === '(admin)';
@@ -121,6 +147,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         userData.role = role
       }
 
+      console.log('SETTING TOKEN (login):', accessToken.substring(0, 20));
       setToken(accessToken);
       setAuthToken(accessToken);
       try {
@@ -144,6 +171,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const register = async (credentials: {username: string, email: string, password: string}) => {
     setIsLoading(true);
     try {
+      // CRITICAL: Clear any old token from storage before registering new user
+      // This prevents old tokens from being restored on app remount
+      try {
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+          window.localStorage.removeItem('authToken');
+          console.log('Register: Cleared old token from web localStorage');
+        } else if (AsyncStorage) {
+          await AsyncStorage.removeItem('authToken');
+          console.log('Register: Cleared old token from AsyncStorage');
+        }
+      } catch (e) {
+        console.warn('Failed to clear old token before registration', e);
+      }
+
       const response = await apiRegisterUser(credentials);
       console.log('Register response:', response);
       
@@ -161,23 +202,32 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         throw new Error('No access token received from registration');
       }
       
-      console.log('Extracted from registration:', { hasUser: !!userData, hasToken: !!accessToken });
+      console.log('Extracted from registration:', { hasUser: !!userData, hasToken: !!accessToken, userId: userData._id });
       
+      // Set in-memory token first
+      console.log('SETTING TOKEN (register):', accessToken.substring(0, 20));
       setToken(accessToken);
       setAuthToken(accessToken);
       
+      // Then persist new token to storage
       try {
         if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
           window.localStorage.setItem('authToken', accessToken);
+          console.log('Register: Saved new token to web localStorage');
         } else if (AsyncStorage) {
           await AsyncStorage.setItem('authToken', accessToken);
+          console.log('Register: Saved new token to AsyncStorage');
         }
       } catch (e) {
         console.warn('Failed to persist auth token', e);
       }
       
       setUser(userData);
-      console.log('User and token set successfully after registration');
+      console.log('User and token set successfully after registration', { 
+        userId: userData._id,
+        username: userData.username,
+        tokenPrefix: accessToken.substring(0, 20)
+      });
     } catch (error) {
       console.error("Registration failed:", error);
       throw error;
@@ -213,20 +263,39 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  const logout = () => {
-    setToken(null);
-    setUser(null);
-    setAuthToken(null);
+  const logout = async () => {
+    console.log('Logout: Starting logout process');
+    
+    // CRITICAL: Clear AsyncStorage FIRST before clearing state or navigating
+    // This prevents restore() from finding an old token if the app remounts during navigation
     try {
       if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
         window.localStorage.removeItem('authToken');
+        console.log('Logout: Removed token from web localStorage');
       } else if (AsyncStorage) {
-        AsyncStorage.removeItem('authToken');
+        await AsyncStorage.removeItem('authToken');
+        console.log('Logout: Removed token from AsyncStorage');
+        
+        // Verify it's actually gone
+        const verifyRemoval = await AsyncStorage.getItem('authToken');
+        console.log('Logout: Verified removal from AsyncStorage', { stillExists: !!verifyRemoval });
       }
     } catch (e) {
-      // ignore
+      console.warn('Failed to remove auth token on logout', e);
     }
-    // Navigate to login screen after logout
+    
+    // Reset the restore flag so a new login can work properly
+    hasRestoredRef.current = false;
+    console.log('Logout: Reset restore flag for next session');
+    
+    // NOW clear in-memory state
+    console.log('SETTING TOKEN (logout): null');
+    setToken(null);
+    setUser(null);
+    setAuthToken(null);
+    console.log('Logout: Cleared in-memory token and user');
+    
+    // Finally, navigate to login
     router.replace('/');
   };
 

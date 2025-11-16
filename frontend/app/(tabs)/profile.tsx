@@ -122,7 +122,7 @@ export default function ProfileScreen(): React.JSX.Element | null {
               try {
                 await apiDeleteUserAccount(token);
                 alert("Account deleted successfully.");
-                logout();
+                await logout();
               } catch (error: any) {
                 alert(String(error.message || error));
               }
@@ -273,7 +273,7 @@ export default function ProfileScreen(): React.JSX.Element | null {
               <Text style={profileStyles.menuText}>Today's Challenges</Text>
             </Pressable>
 
-            <Pressable style={profileStyles.menuItem} onPress={logout}>
+            <Pressable style={profileStyles.menuItem} onPress={() => { logout(); }}>
               <Text style={profileStyles.menuText}>Logout</Text>
             </Pressable>
             <Pressable style={[profileStyles.menuItem, { borderTopWidth: 1, borderColor: '#eee' }]} onPress={handleDeleteAccount}>

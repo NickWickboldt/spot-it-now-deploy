@@ -25,9 +25,21 @@ const getAllUsers = asyncHandler(async (req, res) => {
 const registerUser = asyncHandler(async (req, res) => {
   const createdUser = await userService.registerUser(req.body);
   
+  log.debug('user-controller', 'Registration: Created new user', {
+    userId: createdUser._id,
+    username: createdUser.username,
+    email: createdUser.email
+  });
+  
   // Generate tokens for new user
   const accessToken = createdUser.generateAccessToken();
   const refreshToken = createdUser.generateRefreshToken();
+  
+  log.debug('user-controller', 'Registration: Generated tokens', {
+    userId: createdUser._id,
+    username: createdUser.username,
+    tokenPrefix: accessToken.substring(0, 20)
+  });
   
   // Save refresh token to user
   createdUser.refreshToken = refreshToken;
@@ -54,6 +66,10 @@ const loginUser = asyncHandler(async (req, res) => {
 
 const logoutUser = asyncHandler(async (req, res) => {
   await userService.logoutUser(req.user._id);
+  
+  // Clear authentication cookies
+  res.clearCookie('accessToken');
+  res.clearCookie('refreshToken');
   const options = { httpOnly: true, secure: process.env.NODE_ENV === 'production' };
   return res.status(200).clearCookie("accessToken", options).clearCookie("refreshToken", options).json(new ApiResponse(200, {}, "User logged Out"));
 });

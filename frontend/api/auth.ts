@@ -28,6 +28,7 @@ export const apiRegisterUser = async (credentials: {username: string, email: str
 };
 
 export const apiCompleteOnboarding = async (onboardingData: {username: string, bio: string, profilePictureUrl: string, animalPreferences: string[]}, token: string) => {
+  console.log('[apiCompleteOnboarding] Called with token:', { tokenPrefix: token.substring(0, 20), dataUsername: onboardingData.username });
   const response = await fetch(`${BASE_URL}/users/onboarding`, {
     method: 'POST',
     headers: { 
