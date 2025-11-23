@@ -9,7 +9,7 @@ import { apiGetPersonalizedFeed, apiGetPersonalizedFollowingFeed, apiGetPersonal
 import { apiCreateComment, apiDeleteComment, apiGetCommentsForSighting, apiUpdateComment } from '../../api/comment';
 import { apiGetLikedSightingsByUser, apiToggleSightingLike } from '../../api/like';
 import { apiGetMyNotifications } from '../../api/notification';
-import { CommunityVoteType, apiAdminDeleteSighting, apiGetCommunitySighting, apiGetFollowingRecentSightings, apiGetRecentSightings, apiGetSightingsNear, apiSubmitCommunityVote } from '../../api/sighting';
+import { CommunityVoteType, apiAdminDeleteSighting, apiGetCommunitySighting, apiGetRecentSightings, apiGetSightingsNear, apiSubmitCommunityVote } from '../../api/sighting';
 import { Colors } from '../../constants/Colors';
 import { FeedScreenStyles } from '../../constants/FeedStyles';
 import { useAuth } from '../../context/AuthContext';
@@ -308,11 +308,7 @@ export default function FeedScreen() {
     }
   }, [token]);
 
-  useEffect(() => {
-    loadNotificationCount();
-  }, [loadNotificationCount]);
-
-  // Refresh notification count when screen comes into focus
+  // Refresh notification count when screen comes into focus (only once per focus)
   useFocusEffect(
     useCallback(() => {
       loadNotificationCount();

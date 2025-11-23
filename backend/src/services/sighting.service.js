@@ -484,6 +484,77 @@ const createSighting = async (userId, userName, sightingData) => {
     }
   }
 
+  // Send notifications to nearby users with matching animal preferences
+  if (linkedAnimalId && !isPrivate && longNum !== null && latNum !== null) {
+    try {
+      // Define notification radius in meters (5km = 5000 meters)
+      const notificationRadiusMeters = 5000;
+      const notificationRadiusMiles = notificationRadiusMeters / 1609.34; // Convert to miles for comparison
+      
+      // Find nearby users with this animal in their preferences
+      const nearbyUsers = await User.find({
+        _id: { $ne: userId }, // Exclude the post creator
+        notificationsEnabled: true,
+        latitude: { $exists: true, $ne: null },
+        longitude: { $exists: true, $ne: null },
+        $or: [
+          { animalPreferences: linkedAnimalId }, // Has this specific animal in preferences
+          { animalPreferences: { $size: 0 } } // Empty preferences means see all animals
+        ]
+      }).select('_id username latitude longitude').limit(100); // Limit to prevent overload
+
+      // Filter users by distance using Haversine formula
+      const usersInRange = nearbyUsers.filter(nearbyUser => {
+        const R = 3959; // Earth's radius in miles
+        const dLat = (nearbyUser.latitude - latNum) * Math.PI / 180;
+        const dLon = (nearbyUser.longitude - longNum) * Math.PI / 180;
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(latNum * Math.PI / 180) * Math.cos(nearbyUser.latitude * Math.PI / 180) *
+          Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distance = R * c;
+        return distance <= notificationRadiusMiles;
+      });
+
+      // Get animal name for notification
+      const animal = await Animal.findById(linkedAnimalId).select('commonName');
+      const animalName = animal?.commonName || 'an animal';
+      
+      // Send notifications to matching users
+      const notificationPromises = usersInRange.map(async (nearbyUser) => {
+        try {
+          await notificationService.sendNotificationToUser(nearbyUser._id, {
+            type: 'nearby_sighting',
+            title: `New ${animalName} Spotted Nearby!`,
+            subtitle: `${userName} posted a sighting`,
+            message: `${userName} spotted a ${animalName} near you: "${caption?.substring(0, 50) || 'Check it out!'}"`,
+          });
+        } catch (error) {
+          log.warn('sighting-service', 'Failed to send nearby sighting notification', {
+            sightingId: sighting._id,
+            targetUserId: nearbyUser._id,
+            error: error.message
+          });
+        }
+      });
+
+      await Promise.allSettled(notificationPromises);
+      
+      log.info('sighting-service', 'Sent nearby sighting notifications', {
+        sightingId: sighting._id,
+        animalId: linkedAnimalId,
+        notificationsSent: usersInRange.length
+      });
+    } catch (error) {
+      // Don't fail sighting creation if notifications fail
+      log.warn('sighting-service', 'Failed to send nearby sighting notifications', {
+        sightingId: sighting._id,
+        error: error.message
+      });
+    }
+  }
+
   if (linkedAnimalId) {
     log.debug('sighting-service', 'Sighting linked to animal', {
       sightingId: sighting._id,
