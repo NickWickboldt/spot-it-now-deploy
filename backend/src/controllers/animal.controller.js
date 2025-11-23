@@ -1,9 +1,9 @@
 
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { animalService } from '../services/animal.service.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.util.js';
 import { log } from '../utils/logger.util.js';
-import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // --- General Animal CRUD ---
 
@@ -120,8 +120,7 @@ export {
 };
 
 // --- AI Suggestion Endpoint ---
-
-const API_KEY = "AIzaSyCZOLCu2c-fTsGqN2oy2Gl_hSPaFTq2V30";
+const API_KEY = process.env.GEMINI_API_KEY;
 
 export const suggestAnimalData = asyncHandler(async (req, res) => {
   const { commonName } = req.body || {};
@@ -131,7 +130,7 @@ export const suggestAnimalData = asyncHandler(async (req, res) => {
 
   try {
     const genAI = new GoogleGenerativeAI(API_KEY);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
 
     const prompt = `You are helping fill an Animal database. Return ONLY valid JSON. For the given common name, produce the following fields:
 {

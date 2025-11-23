@@ -20,7 +20,7 @@ import { useAuth } from '../../context/AuthContext';
 import { setCaptureState, setTakePictureRef } from '../../utils/captureRegistry';
 
 
-const API_KEY = "AIzaSyCZOLCu2c-fTsGqN2oy2Gl_hSPaFTq2V30";
+const API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY
 const genAI = new GoogleGenerativeAI(API_KEY);
 
 
@@ -277,7 +277,7 @@ export default function SpotItScreen() {
       }
       `;
 
-      const analysis = await analyzeImage(uri, 'gemini-2.5-flash', prompt);
+      const analysis = await analyzeImage(uri, 'gemini-2.5-flash-lite', prompt);
       const HIGH_CONFIDENCE_THRESHOLD = 55;
       const LOW_CONFIDENCE_THRESHOLD = 0;
 
@@ -568,7 +568,7 @@ const handleUploadImage = async () => {
       }
       `;
 
-      const analysis = await analyzeImage(result.assets[0].uri, 'gemini-2.5-flash', prompt);
+      const analysis = await analyzeImage(result.assets[0].uri, 'gemini-2.5-flash-lite', prompt);
       const HIGH_CONFIDENCE_THRESHOLD = 55
       const LOW_CONFIDENCE_THRESHOLD = 0
       if (!analysis) {

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import achievementRouter from './achievement.routes.js';
 import adminRouter from './admin.routes.js';
+import algorithmRouter from './algorithm.routes.js';
 import animalRouter from './animal.routes.js';
 import challengeRouter from './challenge.routes.js';
 import commentRouter from './comment.routes.js';
@@ -22,6 +23,7 @@ const router = Router();
 router.use('/users', userRouter);
 router.use('/users', userDiscoveryRouter);
 router.use('/admins', adminRouter);
+router.use('/algorithm', algorithmRouter);
 router.use('/animals', animalRouter);
 router.use('/sightings', sightingRouter);
 router.use('/likes', likeRouter);

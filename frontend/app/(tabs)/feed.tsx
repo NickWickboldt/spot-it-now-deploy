@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, Dimensions, Easing, FlatList, Image, KeyboardAvoidingView, Modal, PanResponder, Platform, RefreshControl, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import Icon from 'react-native-vector-icons/FontAwesome';
+import { apiGetPersonalizedFeed, apiTrackSightingComment, apiTrackSightingLike, apiTrackSightingView } from '../../api/algorithm';
 import { apiCreateComment, apiDeleteComment, apiGetCommentsForSighting, apiUpdateComment } from '../../api/comment';
 import { apiGetLikedSightingsByUser, apiToggleSightingLike } from '../../api/like';
 import { apiGetMyNotifications } from '../../api/notification';
@@ -83,12 +84,43 @@ export default function FeedScreen() {
   // Track which posts are currently visible to control video autoplay
   const [visibleMap, setVisibleMap] = useState<Record<string, boolean>>({});
   const viewabilityConfig = useRef({ viewAreaCoveragePercentThreshold: 60 }).current;
+  
+  // Track view time for algorithm learning
+  const viewStartTimes = useRef<Record<string, number>>({});
+  
   const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: any[] }) => {
     const next: Record<string, boolean> = {};
+    const now = Date.now();
+    
     for (const it of viewableItems) {
       const id = it?.item?._id;
-      if (id) next[id] = true;
+      if (id) {
+        next[id] = true;
+        // Start tracking view time if not already tracked
+        if (!viewStartTimes.current[id]) {
+          viewStartTimes.current[id] = now;
+        }
+      }
     }
+    
+    // Track views that ended (items that left the screen)
+    Object.keys(visibleMap).forEach(id => {
+      if (!next[id] && viewStartTimes.current[id]) {
+        // Item left the screen, track the view duration
+        const durationMs = now - viewStartTimes.current[id];
+        const durationSeconds = Math.floor(durationMs / 1000);
+        
+        // Only track if viewed for at least 1 second and we have auth
+        if (durationSeconds >= 1 && token && activeTab === 'Discover') {
+          apiTrackSightingView(id, durationSeconds, token).catch(err => {
+            console.warn('Failed to track view:', err);
+          });
+        }
+        
+        delete viewStartTimes.current[id];
+      }
+    });
+    
     setVisibleMap(next);
   });
 
@@ -310,12 +342,24 @@ export default function FeedScreen() {
         }
         return apiGetFollowingRecentSightings(token, p, pageSize);
       }
+      // Use personalized feed for Discover tab if user is logged in
+      if (activeTab === 'Discover' && token && token !== 'local-admin-fake-token') {
+        return apiGetPersonalizedFeed(token, p, pageSize);
+      }
+      // Fallback to chronological feed for non-authenticated users
       return apiGetRecentSightings(p, pageSize);
     };
     fetcher()
       .then(async (resp) => {
         const payload = resp.data || {};
         const items = payload.items || [];
+        
+        // Debug: Log first item to see if algorithmScore is present
+        if (items.length > 0 && activeTab === 'Discover') {
+          console.log('[FEED] First item data:', JSON.stringify(items[0], null, 2));
+          console.log('[FEED] Has algorithmScore?', items[0].algorithmScore);
+        }
+        
         if (p === 1) {
           setSightings(items);
         } else {
@@ -535,6 +579,13 @@ export default function FeedScreen() {
     // Create floating heart only when liking (not unliking)
     if (!currentlyLiked) {
       createFloatingHeart(sightingId, tapX, tapY);
+      
+      // Track the like for algorithm learning
+      if (token && token !== 'local-admin-fake-token' && activeTab === 'Discover') {
+        apiTrackSightingLike(sightingId, token).catch(err => {
+          console.warn('Failed to track like for algorithm:', err);
+        });
+      }
     }
   };
 
@@ -638,6 +689,13 @@ export default function FeedScreen() {
       setInputFor(sightingId, '');
       await apiCreateComment(token, sightingId, text);
       await loadCommentsFor(sightingId);
+      
+      // Track the comment for algorithm learning
+      if (activeTab === 'Discover') {
+        apiTrackSightingComment(sightingId, token).catch(err => {
+          console.warn('Failed to track comment for algorithm:', err);
+        });
+      }
     } catch (e) {
       console.error('Failed to post comment', e);
       setSightings(prev => prev.map(s => s._id === sightingId ? { ...s, comments: Math.max(0, Number(s.comments || 0) - 1) } : s));
@@ -936,7 +994,23 @@ export default function FeedScreen() {
             </LinearGradient>
           </TouchableOpacity>
           <View style={FeedScreenStyles.userInfo}>
-            <Text style={FeedScreenStyles.username}>{item?.user?.username || item.userName || 'Unknown'}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={FeedScreenStyles.username}>{item?.user?.username || item.userName || 'Unknown'}</Text>
+              {/* Algorithm Score Badge (Development Only) */}
+              {item.algorithmScore !== undefined && (
+                <View style={{
+                  marginLeft: 8,
+                  paddingHorizontal: 8,
+                  paddingVertical: 2,
+                  backgroundColor: '#10b981',
+                  borderRadius: 12,
+                }}>
+                  <Text style={{ color: 'white', fontSize: 11, fontWeight: '600' }}>
+                    {item.algorithmScore.toFixed(1)}
+                  </Text>
+                </View>
+              )}
+            </View>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Text style={FeedScreenStyles.time}>{getRelativeTime(item.createdAt)}</Text>
               {getDistanceText(item) && (
