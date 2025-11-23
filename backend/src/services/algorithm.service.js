@@ -1,7 +1,7 @@
+import { Follow } from '../models/follow.model.js';
 import { Like } from '../models/like.model.js';
 import { Sighting } from '../models/sighting.model.js';
 import UserPreference from '../models/userPreference.model.js';
-import { Follow } from '../models/follow.model.js';
 import { ApiError } from '../utils/ApiError.util.js';
 
 /**
@@ -355,11 +355,174 @@ const resetUserPreferences = async (userId) => {
   return preference;
 };
 
+/**
+ * Get personalized Following feed (posts from users you follow, ranked by algorithm)
+ */
+const getPersonalizedFollowingFeed = async (userId, page = 1, pageSize = 10) => {
+  const preference = await getUserPreference(userId);
+  const skip = (page - 1) * pageSize;
+  
+  // Get list of users the current user is following
+  const followingDocs = await Follow.find({ follower: userId }).select('following').lean();
+  const followedUserIds = followingDocs.map(f => f.following.toString());
+  
+  if (followedUserIds.length === 0) {
+    return {
+      items: [],
+      page,
+      pageSize,
+      total: 0,
+    };
+  }
+  
+  // Get liked sighting IDs to exclude
+  const likedSightings = await Like.find({ user: userId }).select('sighting').lean();
+  const likedSightingIds = likedSightings.map(like => like.sighting.toString());
+  
+  // Get sightings only from followed users, excluding liked ones
+  const sightings = await Sighting.find({
+    user: { $in: followedUserIds },
+    _id: { $nin: likedSightingIds }
+  })
+    .sort({ createdAt: -1 })
+    .limit(1000)
+    .populate('user', 'username profilePictureUrl')
+    .populate('animal', 'commonName scientificName imageUrl category')
+    .lean();
+  
+  // Score and use probability-based ordering
+  const scoredSightings = sightings.map(sighting => {
+    const score = calculateSightingScore(sighting, preference, followedUserIds);
+    return { ...sighting, _personalizedScore: score };
+  });
+  
+  // Probability-based selection
+  const probabilitySelected = [];
+  const pool = [...scoredSightings];
+  
+  const calculateWeight = (score) => Math.pow(Math.E, score / 7);
+  
+  while (pool.length > 0 && probabilitySelected.length < scoredSightings.length) {
+    const totalWeight = pool.reduce((sum, item) => sum + calculateWeight(item._personalizedScore), 0);
+    const random = Math.random() * totalWeight;
+    
+    let cumulativeWeight = 0;
+    let selectedIndex = 0;
+    
+    for (let i = 0; i < pool.length; i++) {
+      cumulativeWeight += calculateWeight(pool[i]._personalizedScore);
+      if (random <= cumulativeWeight) {
+        selectedIndex = i;
+        break;
+      }
+    }
+    
+    probabilitySelected.push(pool[selectedIndex]);
+    pool.splice(selectedIndex, 1);
+  }
+  
+  // Paginate
+  const paginatedSightings = probabilitySelected.slice(skip, skip + pageSize);
+  
+  // Add algorithm scores
+  const cleanedSightings = paginatedSightings.map(({ _personalizedScore, ...sighting }) => ({
+    ...sighting,
+    algorithmScore: Math.round(_personalizedScore * 100) / 100
+  }));
+  
+  return {
+    items: cleanedSightings,
+    page,
+    pageSize,
+    total: scoredSightings.length,
+  };
+};
+
+/**
+ * Get personalized Local feed (nearby posts ranked by algorithm)
+ */
+const getPersonalizedLocalFeed = async (userId, longitude, latitude, radiusMeters, page = 1, pageSize = 10) => {
+  const preference = await getUserPreference(userId);
+  const skip = (page - 1) * pageSize;
+  
+  // Get list of users the current user is following
+  const followingDocs = await Follow.find({ follower: userId }).select('following').lean();
+  const followedUserIds = followingDocs.map(f => f.following.toString());
+  
+  // Get liked sighting IDs to exclude
+  const likedSightings = await Like.find({ user: userId }).select('sighting').lean();
+  const likedSightingIds = likedSightings.map(like => like.sighting.toString());
+  
+  // Get nearby sightings excluding liked ones
+  const sightings = await Sighting.find({
+    location: {
+      $near: {
+        $geometry: { type: 'Point', coordinates: [longitude, latitude] },
+        $maxDistance: radiusMeters
+      }
+    },
+    _id: { $nin: likedSightingIds }
+  })
+    .limit(1000)
+    .populate('user', 'username profilePictureUrl')
+    .populate('animal', 'commonName scientificName imageUrl category')
+    .lean();
+  
+  // Score and use probability-based ordering
+  const scoredSightings = sightings.map(sighting => {
+    const score = calculateSightingScore(sighting, preference, followedUserIds);
+    return { ...sighting, _personalizedScore: score };
+  });
+  
+  // Probability-based selection
+  const probabilitySelected = [];
+  const pool = [...scoredSightings];
+  
+  const calculateWeight = (score) => Math.pow(Math.E, score / 7);
+  
+  while (pool.length > 0 && probabilitySelected.length < scoredSightings.length) {
+    const totalWeight = pool.reduce((sum, item) => sum + calculateWeight(item._personalizedScore), 0);
+    const random = Math.random() * totalWeight;
+    
+    let cumulativeWeight = 0;
+    let selectedIndex = 0;
+    
+    for (let i = 0; i < pool.length; i++) {
+      cumulativeWeight += calculateWeight(pool[i]._personalizedScore);
+      if (random <= cumulativeWeight) {
+        selectedIndex = i;
+        break;
+      }
+    }
+    
+    probabilitySelected.push(pool[selectedIndex]);
+    pool.splice(selectedIndex, 1);
+  }
+  
+  // Paginate
+  const paginatedSightings = probabilitySelected.slice(skip, skip + pageSize);
+  
+  // Add algorithm scores
+  const cleanedSightings = paginatedSightings.map(({ _personalizedScore, ...sighting }) => ({
+    ...sighting,
+    algorithmScore: Math.round(_personalizedScore * 100) / 100
+  }));
+  
+  return {
+    items: cleanedSightings,
+    page,
+    pageSize,
+    total: scoredSightings.length,
+  };
+};
+
 export const algorithmService = {
   getUserPreference,
   trackInteraction,
   calculateSightingScore,
   getPersonalizedFeed,
+  getPersonalizedFollowingFeed,
+  getPersonalizedLocalFeed,
   getUserAlgorithmStats,
   toggleAlgorithm,
   resetUserPreferences,

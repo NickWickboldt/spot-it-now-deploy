@@ -199,6 +199,62 @@ const adminToggleUserAlgorithm = asyncHandler(async (req, res) => {
   );
 });
 
+/**
+ * Get personalized following feed
+ */
+const getPersonalizedFollowingFeed = asyncHandler(async (req, res) => {
+  const page = parseInt(req.query.page) || 1;
+  const pageSize = parseInt(req.query.pageSize) || 10;
+  
+  const result = await algorithmService.getPersonalizedFollowingFeed(
+    req.user._id,
+    page,
+    pageSize
+  );
+  
+  // Disable caching
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  
+  return res.status(200).json(
+    new ApiResponse(200, result, 'Personalized following feed retrieved successfully')
+  );
+});
+
+/**
+ * Get personalized local feed (nearby)
+ */
+const getPersonalizedLocalFeed = asyncHandler(async (req, res) => {
+  const page = parseInt(req.query.page) || 1;
+  const pageSize = parseInt(req.query.pageSize) || 10;
+  const longitude = parseFloat(req.query.longitude);
+  const latitude = parseFloat(req.query.latitude);
+  const radiusMeters = parseInt(req.query.radiusMeters) || 5000;
+  
+  if (isNaN(longitude) || isNaN(latitude)) {
+    throw new ApiError(400, 'Valid longitude and latitude are required');
+  }
+  
+  const result = await algorithmService.getPersonalizedLocalFeed(
+    req.user._id,
+    longitude,
+    latitude,
+    radiusMeters,
+    page,
+    pageSize
+  );
+  
+  // Disable caching
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  
+  return res.status(200).json(
+    new ApiResponse(200, result, 'Personalized local feed retrieved successfully')
+  );
+});
+
 export const algorithmController = {
   trackSightingView,
   trackSightingLike,
@@ -207,6 +263,8 @@ export const algorithmController = {
   toggleUserAlgorithm,
   resetUserAlgorithm,
   getPersonalizedFeed,
+  getPersonalizedFollowingFeed,
+  getPersonalizedLocalFeed,
   adminResetUserAlgorithm,
   adminGetUserAlgorithmStats,
   adminToggleUserAlgorithm,

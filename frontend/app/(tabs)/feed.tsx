@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, Dimensions, Easing, FlatList, Image, KeyboardAvoidingView, Modal, PanResponder, Platform, RefreshControl, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import Icon from 'react-native-vector-icons/FontAwesome';
-import { apiGetPersonalizedFeed, apiTrackSightingComment, apiTrackSightingLike, apiTrackSightingView } from '../../api/algorithm';
+import { apiGetPersonalizedFeed, apiGetPersonalizedFollowingFeed, apiGetPersonalizedLocalFeed, apiTrackSightingComment, apiTrackSightingLike, apiTrackSightingView } from '../../api/algorithm';
 import { apiCreateComment, apiDeleteComment, apiGetCommentsForSighting, apiUpdateComment } from '../../api/comment';
 import { apiGetLikedSightingsByUser, apiToggleSightingLike } from '../../api/like';
 import { apiGetMyNotifications } from '../../api/notification';
@@ -111,7 +111,9 @@ export default function FeedScreen() {
         const durationSeconds = Math.floor(durationMs / 1000);
         
         // Only track if viewed for at least 1 second and we have auth
-        if (durationSeconds >= 1 && token && activeTab === 'Discover') {
+        // Track on all tabs with algorithm (Discover, Following, Local)
+        if (durationSeconds >= 1 && token && token !== 'local-admin-fake-token' && 
+            (activeTab === 'Discover' || activeTab === 'Following' || activeTab === 'Local')) {
           apiTrackSightingView(id, durationSeconds, token).catch(err => {
             console.warn('Failed to track view:', err);
           });
@@ -340,7 +342,8 @@ export default function FeedScreen() {
         if (!token || token === 'local-admin-fake-token') {
           return { data: { items: [], total: 0 } } as any;
         }
-        return apiGetFollowingRecentSightings(token, p, pageSize);
+        // Use personalized following feed with algorithm
+        return apiGetPersonalizedFollowingFeed(token, p, pageSize);
       }
       // Use personalized feed for Discover tab if user is logged in
       if (activeTab === 'Discover' && token && token !== 'local-admin-fake-token') {
@@ -355,7 +358,7 @@ export default function FeedScreen() {
         const items = payload.items || [];
         
         // Debug: Log first item to see if algorithmScore is present
-        if (items.length > 0 && activeTab === 'Discover') {
+        if (items.length > 0 && (activeTab === 'Discover' || activeTab === 'Following')) {
           console.log('[FEED] First item data:', JSON.stringify(items[0], null, 2));
           console.log('[FEED] Has algorithmScore?', items[0].algorithmScore);
         }
@@ -436,11 +439,21 @@ export default function FeedScreen() {
       }
 
       const distMeters = Math.max(250, Math.round(radiusMiles * 1609.34));
-      const resp = await apiGetSightingsNear(longitudeNum, latitudeNum, distMeters, token || undefined);
+      
+      // Use personalized local feed with algorithm if logged in
+      let resp;
+      if (token && token !== 'local-admin-fake-token') {
+        resp = await apiGetPersonalizedLocalFeed(token, longitudeNum, latitudeNum, distMeters, 1, 1000);
+      } else {
+        resp = await apiGetSightingsNear(longitudeNum, latitudeNum, distMeters, token || undefined);
+      }
+      
       const payload = resp?.data;
       const items = Array.isArray(payload) ? payload : (payload?.items || []);
-      // Sort items by timestamp in descending order (newest first)
-      const sortedItems = items.sort((a, b) => getSightingTimestamp(b) - getSightingTimestamp(a));
+      // For non-algorithm results, sort by timestamp in descending order (newest first)
+      const sortedItems = (!token || token === 'local-admin-fake-token') 
+        ? items.sort((a, b) => getSightingTimestamp(b) - getSightingTimestamp(a))
+        : items; // Algorithm already orders them
       setSightings(sortedItems);
 
       if (sortedItems.length === 0) {
@@ -580,8 +593,9 @@ export default function FeedScreen() {
     if (!currentlyLiked) {
       createFloatingHeart(sightingId, tapX, tapY);
       
-      // Track the like for algorithm learning
-      if (token && token !== 'local-admin-fake-token' && activeTab === 'Discover') {
+      // Track the like for algorithm learning on all algorithm tabs
+      if (token && token !== 'local-admin-fake-token' && 
+          (activeTab === 'Discover' || activeTab === 'Following' || activeTab === 'Local')) {
         apiTrackSightingLike(sightingId, token).catch(err => {
           console.warn('Failed to track like for algorithm:', err);
         });
@@ -690,8 +704,8 @@ export default function FeedScreen() {
       await apiCreateComment(token, sightingId, text);
       await loadCommentsFor(sightingId);
       
-      // Track the comment for algorithm learning
-      if (activeTab === 'Discover') {
+      // Track the comment for algorithm learning on all algorithm tabs
+      if (activeTab === 'Discover' || activeTab === 'Following' || activeTab === 'Local') {
         apiTrackSightingComment(sightingId, token).catch(err => {
           console.warn('Failed to track comment for algorithm:', err);
         });

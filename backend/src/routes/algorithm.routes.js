@@ -15,6 +15,8 @@ router.patch('/toggle', verifyJWT, algorithmController.toggleUserAlgorithm);
 router.post('/reset', verifyJWT, algorithmController.resetUserAlgorithm);
 
 router.get('/feed', verifyJWT, algorithmController.getPersonalizedFeed);
+router.get('/feed/following', verifyJWT, algorithmController.getPersonalizedFollowingFeed);
+router.get('/feed/local', verifyJWT, algorithmController.getPersonalizedLocalFeed);
 
 // Admin routes
 router.post('/admin/reset/:userId', verifyJWT, verifyAdmin, algorithmController.adminResetUserAlgorithm);

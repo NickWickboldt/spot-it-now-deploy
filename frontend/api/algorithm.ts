@@ -21,6 +21,39 @@ export const apiGetPersonalizedFeed = async (
 };
 
 /**
+ * Get personalized following feed (posts from users you follow, ranked by algorithm)
+ */
+export const apiGetPersonalizedFollowingFeed = async (
+  token: string,
+  page: number = 1,
+  pageSize: number = 10
+) => {
+  const cacheBuster = Date.now();
+  return fetchWithAuth(
+    `/algorithm/feed/following?page=${page}&pageSize=${pageSize}&_=${cacheBuster}`,
+    token
+  );
+};
+
+/**
+ * Get personalized local feed (nearby posts ranked by algorithm)
+ */
+export const apiGetPersonalizedLocalFeed = async (
+  token: string,
+  longitude: number,
+  latitude: number,
+  radiusMeters: number,
+  page: number = 1,
+  pageSize: number = 10
+) => {
+  const cacheBuster = Date.now();
+  return fetchWithAuth(
+    `/algorithm/feed/local?longitude=${longitude}&latitude=${latitude}&radiusMeters=${radiusMeters}&page=${page}&pageSize=${pageSize}&_=${cacheBuster}`,
+    token
+  );
+};
+
+/**
  * Get algorithm statistics for the current user
  */
 export const apiGetUserAlgorithmStats = async (token: string) => {
