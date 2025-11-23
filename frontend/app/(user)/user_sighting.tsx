@@ -1,4 +1,5 @@
 import { ResizeMode, Video } from 'expo-av';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Dimensions, Easing, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -68,6 +69,9 @@ export default function UserSightingScreen() {
 
     // Parse the JSON string back into an array. No reordering is needed.
     const allSightings: Sighting[] = sightingsJson ? JSON.parse(sightingsJson) : [];
+    console.log('User Sighting Screen - Total sightings:', allSightings.length);
+    console.log('User Sighting Screen - First sighting:', allSightings[0]);
+    
     const [list, setList] = useState<Sighting[]>(allSightings);
     useEffect(() => { setList(allSightings); }, [sightingsJson]);
     const isOwnerView = String(isOwnerParam || '') === 'true';
@@ -153,7 +157,15 @@ export default function UserSightingScreen() {
     }
 
     const renderImages = (mediaUrls: string[], sightingId: string) => {
-        if (!mediaUrls || mediaUrls.length === 0) return null;
+        console.log(`Rendering images for sighting ${sightingId}:`, mediaUrls);
+        if (!mediaUrls || mediaUrls.length === 0) {
+            console.log('No media URLs found');
+            return (
+                <View style={{ backgroundColor: '#f0f0f0', justifyContent: 'center', alignItems: 'center', height: 400 }}>
+                    <Text style={{ color: '#999', fontSize: 16 }}>No media available</Text>
+                </View>
+            );
+        }
         const isVideoUrl = (url: string) => /\.(mp4|mov|m4v|webm)$/i.test(url) || /\/video\/upload\//i.test(url);
         const derivePoster = (url: string): string | undefined => {
             try {
@@ -170,12 +182,13 @@ export default function UserSightingScreen() {
         const isVisible = !!visibleMap[sightingId];
         if (mediaUrls.length === 1) {
             const url = mediaUrls[0];
+            console.log(`Single media - URL: ${url}, isVideo: ${isVideoUrl(url)}`);
             return (
-                <View style={FeedScreenStyles.cardImageContainer}>
+                <View style={{ height: 400, width: '100%', backgroundColor: '#f3f4f6' }}>
                     {isVideoUrl(url) ? (
                         <VideoComponent
                             source={{ uri: url }}
-                            style={FeedScreenStyles.cardImage}
+                            style={{ width: '100%', height: 400 }}
                             resizeMode={ResizeMode.CONTAIN}
                             useNativeControls
                             shouldPlay={isVisible}
@@ -186,8 +199,10 @@ export default function UserSightingScreen() {
                     ) : (
                         <Image
                             source={{ uri: url }}
-                            style={FeedScreenStyles.cardImage}
+                            style={{ width: '100%', height: 400 }}
                             resizeMode="contain"
+                            onError={(e) => console.log('Image load error:', e.nativeEvent.error, 'URL:', url)}
+                            onLoad={() => console.log('Image loaded successfully:', url)}
                         />
                     )}
                 </View>
@@ -195,7 +210,7 @@ export default function UserSightingScreen() {
         }
         // Carousel for multiple images
         return (
-            <View style={FeedScreenStyles.cardImageContainer}>
+            <View style={{ height: 400, width: '100%', backgroundColor: '#f3f4f6' }}>
                 <ScrollView
                     horizontal
                     pagingEnabled
@@ -205,14 +220,13 @@ export default function UserSightingScreen() {
                         setCarouselIndex(prev => ({ ...prev, [sightingId]: index }));
                     }}
                     scrollEventThrottle={16}
-                // No style needed on the ScrollView itself for this to work
                 >
                     {mediaUrls.map((url, idx) => (
                         isVideoUrl(url) ? (
                             <VideoComponent
                                 key={idx}
                                 source={{ uri: url }}
-                                style={[FeedScreenStyles.cardImage, { width }]}
+                                style={{ width, height: 400 }}
                                 resizeMode={ResizeMode.CONTAIN}
                                 useNativeControls
                                 shouldPlay={isVisible && (carouselIndex[sightingId] === idx)}
@@ -224,8 +238,10 @@ export default function UserSightingScreen() {
                             <Image
                                 key={idx}
                                 source={{ uri: url }}
-                                style={[FeedScreenStyles.cardImage, { width: width }]}
+                                style={{ width, height: 400 }}
                                 resizeMode="contain"
+                                onError={(e) => console.log(`Carousel image ${idx} load error:`, e.nativeEvent.error, 'URL:', url)}
+                                onLoad={() => console.log(`Carousel image ${idx} loaded:`, url)}
                             />
                         )
                     ))}
@@ -235,7 +251,9 @@ export default function UserSightingScreen() {
     };
 
     // This function renders each post with its caption and date
-    const renderSightingPost = ({ item }: { item: Sighting }) => (
+    const renderSightingPost = ({ item }: { item: Sighting }) => {
+        console.log('Rendering sighting post:', { id: item._id, mediaUrls: item.mediaUrls, caption: item.caption });
+        return (
         <View style={FeedScreenStyles.card}>
             <View style={FeedScreenStyles.cardHeader}>
                 <Image
@@ -288,7 +306,8 @@ export default function UserSightingScreen() {
 
             </View>
         </View>
-    );
+        );
+    };
 
     const handleToggleLike = async (item: any) => {
         const sightingId = item._id;
@@ -337,24 +356,19 @@ export default function UserSightingScreen() {
 
     return (
         <View style={FeedScreenStyles.container}>
-            {/* A simple header with a back button */}
-            <View style={FeedScreenStyles.header}>
-                {/* Left Column */}
-                <View style={FeedScreenStyles.sideContainer}>
-                    <Pressable onPress={() => router.back()}>
-                        <Icon name="chevron-left" size={22} color={Colors.light.primaryGreen} />
-                    </Pressable>
-                </View>
-
-                {/* Center Column */}
-                <View style={FeedScreenStyles.centerContainer}>
-                    <Text style={FeedScreenStyles.screenTitle}>Sightings</Text>
-                </View>
-
-                {/* Right Column (acts as a spacer) */}
-                <View style={FeedScreenStyles.sideContainer} />
-
-            </View>
+            {/* Header */}
+            <LinearGradient
+                colors={[Colors.light.background, Colors.light.softBeige]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.header}
+            >
+                <Pressable onPress={() => router.back()} style={styles.backButton}>
+                    <Icon name="arrow-left" size={24} color={Colors.light.primaryGreen} />
+                </Pressable>
+                <Text style={styles.headerTitle}>Sightings</Text>
+                <View style={styles.headerRight} />
+            </LinearGradient>
 
             <FlatList
                 ref={flatListRef} // Attach the ref here
@@ -404,3 +418,31 @@ export default function UserSightingScreen() {
         </View>
     );
 }
+
+const styles = StyleSheet.create({
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingTop: 60,
+        paddingBottom: 16,
+        shadowColor: Colors.light.shadow,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    backButton: {
+        padding: 8,
+        marginRight: 8,
+    },
+    headerTitle: {
+        flex: 1,
+        fontSize: 24,
+        fontWeight: '700',
+        color: Colors.light.mainText,
+    },
+    headerRight: {
+        width: 40,
+    },
+});

@@ -46,9 +46,21 @@ export default function ProfileScreen(): React.JSX.Element | null {
     if (!user?._id || !token) { setIsLoading(false); return; }
     try {
       const response: ApiResponse = await apiGetMySightings(token);
+      console.log('API Response:', JSON.stringify(response, null, 2));
       if (response && response.data) {
         const raw = Array.isArray(response.data) ? response.data : [];
-        setSightings(raw.map((doc: any) => ({ ...doc, user: doc?.user ?? user._id })));
+        console.log('Raw sightings:', raw.length, 'items');
+        console.log('First sighting:', raw[0]);
+        // Enrich sightings with user data for the detail view
+        const enriched = raw.map((doc: any) => ({ 
+          ...doc, 
+          user: doc?.user ?? user._id,
+          userName: user.username,
+          userProfilePictureUrl: user.profilePictureUrl,
+          likes: doc.likes || 0
+        }));
+        console.log('Enriched first sighting:', enriched[0]);
+        setSightings(enriched);
       }
     } catch (error) {
       console.error("Failed to fetch sightings:", error);
@@ -56,7 +68,7 @@ export default function ProfileScreen(): React.JSX.Element | null {
     } finally {
       setIsLoading(false);
     }
-  }, [user?._id, token]);
+  }, [user?._id, user?.username, user?.profilePictureUrl, token]);
 
   useEffect(() => { loadMySightings(); }, [loadMySightings]);
   useFocusEffect(useCallback(() => { loadMySightings(); return () => {}; }, [loadMySightings]));
@@ -101,6 +113,11 @@ export default function ProfileScreen(): React.JSX.Element | null {
 
   const renderSightingGridItem = ({ item, index }: { item: Sighting; index: number }) => {
     const thumb = pickThumbnail(item.mediaUrls);
+    console.log(`Sighting ${index}:`, {
+      id: item._id,
+      mediaUrls: item.mediaUrls,
+      thumbnail: thumb
+    });
     return (
       <Pressable
         style={profileStyles.sightingGridItem}
@@ -111,6 +128,8 @@ export default function ProfileScreen(): React.JSX.Element | null {
             source={{ uri: thumb }}
             style={profileStyles.sightingGridImage}
             resizeMode="cover"
+            onError={(e) => console.log('Image load error:', e.nativeEvent.error)}
+            onLoad={() => console.log('Image loaded successfully:', thumb)}
           />
         ) : (
           <View style={[profileStyles.sightingGridImage, { backgroundColor: '#ddd', alignItems: 'center', justifyContent: 'center' }]}>
