@@ -135,7 +135,6 @@ export default function FeedScreen() {
   const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [lastNotificationIds, setLastNotificationIds] = useState<Set<string>>(new Set());
-  const notificationPollingInterval = useRef<NodeJS.Timeout | null>(null);
 
   const getScale = (id: string) => {
     if (!scaleMapRef.current[id]) {
@@ -334,21 +333,7 @@ export default function FeedScreen() {
 
   useEffect(() => {
     loadNotificationCount();
-    
-    // Start polling for new notifications every 30 seconds
-    if (token && token !== 'local-admin-fake-token') {
-      notificationPollingInterval.current = setInterval(() => {
-        loadNotificationCount();
-      }, 30000); // Poll every 30 seconds
-    }
-    
-    // Cleanup interval on unmount
-    return () => {
-      if (notificationPollingInterval.current) {
-        clearInterval(notificationPollingInterval.current);
-      }
-    };
-  }, [loadNotificationCount, token]);
+  }, [loadNotificationCount]);
 
   // Refresh notification count when screen comes into focus
   useFocusEffect(
@@ -621,6 +606,9 @@ export default function FeedScreen() {
         setLikedMap(prev => ({ ...prev, [sightingId]: serverLiked }));
         setSightings(prev => prev.map(s => s._id === sightingId ? { ...s, likes: Math.max(0, (Number(s.likes) || 0) + (serverLiked ? 1 : -1)) } : s));
       }
+      
+      // Check for new notifications after like action completes
+      loadNotificationCount();
     } catch (e) {
       // revert on error
       setLikedMap(prev => ({ ...prev, [sightingId]: currentlyLiked }));
