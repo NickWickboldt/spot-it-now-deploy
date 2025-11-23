@@ -1,3 +1,4 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Dimensions, Image, Modal, PanResponder, ScrollView, StatusBar, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -277,7 +278,8 @@ export default function AnimalDexScreen() {
       const u = new URL(uri);
       // Cloudinary URL pattern includes '/image/upload/' or '/video/upload/'
       if (u.hostname.includes('cloudinary.com')) {
-        const injected = `/upload/c_fill,w_${size},h_${size},q_auto,f_auto/`;
+        // More aggressive optimization: lower quality, auto format, progressive
+        const injected = `/upload/c_fill,w_${size},h_${size},q_70,f_auto,fl_progressive/`;
         const path = u.pathname;
         const idx = path.indexOf('/upload/');
         if (idx !== -1) {
@@ -296,8 +298,9 @@ export default function AnimalDexScreen() {
 
   const getAnimalImage = (animal: Animal) => {
     // Use the first image URL if available, otherwise fallback to Unsplash
+    // Reduced to 96px for faster loading in 3-column grid
     if (animal.imageUrls && animal.imageUrls.length > 0) {
-      return toTinyPreview(animal.imageUrls[0], 144) || animal.imageUrls[0];
+      return toTinyPreview(animal.imageUrls[0], 96) || animal.imageUrls[0];
     }
     return `https://source.unsplash.com/56x56/?${encodeURIComponent(animal.commonName)},animal`;
   };
@@ -507,55 +510,64 @@ export default function AnimalDexScreen() {
   }, [userSightings]);
 
   const renderKnownUnknownToggle = () => (
-    <View style={{ flexDirection: 'row', gap: 8, marginTop: 0, marginBottom: 12, justifyContent: 'flex-start' }}>
+    <View style={{ 
+      flexDirection: 'row', 
+      backgroundColor: 'rgba(255,255,255,0.2)', 
+      borderRadius: 25, 
+      padding: 4,
+      marginBottom: 16
+    }}>
       <TouchableOpacity
         onPress={() => setViewMode('KNOWN')}
         style={{
-          paddingVertical: 10,
-          paddingHorizontal: 20,
+          flex: 1,
+          paddingVertical: 8,
+          paddingHorizontal: 16,
           borderRadius: 20,
-          backgroundColor: viewMode === 'KNOWN' ? Colors.light.darkNeutral : 'transparent',
-          borderWidth: 1,
-          borderColor: Colors.light.darkNeutral
+          backgroundColor: viewMode === 'KNOWN' ? '#fff' : 'transparent',
+          alignItems: 'center'
         }}
       >
-        <Text style={{ color: viewMode === 'KNOWN' ? '#fff' : Colors.light.darkNeutral, fontWeight: '700', fontSize: 15 }}>All</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        onPress={() => setViewMode('KNOWN')}
-        style={{
-          paddingVertical: 10,
-          paddingHorizontal: 20,
-          borderRadius: 20,
-          backgroundColor: 'transparent',
-          borderWidth: 1,
-          borderColor: Colors.light.darkNeutral
-        }}
-      >
-        <Text style={{ color: Colors.light.darkNeutral, fontWeight: '700', fontSize: 15 }}>Known</Text>
+        <Text style={{ 
+          color: viewMode === 'KNOWN' ? Colors.light.primaryGreen : '#fff', 
+          fontWeight: '700', 
+          fontSize: 14 
+        }}>All Species</Text>
       </TouchableOpacity>
       <TouchableOpacity
         onPress={() => setViewMode('UNKNOWN')}
         style={{
-          paddingVertical: 10,
-          paddingHorizontal: 20,
+          flex: 1,
+          paddingVertical: 8,
+          paddingHorizontal: 16,
           borderRadius: 20,
-          backgroundColor: viewMode === 'UNKNOWN' ? Colors.light.darkNeutral : 'transparent',
-          borderWidth: 1,
-          borderColor: Colors.light.darkNeutral
+          backgroundColor: viewMode === 'UNKNOWN' ? '#fff' : 'transparent',
+          alignItems: 'center'
         }}
       >
-        <Text style={{ color: viewMode === 'UNKNOWN' ? '#fff' : Colors.light.darkNeutral, fontWeight: '700', fontSize: 15 }}>Unknown</Text>
+        <Text style={{ 
+          color: viewMode === 'UNKNOWN' ? Colors.light.primaryGreen : '#fff', 
+          fontWeight: '700', 
+          fontSize: 14 
+        }}>Unknown</Text>
       </TouchableOpacity>
     </View>
   );
 
   const renderUnknownList = () => (
-    <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
+    <ScrollView contentContainerStyle={{ paddingBottom: 120, paddingTop: 16 }}>
       {unknownGroups.length === 0 ? (
-        <Text style={styles.empty}>No unknown sightings yet.</Text>
+        <View style={{ alignItems: 'center', paddingTop: 60 }}>
+          <Icon name="search" size={48} color={Colors.light.darkNeutral} style={{ opacity: 0.3, marginBottom: 16 }} />
+          <Text style={[styles.empty, { fontSize: 16, color: Colors.light.darkNeutral, opacity: 0.6 }]}>
+            No unknown sightings yet.
+          </Text>
+          <Text style={{ fontSize: 14, color: Colors.light.darkNeutral, opacity: 0.5, marginTop: 8, textAlign: 'center', paddingHorizontal: 40 }}>
+            Unidentified animals will appear here
+          </Text>
+        </View>
       ) : (
-        <View style={{ paddingHorizontal: 16, gap: 12 }}>
+        <View style={{ paddingHorizontal: 20, gap: 14 }}>
           {unknownGroups.map((g) => {
             const first = g.items[0];
             const raw = pickImageUrl(first?.mediaUrls);
@@ -570,39 +582,79 @@ export default function AnimalDexScreen() {
               return Math.round(avg);
             })();
             return (
-              <TouchableOpacity key={g.key} onPress={() => { setSelectedUnknownKey(g.key); setUnknownGroupModalVisible(true); }} activeOpacity={0.7}>
-                <View style={{ flexDirection: 'row', backgroundColor: Colors.light.cardBackground, borderRadius: 12, borderWidth: 1, borderColor: Colors.light.shadow, overflow: 'hidden', alignItems: 'center' }}>
-                  <View style={{ width: 96, height: 96, backgroundColor: Colors.light.lightGrey, margin: 6, borderRadius: 8, overflow: 'hidden' }}>
+              <TouchableOpacity 
+                key={g.key} 
+                onPress={() => { setSelectedUnknownKey(g.key); setUnknownGroupModalVisible(true); }} 
+                activeOpacity={0.7}
+              >
+                <View style={{ 
+                  flexDirection: 'row', 
+                  backgroundColor: '#fff', 
+                  borderRadius: 16, 
+                  overflow: 'hidden', 
+                  alignItems: 'center',
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.08,
+                  shadowRadius: 6,
+                  elevation: 3,
+                }}>
+                  <View style={{ 
+                    width: 100, 
+                    height: 100, 
+                    backgroundColor: Colors.light.lightGrey, 
+                    margin: 8, 
+                    borderRadius: 12, 
+                    overflow: 'hidden' 
+                  }}>
                     {imageUri ? (
-                      <Image source={{ uri: imageUri }} style={{ width: '100%', height: '100%' }} />
+                      <Image source={{ uri: imageUri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
                     ) : (
                       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.light.lightGrey }}>
-                        <Icon name="image" size={22} color={Colors.light.darkNeutral} />
+                        <Icon name="image" size={28} color={Colors.light.darkNeutral} style={{ opacity: 0.4 }} />
                       </View>
                     )}
                   </View>
-                  <View style={{ flex: 1, paddingVertical: 12, paddingRight: 10 }}>
-                    <Text style={{ color: Colors.light.mainText, fontWeight: '700' }} numberOfLines={1}>
+                  <View style={{ flex: 1, paddingVertical: 14, paddingRight: 14 }}>
+                    <Text style={{ color: Colors.light.mainText, fontWeight: '700', fontSize: 15, marginBottom: 6 }} numberOfLines={1}>
                       {title}
                     </Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
-                      <Text style={{ color: Colors.light.darkNeutral }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                      <Icon name="camera" size={12} color={Colors.light.darkNeutral} style={{ opacity: 0.6, marginRight: 6 }} />
+                      <Text style={{ color: Colors.light.darkNeutral, fontSize: 13, opacity: 0.75 }}>
                         {count} sighting{count > 1 ? 's' : ''}
                       </Text>
                       {avgConf != null && (
-                        <Text style={{ color: Colors.light.darkNeutral }}>
-                          {`  •  Avg ${avgConf}%`}
-                        </Text>
+                        <>
+                          <Text style={{ color: Colors.light.darkNeutral, opacity: 0.5, marginHorizontal: 6 }}>•</Text>
+                          <Text style={{ color: Colors.light.darkNeutral, fontSize: 13, opacity: 0.75 }}>
+                            {avgConf}% confidence
+                          </Text>
+                        </>
                       )}
                     </View>
-                    {date && <Text style={{ color: Colors.light.darkNeutral, marginTop: 2, fontSize: 12 }}>Latest: {date}</Text>}
-                    <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <View style={{ backgroundColor: Colors.light.lightGrey, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2 }}>
-                        <Text style={{ color: Colors.light.mainText, fontSize: 10, fontWeight: '600' }}>Unmapped</Text>
+                    {date && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Icon name="clock" size={11} color={Colors.light.darkNeutral} style={{ opacity: 0.5, marginRight: 6 }} />
+                        <Text style={{ color: Colors.light.darkNeutral, fontSize: 12, opacity: 0.6 }}>
+                          Latest: {date}
+                        </Text>
                       </View>
-                      <Icon name="chevron-right" size={14} color={Colors.light.darkNeutral} />
+                    )}
+                    <View style={{ 
+                      marginTop: 10, 
+                      backgroundColor: 'rgba(255, 152, 0, 0.1)', 
+                      borderRadius: 8, 
+                      paddingHorizontal: 10, 
+                      paddingVertical: 4,
+                      alignSelf: 'flex-start',
+                      borderWidth: 1,
+                      borderColor: 'rgba(255, 152, 0, 0.3)',
+                    }}>
+                      <Text style={{ color: '#F57C00', fontSize: 11, fontWeight: '700' }}>Unmapped</Text>
                     </View>
                   </View>
+                  <Icon name="chevron-right" size={18} color={Colors.light.darkNeutral} style={{ opacity: 0.3, marginRight: 12 }} />
                 </View>
               </TouchableOpacity>
             );
@@ -633,12 +685,13 @@ export default function AnimalDexScreen() {
     >
       {animalCategories.map(section => {
         const iconSource = getCategoryIcon(section.title);
+        const isActive = selectedTab === section.title;
         return (
           <TouchableOpacity
             key={section.title}
             style={[
               styles.tab,
-              selectedTab === section.title && styles.tabActive
+              isActive && styles.tabActive
             ]}
             onPress={() => setSelectedTab(section.title)}
           >
@@ -647,16 +700,16 @@ export default function AnimalDexScreen() {
                 <Image 
                   source={iconSource} 
                   style={{ 
-                    width: 32, 
-                    height: 32, 
-                    marginBottom: 4,
-                    opacity: selectedTab === section.title ? 1 : 0.6
+                    width: 36, 
+                    height: 36, 
+                    marginBottom: 6,
+                    opacity: isActive ? 1 : 0.7
                   }} 
                 />
               )}
               <Text style={[
                 styles.tabText,
-                selectedTab === section.title && styles.tabTextActive
+                isActive && styles.tabTextActive
               ]}>
                 {section.title}
               </Text>
@@ -688,13 +741,18 @@ export default function AnimalDexScreen() {
         activeOpacity={spotted ? 0.7 : 1}
       >
         {spotted ? (
-          <Image source={{ uri: displayImage }} style={styles.animalImage} />
+          <Image 
+            source={{ uri: displayImage, cache: 'force-cache' }} 
+            style={styles.animalImage}
+            resizeMode="cover"
+            fadeDuration={100}
+          />
         ) : (
           <View style={styles.silhouette}>
             {animalIconSource ? (
-              <Image source={animalIconSource} style={{ width: 64, height: 64 }} />
+              <Image source={animalIconSource} style={{ width: 48, height: 48 }} />
             ) : (
-              <Icon name="question" size={32} color={Colors.light.darkNeutral} />
+              <Icon name="question" size={24} color={Colors.light.darkNeutral} />
             )}
           </View>
         )}
@@ -711,23 +769,38 @@ export default function AnimalDexScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" />
-      <View style={styles.header}>
+      <StatusBar barStyle="light-content" />
+      
+      {/* Gradient Header */}
+      <LinearGradient
+        colors={[Colors.light.primaryGreen, Colors.light.secondaryGreen]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.gradientHeader}
+      >
         {/* Title row with search icon */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-          <Text style={styles.title}>AnimalDex</Text>
-          <TouchableOpacity onPress={() => setSearchOpen(v => !v)} style={{ padding: 6 }}>
-            <Icon name={searchOpen ? 'times' : 'search'} size={20} color={Colors.light.darkNeutral} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <View>
+            <Text style={styles.headerTitle}>AnimalDex</Text>
+            {viewMode === 'KNOWN' && (
+              <Text style={styles.headerSubtitle}>{spotted} of {total} discovered ({percent}%)</Text>
+            )}
+          </View>
+          <TouchableOpacity 
+            onPress={() => setSearchOpen(v => !v)} 
+            style={styles.headerIconButton}
+          >
+            <Icon name={searchOpen ? 'times' : 'search'} size={20} color="#fff" />
           </TouchableOpacity>
         </View>
 
         {/* Search bar */}
         {searchOpen && (
           <View style={styles.searchBox}>
-            <Icon name="search" size={16} color={Colors.light.darkNeutral} style={{ marginRight: 8 }} />
+            <Icon name="search" size={16} color="#fff" style={{ marginRight: 8, opacity: 0.7 }} />
             <TextInput
               placeholder="Search animals..."
-              placeholderTextColor={Colors.light.darkNeutral}
+              placeholderTextColor="rgba(255,255,255,0.7)"
               style={styles.searchInput}
               value={search}
               onChangeText={setSearch}
@@ -736,16 +809,9 @@ export default function AnimalDexScreen() {
             />
             {search.length > 0 && (
               <TouchableOpacity onPress={() => setSearch('')}>
-                <Icon name="times" size={16} color={Colors.light.darkNeutral} />
+                <Icon name="times" size={16} color="#fff" style={{ opacity: 0.7 }} />
               </TouchableOpacity>
             )}
-          </View>
-        )}
-        
-        {/* Progress chip */}
-        {viewMode === 'KNOWN' && (
-          <View style={styles.progressChipContainer}>
-            <Text style={styles.progressChipText}>{spotted}/{total} · {percent}%</Text>
           </View>
         )}
 
@@ -754,7 +820,7 @@ export default function AnimalDexScreen() {
 
         {/* Category tabs */}
         {viewMode === 'KNOWN' && renderTabs()}
-      </View>
+      </LinearGradient>
       {viewMode === 'KNOWN' ? (
         <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
           <View style={styles.grid}>
