@@ -238,10 +238,10 @@ export default function OnboardingAnimalsScreen() {
     >
       <View style={[LoginScreenStyles.container, { paddingBottom: 40, flex: 1 }]}>
         <Text style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 10, color: Colors.light.darkNeutral }}>
-          Choose Your Animals
+          Choose Your Species
         </Text>
         <Text style={{ fontSize: 14, color: Colors.light.darkNeutral, marginBottom: 20, textAlign: 'center' }}>
-          Select animals you'd like to see, or choose to see all
+          Select species categories you'd like to see, or choose to see all
         </Text>
 
         {error ? (
@@ -282,119 +282,100 @@ export default function OnboardingAnimalsScreen() {
                     color: seeAllMode ? Colors.light.background : Colors.light.darkNeutral,
                   }}
                 >
-                  Show All Animals
+                  Show All Species
                 </Text>
               </Pressable>
             </View>
 
             {!seeAllMode && (
               <View style={{ width: '100%', maxWidth: 400 }}>
-                {/* Search Input with Dropdown */}
+                {/* Species Category Tiles */}
                 <View style={{ marginBottom: 20 }}>
-                  <View style={[LoginScreenStyles.inputContainer, { marginBottom: showDropdown && filteredAnimals.length > 0 ? 0 : 0 }]}>
-                    <Ionicons
-                      name="search-outline"
-                      size={18}
-                      color={Colors.light.primaryGreen}
-                      style={LoginScreenStyles.inputIcon}
-                    />
-                    <TextInput
-                      ref={searchInputRef}
-                      style={LoginScreenStyles.inputWithIcon}
-                      placeholder="Type 2+ characters..."
-                      placeholderTextColor={Colors.light.darkNeutral}
-                      value={searchQuery}
-                      onChangeText={handleSearch}
-                      editable={!isSubmitting}
-                    />
-                    {searchQuery.length > 0 && (
-                      <Pressable
-                        onPress={() => {
-                          setSearchQuery('');
-                          setFilteredAnimals([]);
-                          setShowDropdown(false);
-                        }}
-                        style={{ paddingRight: 12 }}
-                      >
-                        <Ionicons name="close-circle" size={18} color={Colors.light.primaryGreen} />
-                      </Pressable>
-                    )}
-                  </View>
-
-                  {/* Dropdown Results */}
-                  {showDropdown && filteredAnimals.length > 0 && (
-                    <View
-                      style={{
-                        backgroundColor: Colors.light.cardBackground,
-                        borderWidth: 1,
-                        borderColor: Colors.light.secondaryGreen,
-                        borderTopWidth: 0,
-                        borderBottomLeftRadius: 10,
-                        borderBottomRightRadius: 10,
-                        maxHeight: 250,
-                        overflow: 'scroll',
-                      }}
-                    >
-                      {filteredAnimals.map((animal) => (
-                        <View key={animal._id}>
-                          {renderAnimalItem({ item: animal })}
-                        </View>
-                      ))}
-                    </View>
-                  )}
-
-                  {showDropdown && searchQuery.length >= 2 && filteredAnimals.length === 0 && (
-                    <View
-                      style={{
-                        backgroundColor: Colors.light.cardBackground,
-                        borderWidth: 1,
-                        borderColor: Colors.light.secondaryGreen,
-                        borderTopWidth: 0,
-                        borderBottomLeftRadius: 10,
-                        borderBottomRightRadius: 10,
-                        paddingVertical: 12,
-                        paddingHorizontal: 15,
-                      }}
-                    >
-                      <Text style={{ color: Colors.light.darkNeutral, textAlign: 'center' }}>
-                        No animals found
-                      </Text>
-                    </View>
-                  )}
-                </View>
-
-                {/* Selected Animals Display */}
-                {selectedAnimals.length > 0 && (
-                  <View style={{ width: '100%', marginBottom: 20 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: Colors.light.darkNeutral, marginBottom: 10 }}>
-                      Selected ({selectedAnimals.length}):
-                    </Text>
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                      {selectedAnimals.map((animalId) => {
-                        const animal = animals.find((a) => a._id === animalId);
-                        return animal ? (
-                          <View
-                            key={animalId}
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: Colors.light.darkNeutral, marginBottom: 12 }}>
+                    Select Species Categories:
+                  </Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                    {animals
+                      .reduce((unique: Animal[], animal) => {
+                        if (!unique.find(a => a.category === animal.category)) {
+                          unique.push(animal);
+                        }
+                        return unique;
+                      }, [])
+                      .map((animal) => {
+                        const categorySelected = animals
+                          .filter(a => a.category === animal.category)
+                          .some(a => selectedAnimals.includes(a._id));
+                        
+                        return (
+                          <Pressable
+                            key={animal.category}
+                            onPress={() => {
+                              const categoryAnimals = animals.filter(a => a.category === animal.category);
+                              const allSelected = categoryAnimals.every(a => selectedAnimals.includes(a._id));
+                              
+                              if (allSelected) {
+                                // Deselect all in category
+                                setSelectedAnimals(prev => 
+                                  prev.filter(id => !categoryAnimals.find(a => a._id === id))
+                                );
+                              } else {
+                                // Select all in category
+                                const newIds = categoryAnimals.map(a => a._id).filter(id => !selectedAnimals.includes(id));
+                                setSelectedAnimals(prev => [...prev, ...newIds]);
+                              }
+                            }}
                             style={{
-                              backgroundColor: Colors.light.primaryGreen,
-                              paddingHorizontal: 12,
-                              paddingVertical: 8,
-                              borderRadius: 20,
-                              flexDirection: 'row',
+                              paddingHorizontal: 20,
+                              paddingVertical: 16,
+                              backgroundColor: categorySelected
+                                ? Colors.light.primaryGreen
+                                : Colors.light.cardBackground,
+                              borderRadius: 12,
+                              borderWidth: 2,
+                              borderColor: categorySelected 
+                                ? Colors.light.primaryGreen
+                                : Colors.light.secondaryGreen,
+                              minWidth: 120,
                               alignItems: 'center',
-                              gap: 6,
+                              shadowColor: Colors.light.shadow,
+                              shadowOffset: { width: 0, height: 2 },
+                              shadowOpacity: 0.1,
+                              shadowRadius: 3,
+                              elevation: 2,
                             }}
                           >
-                            <Text style={{ color: Colors.light.background, fontSize: 13, fontWeight: '500' }}>
-                              {animal.commonName}
+                            <Text
+                              style={{
+                                fontSize: 15,
+                                fontWeight: '600',
+                                color: categorySelected
+                                  ? Colors.light.background
+                                  : Colors.light.darkNeutral,
+                              }}
+                            >
+                              {animal.category}
                             </Text>
-                            <Pressable onPress={() => toggleAnimalSelection(animal)}>
-                              <Ionicons name="close-circle" size={16} color={Colors.light.background} />
-                            </Pressable>
-                          </View>
-                        ) : null;
+                            {categorySelected && (
+                              <Ionicons
+                                name="checkmark-circle"
+                                size={18}
+                                color={Colors.light.background}
+                                style={{ marginTop: 4 }}
+                              />
+                            )}
+                          </Pressable>
+                        );
                       })}
-                    </View>
+                  </View>
+                </View>
+
+                {/* Selected Species Count */}
+                {selectedAnimals.length > 0 && (
+                  <View style={{ width: '100%', marginBottom: 20, alignItems: 'center' }}>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: Colors.light.primaryGreen }}>
+                      {selectedAnimals.length} species selected
+                    </Text>
                   </View>
                 )}
               </View>

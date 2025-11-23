@@ -1,11 +1,12 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Image, Modal, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, Modal, Pressable, Switch, Text, View } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { apiGetMySightings } from '../../api/sighting'; // Use authenticated endpoint to get all sightings
-import { apiDeleteUserAccount } from '../../api/user';
+import { apiDeleteUserAccount, apiUpdateUserDetails } from '../../api/user';
 import { profileStyles } from '../../constants/ProfileStyles';
 import { useAuth } from '../../context/AuthContext';
+import { useNotification } from '../../hooks/useNotification';
 
 type Sighting = {
   _id: string;
@@ -24,12 +25,22 @@ type ApiResponse = {
 };
 
 export default function ProfileScreen(): React.JSX.Element | null {
-  const { user, token, logout } = useAuth();
+  const { user, token, logout, refreshUser } = useAuth();
   const router = useRouter();
+  const notification = useNotification();
   const [menuVisible, setMenuVisible] = useState<boolean>(false);
+  const [notificationModalVisible, setNotificationModalVisible] = useState<boolean>(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(user?.notificationsEnabled ?? true);
 
   const [sightings, setSightings] = useState<Sighting[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  // Sync notification state with user data
+  useEffect(() => {
+    if (user?.notificationsEnabled !== undefined) {
+      setNotificationsEnabled(user.notificationsEnabled);
+    }
+  }, [user?.notificationsEnabled]);
 
   const loadMySightings = useCallback(async () => {
     if (!user?._id || !token) { setIsLoading(false); return; }
@@ -150,6 +161,27 @@ export default function ProfileScreen(): React.JSX.Element | null {
   const handleEdit = (): void => {
     setMenuVisible(false);
     router.push('/edit_profile'); // Navigate to the new edit screen
+  };
+
+  const handleNotificationToggle = async (value: boolean): Promise<void> => {
+    try {
+      setNotificationsEnabled(value);
+      await apiUpdateUserDetails(token!, { notificationsEnabled: value });
+      if (refreshUser) await refreshUser();
+      notification.success(
+        'Settings Updated',
+        `Notifications ${value ? 'enabled' : 'disabled'}`
+      );
+    } catch (error: any) {
+      // Revert on error
+      setNotificationsEnabled(!value);
+      notification.error('Update Failed', String(error?.message || error));
+    }
+  };
+
+  const handleOpenNotificationSettings = (): void => {
+    setMenuVisible(false);
+    setNotificationModalVisible(true);
   };
 
   return (
@@ -273,6 +305,10 @@ export default function ProfileScreen(): React.JSX.Element | null {
               <Text style={profileStyles.menuText}>Today's Challenges</Text>
             </Pressable>
 
+            <Pressable style={profileStyles.menuItem} onPress={handleOpenNotificationSettings}>
+              <Text style={profileStyles.menuText}>Notification Settings</Text>
+            </Pressable>
+
             <Pressable style={profileStyles.menuItem} onPress={() => { logout(); }}>
               <Text style={profileStyles.menuText}>Logout</Text>
             </Pressable>
@@ -283,6 +319,59 @@ export default function ProfileScreen(): React.JSX.Element | null {
               <Text style={profileStyles.menuText}>Cancel</Text>
             </Pressable>
           </View>
+        </Pressable>
+      </Modal>
+
+      {/* Notification Settings Modal */}
+      <Modal
+        visible={notificationModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setNotificationModalVisible(false)}
+      >
+        <Pressable 
+          style={profileStyles.menuOverlay} 
+          onPress={() => setNotificationModalVisible(false)}
+        >
+          <Pressable 
+            style={[profileStyles.menuContainer, { padding: 20, width: '85%', maxWidth: 400 }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={[profileStyles.sectionTitle, { marginBottom: 20 }]}>
+              Notification Settings
+            </Text>
+            
+            <View style={{ 
+              flexDirection: 'row', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              paddingVertical: 15,
+              borderBottomWidth: 1,
+              borderBottomColor: '#eee'
+            }}>
+              <View style={{ flex: 1, marginRight: 15 }}>
+                <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 5 }}>
+                  Push Notifications
+                </Text>
+                <Text style={{ fontSize: 13, color: '#666' }}>
+                  Receive notifications when the app is not active
+                </Text>
+              </View>
+              <Switch
+                value={notificationsEnabled}
+                onValueChange={handleNotificationToggle}
+                trackColor={{ false: '#767577', true: '#40743dff' }}
+                thumbColor={notificationsEnabled ? '#fff' : '#f4f3f4'}
+              />
+            </View>
+
+            <Pressable 
+              style={[profileStyles.menuItem, { marginTop: 20 }]} 
+              onPress={() => setNotificationModalVisible(false)}
+            >
+              <Text style={profileStyles.menuText}>Close</Text>
+            </Pressable>
+          </Pressable>
         </Pressable>
       </Modal>
     </View>

@@ -69,6 +69,10 @@ const userSchema = new Schema(
     onboardingCompleted: {
       type: Boolean,
       default: false,
+    },
+    notificationsEnabled: {
+      type: Boolean,
+      default: true,
     }
   },
   {

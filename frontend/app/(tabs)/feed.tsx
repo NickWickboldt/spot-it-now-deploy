@@ -1,12 +1,13 @@
 import { ResizeMode, Video } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, Dimensions, Easing, FlatList, Image, KeyboardAvoidingView, Modal, PanResponder, Platform, RefreshControl, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { apiCreateComment, apiDeleteComment, apiGetCommentsForSighting, apiUpdateComment } from '../../api/comment';
 import { apiGetLikedSightingsByUser, apiToggleSightingLike } from '../../api/like';
+import { apiGetMyNotifications } from '../../api/notification';
 import { CommunityVoteType, apiAdminDeleteSighting, apiGetCommunitySighting, apiGetFollowingRecentSightings, apiGetRecentSightings, apiGetSightingsNear, apiSubmitCommunityVote } from '../../api/sighting';
 import { Colors } from '../../constants/Colors';
 import { FeedScreenStyles } from '../../constants/FeedStyles';
@@ -96,6 +97,7 @@ export default function FeedScreen() {
   const [communityProcessing, setCommunityProcessing] = useState(false);
   const [communityMessage, setCommunityMessage] = useState<string | null>(null);
   const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
 
   const getScale = (id: string) => {
     if (!scaleMapRef.current[id]) {
@@ -255,6 +257,31 @@ export default function FeedScreen() {
     [animateAndVote, communityCandidate, communityProcessing, pan]
   );
 
+  const loadNotificationCount = useCallback(async () => {
+    if (!token || token === 'local-admin-fake-token') {
+      setUnreadNotificationCount(0);
+      return;
+    }
+
+    try {
+      const notifications = await apiGetMyNotifications(token);
+      const unreadCount = notifications.filter(n => !n.isRead).length;
+      setUnreadNotificationCount(unreadCount);
+    } catch (error) {
+      console.error('Failed to load notification count', error);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    loadNotificationCount();
+  }, [loadNotificationCount]);
+
+  // Refresh notification count when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      loadNotificationCount();
+    }, [loadNotificationCount])
+  );
 
 
   useEffect(() => {
@@ -1037,6 +1064,21 @@ export default function FeedScreen() {
               )}
             </TouchableOpacity>
           ))}
+          {/* Notification Bell Icon */}
+          <TouchableOpacity
+            onPress={() => router.push('/(user)/notifications')}
+            style={tabStyles.notificationButton}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Icon name="bell" size={22} color={Colors.light.primaryGreen} />
+            {unreadNotificationCount > 0 && (
+              <View style={tabStyles.notificationBadge}>
+                <Text style={tabStyles.notificationBadgeText}>
+                  {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
       </LinearGradient>
 
@@ -1610,6 +1652,28 @@ const tabStyles = StyleSheet.create({
     height: 3,
     borderTopLeftRadius: 2,
     borderTopRightRadius: 2,
+  },
+  notificationButton: {
+    position: 'relative',
+    padding: 8,
+    marginLeft: 8,
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: '#ef4444',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  notificationBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
   },
 });
 

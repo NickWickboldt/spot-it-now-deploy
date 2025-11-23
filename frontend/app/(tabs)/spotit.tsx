@@ -98,7 +98,7 @@ export default function SpotItScreen() {
   const baseZoom = useRef(0);
 
 
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [showSightingForm, setShowSightingForm] = useState(false);
   const [sightingForm, setSightingForm] = useState<SightingForm>({
     caption: '',
@@ -118,6 +118,7 @@ export default function SpotItScreen() {
   const [showVerificationWarning, setShowVerificationWarning] = useState(false);
   const [verificationWarningMessage, setVerificationWarningMessage] = useState('');
   const [captureMethod, setCaptureMethod] = useState<'CAMERA' | 'UPLOAD'>('CAMERA');
+  const [isSubmittingSighting, setIsSubmittingSighting] = useState(false);
 
   const resetManualInputs = () => {
     setManualCommonName('');
@@ -193,17 +194,24 @@ export default function SpotItScreen() {
   const analyzeAndHandle = useCallback(async (uri: string) => {
     setIsProcessing(true);
     try {
-      // Verify image authenticity first
-      const isVerified = await verifyImageBeforeAnalysis(uri);
-      if (!isVerified) {
-        setIsProcessing(false);
-        return; // User chose to retake
+      // Admin bypass - skip verification for admin users
+      const isAdmin = user?.role === 'admin';
+      
+      // Verify image authenticity first (unless admin)
+      if (!isAdmin) {
+        const isVerified = await verifyImageBeforeAnalysis(uri);
+        if (!isVerified) {
+          setIsProcessing(false);
+          return; // User chose to retake
+        }
+      } else {
+        console.log('Admin user - skipping image verification in analyzeAndHandle');
       }
 
       const prompt = `
       Analyze the image carefully and provide your output in a single, clean JSON object.
 
-      CRITICAL: First check if this image is a screenshot, photo of a photo, unnatural scenario, or image of a screen:
+      ${!isAdmin ? `CRITICAL: First check if this image is a screenshot, photo of a photo, unnatural scenario, or image of a screen:
       - Look for browser UI elements, status bars, menu bars, or window frames
       - Look for visible screen bezels, reflections, or screen distortion
       - Look for photos printed/displayed on screens or other surfaces being photographed
@@ -213,7 +221,7 @@ export default function SpotItScreen() {
       - Look for impossibly posed or arranged animals
       - Look for animated characters, cartoons, or illustrations instead of real animals
       - Look for impossible anatomical features or proportions for that species
-      - If any of these are detected, set "isScreenshot" to true and explain in "screenshotEvidence"
+      - If any of these are detected, set "isScreenshot" to true and explain in "screenshotEvidence"` : `ADMIN MODE: Focus on animal identification only. Skip screenshot/authenticity checks.`}
       
       **JSON Key Definitions and Structure:**
       - **"isScreenshot"**: Boolean - true if image is a screenshot, photo of photo, from online source, or shows unnatural/impossible animals. false if authentic direct capture of real animal.
@@ -275,8 +283,8 @@ export default function SpotItScreen() {
 
       if (!analysis) throw new Error('Analysis returned null');
 
-      // Check if AI detected this as a screenshot/photo of photo/unnatural
-      if (analysis.isScreenshot) {
+      // Check if AI detected this as a screenshot/photo of photo/unnatural (skip for admin)
+      if (analysis.isScreenshot && !isAdmin) {
         Alert.alert(
           'Invalid Image Detected',
           `This image is not a valid authentic wildlife photo:\n\n${analysis.screenshotEvidence || 'Image contains elements that indicate it is not an authentic capture'}\n\nPlease capture a fresh photo directly with your camera instead.`,
@@ -297,6 +305,10 @@ export default function SpotItScreen() {
           ]
         );
         return; // Stop processing
+      }
+      
+      if (analysis.isScreenshot && isAdmin) {
+        console.log('Admin user - bypassing screenshot detection block');
       }
 
       if (analysis.confidence >= HIGH_CONFIDENCE_THRESHOLD) {
@@ -321,12 +333,27 @@ export default function SpotItScreen() {
     } finally {
       setIsProcessing(false);
     }
-  }, [analyzeImage]);
+  }, [analyzeImage, user]);
 
 /**
  * Verify an image for fraud indicators before proceeding with analysis
  */
 const verifyImageBeforeAnalysis = async (uri: string): Promise<boolean> => {
+  // Admin bypass - allow admins to upload any images without verification
+  const isAdmin = user?.role === 'admin';
+  
+  if (isAdmin) {
+    console.log('Admin user detected - bypassing image verification');
+    setImageVerification({
+      fraudScore: 0,
+      isSuspicious: false,
+      summary: 'Verification bypassed for admin user',
+      recommendations: [],
+      details: {}
+    });
+    return true;
+  }
+  
   if (!token || isRemoteUrl(uri)) {
     // Skip verification for remote URLs (already uploaded) or if no token
     console.log('Skipping verification - remote URL or no token');
@@ -456,10 +483,17 @@ const handleUploadImage = async () => {
       setPhotoUri(result.assets[0].uri);
       setCaptureMethod('UPLOAD'); // Mark as uploaded image
       
-      // Verify image authenticity first
-      const isVerified = await verifyImageBeforeAnalysis(result.assets[0].uri);
-      if (!isVerified) {
-        return; // User chose to retake
+      // Admin bypass - skip verification for admin users
+      const isAdmin = user?.role === 'admin';
+      
+      // Verify image authenticity first (unless admin)
+      if (!isAdmin) {
+        const isVerified = await verifyImageBeforeAnalysis(result.assets[0].uri);
+        if (!isVerified) {
+          return; // User chose to retake
+        }
+      } else {
+        console.log('Admin user - skipping image verification in handleUploadImage');
       }
       
       // Analyze the selected image
@@ -468,7 +502,7 @@ const handleUploadImage = async () => {
       const prompt = `
       Analyze the image carefully and provide your output in a single, clean JSON object.
 
-      CRITICAL: First check if this image is a screenshot, photo of a photo, unnatural scenario, or image of a screen:
+      ${!isAdmin ? `CRITICAL: First check if this image is a screenshot, photo of a photo, unnatural scenario, or image of a screen:
       - Look for browser UI elements, status bars, menu bars, or window frames
       - Look for visible screen bezels, reflections, or screen distortion
       - Look for photos printed/displayed on screens or other surfaces being photographed
@@ -478,7 +512,7 @@ const handleUploadImage = async () => {
       - Look for impossibly posed or arranged animals
       - Look for animated characters, cartoons, or illustrations instead of real animals
       - Look for impossible anatomical features or proportions for that species
-      - If any of these are detected, set "isScreenshot" to true and explain in "screenshotEvidence"
+      - If any of these are detected, set "isScreenshot" to true and explain in "screenshotEvidence"` : `ADMIN MODE: Focus on animal identification only. Skip screenshot/authenticity checks.`}
       
       **JSON Key Definitions and Structure:**
       - **"isScreenshot"**: Boolean - true if image is a screenshot, photo of photo, from online source, or shows unnatural/impossible animals. false if authentic direct capture of real animal.
@@ -541,8 +575,8 @@ const handleUploadImage = async () => {
         throw new Error("Analysis returned null.");
       }
 
-      // Check if AI detected this as invalid (screenshot/unnatural/etc)
-      if (analysis.isScreenshot) {
+      // Check if AI detected this as invalid (screenshot/unnatural/etc) - skip for admin
+      if (analysis.isScreenshot && !isAdmin) {
         Alert.alert(
           'Invalid Image Detected',
           `This image is not a valid authentic wildlife photo:\n\n${analysis.screenshotEvidence || 'Image contains elements that indicate it is not an authentic capture'}\n\nPlease select a fresh photo instead.`,
@@ -563,6 +597,10 @@ const handleUploadImage = async () => {
           ]
         );
         return;
+      }
+      
+      if (analysis.isScreenshot && isAdmin) {
+        console.log('Admin user - bypassing screenshot detection in handleUploadImage');
       }
       
       if (analysis.confidence >= HIGH_CONFIDENCE_THRESHOLD) {
@@ -808,6 +846,7 @@ const handleOverride = useCallback(async (uri?: string) => {
     return;
   }
 
+  setIsSubmittingSighting(true);
   try {
     // Ensure media are uploaded to Cloudinary
     const uploadedUrls: string[] = [];
@@ -858,6 +897,8 @@ const handleOverride = useCallback(async (uri?: string) => {
   } catch (error) {
     console.error("Error posting sighting:", error);
     Alert.alert("Error", "Failed to post sighting");
+  } finally {
+    setIsSubmittingSighting(false);
   }
   };
 
@@ -1010,10 +1051,18 @@ return (
             {/* Fixed Bottom Button */}
             <View style={styles.formFooter}>
               <TouchableOpacity 
-                style={styles.submitButton}
+                style={[styles.submitButton, isSubmittingSighting && styles.submitButtonDisabled]}
                 onPress={handleSubmitSighting}
+                disabled={isSubmittingSighting}
               >
-                <Text style={styles.submitButtonText}>Post Sighting</Text>
+                {isSubmittingSighting ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <ActivityIndicator size="small" color="#fff" />
+                    <Text style={styles.submitButtonText}>Posting...</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.submitButtonText}>Post Sighting</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -1264,6 +1313,9 @@ formWrapper: {
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
+  },
+  submitButtonDisabled: {
+    opacity: 0.6,
   },
   submitButtonText: {
     color: '#fff',

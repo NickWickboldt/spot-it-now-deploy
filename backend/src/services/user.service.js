@@ -107,10 +107,10 @@ const getUserWithRoleById = async (userId) => {
  * @returns {Promise<User>} The updated user object.
  */
 const updateUser = async (userId, updateData) => {
-  const { username, email, profilePictureUrl, bio, experiencePoints, longitude, latitude, radius } = updateData;
+  const { username, email, profilePictureUrl, bio, experiencePoints, longitude, latitude, radius, notificationsEnabled } = updateData;
   const user = await User.findByIdAndUpdate(
     userId,
-    { $set: { username, bio, profilePictureUrl, email, experiencePoints, longitude, latitude, radius } },
+    { $set: { username, bio, profilePictureUrl, email, experiencePoints, longitude, latitude, radius, notificationsEnabled } },
     { new: true }
   ).select('-password -refreshToken');
   if (!user) {

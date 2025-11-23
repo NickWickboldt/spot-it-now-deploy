@@ -10,6 +10,7 @@ export default function UserLayout() {
       <Stack.Screen name="user_profile" options={{ headerShown: false }} />
       <Stack.Screen name="user_sighting" options={{ headerShown: false }} />
       <Stack.Screen name="challenges" options={{ headerShown: false }} />
+      <Stack.Screen name="notifications" options={{ headerShown: false }} />
     </Stack>
   );
 }

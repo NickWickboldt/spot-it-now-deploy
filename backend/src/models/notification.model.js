@@ -51,11 +51,18 @@ const notificationSchema = new Schema(
     radius: {
       type: Number,
     },
-    // To track if the user has read the notification.
+    // To track if the user has read the notification (for user-specific notifications).
     isRead: {
         type: Boolean,
         default: false,
-    }
+    },
+    // For global notifications: track which users have read it
+    readBy: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: 'User',
+      },
+    ],
   },
   // The `timestamps` option automatically adds `createdAt` and `updatedAt` fields.
   {

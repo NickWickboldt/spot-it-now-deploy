@@ -39,16 +39,29 @@ const sendGlobalNotification = async (notificationData) => {
 
 /**
  * Gets all notifications for a specific user.
- * This includes both direct notifications and unread global notifications.
+ * This includes both direct notifications and global notifications.
  * @param {string} userId - The ID of the user.
  * @returns {Promise<Notification[]>} An array of notification objects.
  */
 const getNotificationsForUser = async (userId) => {
-  const userNotifications = await Notification.find({ user: userId }).sort({ createdAt: -1 });
-  // Find global notifications that the user hasn't implicitly "read" or dismissed.
-  // This logic can be expanded later. For now, we'll just get direct ones.
-  // In a real system, you'd also fetch global notifications created after the user's last check-in.
-  return userNotifications;
+  // Get user-specific notifications
+  const userNotifications = await Notification.find({ user: userId }).sort({ createdAt: -1 }).lean();
+  
+  // Get global notifications (where user is null)
+  const globalNotifications = await Notification.find({ user: null }).sort({ createdAt: -1 }).lean();
+  
+  // Mark global notifications as read if the user has read them
+  const processedGlobalNotifications = globalNotifications.map((notification) => ({
+    ...notification,
+    isRead: notification.readBy?.some(id => id.toString() === userId.toString()) || false,
+  }));
+  
+  // Combine and sort by creation date
+  const allNotifications = [...userNotifications, ...processedGlobalNotifications].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+  
+  return allNotifications;
 };
 
 /**
@@ -58,14 +71,25 @@ const getNotificationsForUser = async (userId) => {
  * @returns {Promise<Notification>} The updated notification object.
  */
 const markNotificationAsRead = async (notificationId, userId) => {
-  const notification = await Notification.findOne({ _id: notificationId, user: userId });
+  const notification = await Notification.findById(notificationId);
   if (!notification) {
-    throw new ApiError(404, 'Notification not found or you do not have permission to view it.');
+    throw new ApiError(404, 'Notification not found');
   }
 
-  notification.isRead = true;
-  await notification.save();
+  // If it's a user-specific notification, verify ownership
+  if (notification.user) {
+    if (notification.user.toString() !== userId.toString()) {
+      throw new ApiError(403, 'You do not have permission to modify this notification');
+    }
+    notification.isRead = true;
+  } else {
+    // For global notifications, add user to readBy array if not already there
+    if (!notification.readBy.includes(userId)) {
+      notification.readBy.push(userId);
+    }
+  }
 
+  await notification.save();
   return notification;
 };
 
@@ -74,10 +98,17 @@ const markNotificationAsRead = async (notificationId, userId) => {
  * @param {string} userId - The ID of the user.
  */
 const markAllNotificationsAsRead = async (userId) => {
-    await Notification.updateMany(
-        { user: userId, isRead: false },
-        { $set: { isRead: true } }
-    );
+  // Mark all user-specific notifications as read
+  await Notification.updateMany(
+    { user: userId, isRead: false },
+    { $set: { isRead: true } }
+  );
+  
+  // Add user to readBy array for all global notifications they haven't read
+  await Notification.updateMany(
+    { user: null, readBy: { $ne: userId } },
+    { $addToSet: { readBy: userId } }
+  );
 };
 
 
