@@ -40,6 +40,17 @@ const userSchema = new Schema(
       type: Number,
       default: null,
     },
+    location: {
+      type: {
+        type: String,
+        enum: ['Point'],
+        default: 'Point'
+      },
+      coordinates: {
+        type: [Number], // [longitude, latitude]
+        default: undefined
+      }
+    },
     radius: {
       // radius in miles as an integer
       type: Number,
@@ -79,6 +90,9 @@ const userSchema = new Schema(
     timestamps: true,
   }
 );
+
+// Create a geospatial index on the location field for nearby queries
+userSchema.index({ location: '2dsphere' });
 
 /**
  * Mongoose "pre-save hook" to hash passwords before saving.

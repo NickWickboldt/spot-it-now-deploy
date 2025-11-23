@@ -6,10 +6,12 @@ import { CommunityVote } from '../models/communityVote.model.js';
 import { Follow } from '../models/follow.model.js';
 import { Like } from '../models/like.model.js';
 import { Sighting } from '../models/sighting.model.js';
+import { User } from '../models/user.model.js';
 import { ApiError } from '../utils/ApiError.util.js';
 import { log } from '../utils/logger.util.js';
 import { animalService } from './animal.service.js';
 import { animalMappingService } from './animalMapping.service.js';
+import { notificationService } from './notification.service.js';
 import { userDiscoveryService } from './userDiscovery.service.js';
 
 const isCloudinaryConfigured = () => Boolean(
@@ -480,6 +482,66 @@ const createSighting = async (userId, userName, sightingData) => {
       log.warn('sighting-service', 'Failed to add discovery for sighting', { 
         sightingId: sighting._id, 
         error: error.message 
+      });
+    }
+  }
+
+  // Send notifications to nearby users with matching animal preferences
+  if (linkedAnimalId && !isPrivate) {
+    try {
+      // Define notification radius in meters (e.g., 5km = 5000 meters)
+      const notificationRadius = 5000;
+      
+      // Find nearby users with this animal in their preferences
+      const nearbyUsers = await User.find({
+        _id: { $ne: userId }, // Exclude the post creator
+        notificationsEnabled: true,
+        location: {
+          $near: {
+            $geometry: location,
+            $maxDistance: notificationRadius
+          }
+        },
+        $or: [
+          { animalPreferences: linkedAnimalId }, // Has this specific animal in preferences
+          { animalPreferences: { $size: 0 } } // Empty preferences means see all animals
+        ]
+      }).select('_id username').limit(100); // Limit to prevent overload
+
+      // Get animal name for notification
+      const animal = await Animal.findById(linkedAnimalId).select('commonName');
+      const animalName = animal?.commonName || 'an animal';
+      
+      // Send notifications to matching users
+      const notificationPromises = nearbyUsers.map(async (nearbyUser) => {
+        try {
+          await notificationService.sendNotificationToUser(nearbyUser._id, {
+            type: 'nearby_sighting',
+            title: `New ${animalName} Spotted Nearby!`,
+            subtitle: `${userName} posted a sighting`,
+            message: `${userName} spotted a ${animalName} near you: "${caption?.substring(0, 50) || 'Check it out!'}"`,
+          });
+        } catch (error) {
+          log.warn('sighting-service', 'Failed to send nearby sighting notification', {
+            sightingId: sighting._id,
+            targetUserId: nearbyUser._id,
+            error: error.message
+          });
+        }
+      });
+
+      await Promise.allSettled(notificationPromises);
+      
+      log.info('sighting-service', 'Sent nearby sighting notifications', {
+        sightingId: sighting._id,
+        animalId: linkedAnimalId,
+        notificationsSent: nearbyUsers.length
+      });
+    } catch (error) {
+      // Don't fail sighting creation if notifications fail
+      log.warn('sighting-service', 'Failed to send nearby sighting notifications', {
+        sightingId: sighting._id,
+        error: error.message
       });
     }
   }

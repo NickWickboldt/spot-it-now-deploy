@@ -108,9 +108,21 @@ const getUserWithRoleById = async (userId) => {
  */
 const updateUser = async (userId, updateData) => {
   const { username, email, profilePictureUrl, bio, experiencePoints, longitude, latitude, radius, notificationsEnabled } = updateData;
+  
+  // Build the update object
+  const updateFields = { username, bio, profilePictureUrl, email, experiencePoints, longitude, latitude, radius, notificationsEnabled };
+  
+  // If both longitude and latitude are provided, also update the GeoJSON location field
+  if (longitude !== undefined && latitude !== undefined && longitude !== null && latitude !== null) {
+    updateFields.location = {
+      type: 'Point',
+      coordinates: [Number(longitude), Number(latitude)]
+    };
+  }
+  
   const user = await User.findByIdAndUpdate(
     userId,
-    { $set: { username, bio, profilePictureUrl, email, experiencePoints, longitude, latitude, radius, notificationsEnabled } },
+    { $set: updateFields },
     { new: true }
   ).select('-password -refreshToken');
   if (!user) {
