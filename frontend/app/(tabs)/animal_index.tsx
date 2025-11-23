@@ -11,6 +11,43 @@ import { useAuth } from '../../context/AuthContext';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
+// Map category names to icon files
+const getCategoryIcon = (category: string) => {
+  const iconMap: Record<string, any> = {
+    'Arachnids': require('../../assets/animalIcons/Arachnids.png'),
+    'Bees, Wasps, Ants': require('../../assets/animalIcons/Bees, Wasps, Ants.png'),
+    'Beetles': require('../../assets/animalIcons/Beetles.png'),
+    'Butterflies & Moths': require('../../assets/animalIcons/Butterflies & Moths.png'),
+    'Caecilians': require('../../assets/animalIcons/Caecilians.png'),
+    'Crustaceans': require('../../assets/animalIcons/Crustaceans.png'),
+    'Dragonflies': require('../../assets/animalIcons/Dragonflies.png'),
+    'Flightless Birds': require('../../assets/animalIcons/Flightless Birds.png'),
+    'Freshwater Fish': require('../../assets/animalIcons/Freshwater Fish.png'),
+    'Frogs & Toads': require('../../assets/animalIcons/Frogs & Toads.png'),
+    'Insects': require('../../assets/animalIcons/Insects.png'),
+    'Large Birds': require('../../assets/animalIcons/Large Birds.png'),
+    'Large Fish': require('../../assets/animalIcons/Large Fish.png'),
+    'Large Mammals': require('../../assets/animalIcons/Large Mammals.png'),
+    'Large Reptiles': require('../../assets/animalIcons/Large Reptiles.png'),
+    'Medium Birds': require('../../assets/animalIcons/Medium Birds.png'),
+    'Medium Fish': require('../../assets/animalIcons/Medium Fish.png'),
+    'Medium Mammals': require('../../assets/animalIcons/Medium Mammals.png'),
+    'Medium Reptiles': require('../../assets/animalIcons/Medium Reptiles.png'),
+    'Mollusks': require('../../assets/animalIcons/Mollusks.png'),
+    'Salamanders & Newts': require('../../assets/animalIcons/Salamanders & Newts.png'),
+    'Saltwater Fish': require('../../assets/animalIcons/Saltwater Fish.png'),
+    'Sea Mammals': require('../../assets/animalIcons/Sea Mammals.png'),
+    'Small Birds': require('../../assets/animalIcons/Small Birds.png'),
+    'Small Fish': require('../../assets/animalIcons/Small Fish.png'),
+    'Small Mammals': require('../../assets/animalIcons/Small Mammals.png'),
+    'Small Reptiles': require('../../assets/animalIcons/Small Reptiles.png'),
+    'Snakes': require('../../assets/animalIcons/Snakes.png'),
+    'Turtles & Tortoises': require('../../assets/animalIcons/Turtles & Tortoises.png'),
+    'Worms': require('../../assets/animalIcons/Worms.png'),
+  };
+  return iconMap[category] || null;
+};
+
 interface Animal {
   _id: string;
   commonName: string;
@@ -554,25 +591,39 @@ export default function AnimalDexScreen() {
       showsHorizontalScrollIndicator={false}
       style={styles.tabsContainer}
     >
-      {animalCategories.map(section => (
-        <TouchableOpacity
-          key={section.title}
-          style={[
-            styles.tab,
-            selectedTab === section.title && styles.tabActive
-          ]}
-          onPress={() => setSelectedTab(section.title)}
-        >
-          <View style={{ alignItems: 'center' }}>
-            <Text style={[
-              styles.tabText,
-              selectedTab === section.title && styles.tabTextActive
-            ]}>
-              {section.title}
-            </Text>
-          </View>
-        </TouchableOpacity>
-      ))}
+      {animalCategories.map(section => {
+        const iconSource = getCategoryIcon(section.title);
+        return (
+          <TouchableOpacity
+            key={section.title}
+            style={[
+              styles.tab,
+              selectedTab === section.title && styles.tabActive
+            ]}
+            onPress={() => setSelectedTab(section.title)}
+          >
+            <View style={{ alignItems: 'center' }}>
+              {iconSource && (
+                <Image 
+                  source={iconSource} 
+                  style={{ 
+                    width: 32, 
+                    height: 32, 
+                    marginBottom: 4,
+                    opacity: selectedTab === section.title ? 1 : 0.6
+                  }} 
+                />
+              )}
+              <Text style={[
+                styles.tabText,
+                selectedTab === section.title && styles.tabTextActive
+              ]}>
+                {section.title}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        );
+      })}
     </ScrollView>
   );
 

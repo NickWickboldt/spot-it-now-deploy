@@ -679,6 +679,7 @@ const findSightingsNear = async (longitude, latitude, maxDistanceInMeters = 1000
     return {
       ...doc,
       animal: canonicalAnimal,
+      userName: doc.user?.username || 'Unknown User',
     };
   });
 };

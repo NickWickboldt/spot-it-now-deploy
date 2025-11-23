@@ -39,7 +39,7 @@ const AnimalTrackerScreen = () => {
   const [location, setLocation] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
   const [animals, setAnimals] = useState([]);
-  const [distance, setDistance] = useState(1000); // default to 5km
+  const [distance, setDistance] = useState(4828); // default to 3 miles
   const [distanceMenuVisible, setDistanceMenuVisible] = useState(false);
   const [sightingsMenuVisible, setSightingsMenuVisible] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -113,7 +113,7 @@ const AnimalTrackerScreen = () => {
           setAnimals(
             (resp.data || []).map((sighting, index) => ({
               id: sighting._id || index,
-              name: sighting.animal || 'Unknown',
+              name: sighting.animal?.commonName || sighting.aiIdentification || 'Unknown',
               caption: sighting.caption || '',
               mediaUrls: sighting.mediaUrls || [],
               userName: sighting.userName || '',
@@ -216,7 +216,7 @@ const AnimalTrackerScreen = () => {
               {/* Callout with info */}
               <Callout style={{ borderRadius: 16, padding: 0, backgroundColor: 'transparent' }}>
                 <AnimalMarker
-                  name={sighting.animal || 'Unknown'}
+                  name={sighting.animal?.commonName || 'Unknown'}
                   caption={sighting.caption}
                   mediaUrls={sighting.mediaUrls}
                   userName={sighting.userName}
@@ -268,19 +268,25 @@ const AnimalTrackerScreen = () => {
           ]}>
             <View style={menuStyles.dragHandle} />
             <Text style={menuStyles.menuTitle}>Search Radius</Text>
-            {[100, 500, 1000, 2000, 5000].map(val => {
-              const isActive = distance === val;
+            {[
+              { meters: 805, label: '0.5 mi' },
+              { meters: 1609, label: '1 mi' },
+              { meters: 4828, label: '3 mi' },
+              { meters: 8047, label: '5 mi' },
+              { meters: 16093, label: '10 mi' },
+            ].map(({ meters, label }) => {
+              const isActive = distance === meters;
               return (
                 <TouchableOpacity
-                  key={val}
+                  key={meters}
                   style={menuStyles.menuItem}
                   onPress={() => {
-                    setDistance(val);
+                    setDistance(meters);
                     closeDistanceMenu();
                   }}
                 >
                   <Text style={[menuStyles.menuText, isActive && menuStyles.menuTextActive]}>
-                    {val} km
+                    {label}
                   </Text>
                   {isActive && <Icon name="check" size={16} color={Colors.light.primaryGreen} />}
                 </TouchableOpacity>
@@ -333,7 +339,7 @@ const AnimalTrackerScreen = () => {
                       <View style={menuStyles.gridIconWrap}>
                         <Icon name={isValidIcon(sighting.animal) ? sighting.animal : 'question'} size={28} color="#fff" />
                       </View>
-                      <Text style={menuStyles.gridText} numberOfLines={2}>{sighting.animal || 'Unknown'}</Text>
+                      <Text style={menuStyles.gridText} numberOfLines={2}>{sighting.animal?.commonName || 'Unknown'}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
