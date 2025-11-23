@@ -125,11 +125,12 @@ export const styles = StyleSheet.create({
     width: '85%', 
     height: '65%',
     borderRadius: 16, 
-    backgroundColor: Colors.light.darkNeutral, 
+    backgroundColor: '#FFFFFF', 
     marginBottom: 12, 
     alignItems: 'center', 
     justifyContent: 'center',
-    opacity: 0.3
+    borderWidth: 2,
+    borderColor: Colors.light.primaryGreen,
   },
   animalName: { 
     color: Colors.light.darkNeutral, 

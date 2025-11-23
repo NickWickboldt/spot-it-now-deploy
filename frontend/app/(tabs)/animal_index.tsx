@@ -48,6 +48,45 @@ const getCategoryIcon = (category: string) => {
   return iconMap[category] || null;
 };
 
+// Get animal icon from iconPath field
+const getAnimalIcon = (iconPath: string | undefined) => {
+  if (!iconPath) return null;
+  
+  const iconMap: Record<string, any> = {
+    'Arachnids.png': require('../../assets/animalIcons/Arachnids.png'),
+    'Bees, Wasps, Ants.png': require('../../assets/animalIcons/Bees, Wasps, Ants.png'),
+    'Beetles.png': require('../../assets/animalIcons/Beetles.png'),
+    'Butterflies & Moths.png': require('../../assets/animalIcons/Butterflies & Moths.png'),
+    'Caecilians.png': require('../../assets/animalIcons/Caecilians.png'),
+    'Crustaceans.png': require('../../assets/animalIcons/Crustaceans.png'),
+    'Dragonflies.png': require('../../assets/animalIcons/Dragonflies.png'),
+    'Flightless Birds.png': require('../../assets/animalIcons/Flightless Birds.png'),
+    'Freshwater Fish.png': require('../../assets/animalIcons/Freshwater Fish.png'),
+    'Frogs & Toads.png': require('../../assets/animalIcons/Frogs & Toads.png'),
+    'Insects.png': require('../../assets/animalIcons/Insects.png'),
+    'Large Birds.png': require('../../assets/animalIcons/Large Birds.png'),
+    'Large Fish.png': require('../../assets/animalIcons/Large Fish.png'),
+    'Large Mammals.png': require('../../assets/animalIcons/Large Mammals.png'),
+    'Large Reptiles.png': require('../../assets/animalIcons/Large Reptiles.png'),
+    'Medium Birds.png': require('../../assets/animalIcons/Medium Birds.png'),
+    'Medium Fish.png': require('../../assets/animalIcons/Medium Fish.png'),
+    'Medium Mammals.png': require('../../assets/animalIcons/Medium Mammals.png'),
+    'Medium Reptiles.png': require('../../assets/animalIcons/Medium Reptiles.png'),
+    'Mollusks.png': require('../../assets/animalIcons/Mollusks.png'),
+    'Salamanders & Newts.png': require('../../assets/animalIcons/Salamanders & Newts.png'),
+    'Saltwater Fish.png': require('../../assets/animalIcons/Saltwater Fish.png'),
+    'Sea Mammals.png': require('../../assets/animalIcons/Sea Mammals.png'),
+    'Small Birds.png': require('../../assets/animalIcons/Small Birds.png'),
+    'Small Fish.png': require('../../assets/animalIcons/Small Fish.png'),
+    'Small Mammals.png': require('../../assets/animalIcons/Small Mammals.png'),
+    'Small Reptiles.png': require('../../assets/animalIcons/Small Reptiles.png'),
+    'Snakes.png': require('../../assets/animalIcons/Snakes.png'),
+    'Turtles & Tortoises.png': require('../../assets/animalIcons/Turtles & Tortoises.png'),
+    'Worms.png': require('../../assets/animalIcons/Worms.png'),
+  };
+  return iconMap[iconPath] || null;
+};
+
 interface Animal {
   _id: string;
   commonName: string;
@@ -57,6 +96,7 @@ interface Animal {
   rarityLevel: string;
   imageUrls: string[];
   conservationStatus: string;
+  iconPath?: string;
 }
 
 interface EntryMeta {
@@ -638,6 +678,8 @@ export default function AnimalDexScreen() {
     const spotted = meta.spotted;
     const userThumb = userThumbByAnimalId[animal._id];
     const displayImage = userThumb || getAnimalImage(animal);
+    const animalIconSource = getAnimalIcon(animal.iconPath);
+    
     return (
       <TouchableOpacity
         key={animal._id}
@@ -649,7 +691,11 @@ export default function AnimalDexScreen() {
           <Image source={{ uri: displayImage }} style={styles.animalImage} />
         ) : (
           <View style={styles.silhouette}>
-            <Icon name="question" size={32} color={Colors.light.darkNeutral} />
+            {animalIconSource ? (
+              <Image source={animalIconSource} style={{ width: 64, height: 64 }} />
+            ) : (
+              <Icon name="question" size={32} color={Colors.light.darkNeutral} />
+            )}
           </View>
         )}
         {spotted && (

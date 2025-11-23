@@ -671,7 +671,7 @@ const findSightingsNear = async (longitude, latitude, maxDistanceInMeters = 1000
     },
   })
     .populate('user', 'username profilePictureUrl')
-    .populate('animal', 'commonName')
+    .populate('animal', 'commonName iconPath')
     .lean();
   
   return docs.map((doc) => {

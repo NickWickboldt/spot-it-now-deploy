@@ -10,12 +10,16 @@ const MapStyles = StyleSheet.create({
     subtitle: { fontSize: 18, color: theme.mainText, textAlign: 'center', lineHeight: 26 },
     map: { flex: 1 },
     animalMarker: {
-        backgroundColor: theme.primaryGreen,
-        padding: 10,
-        borderRadius: 22,
-        borderColor: theme.softBeige,
-        borderWidth: 2,
-
+        backgroundColor: '#FFFFFF',
+        padding: 8,
+        borderRadius: 28,
+        borderColor: theme.primaryGreen,
+        borderWidth: 3,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
+        elevation: 5,
     },
     markerIcon: {
         width: 20,

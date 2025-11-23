@@ -1,7 +1,7 @@
 import * as Location from 'expo-location';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Animated, Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { Callout, Marker, Region } from 'react-native-maps';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { apiGetSightingsNear } from '../../api/sighting';
@@ -13,6 +13,46 @@ import MapStyles from '../../constants/MapStyles';
 import fontAwesomeIcons from 'react-native-vector-icons/glyphmaps/FontAwesome.json';
 function isValidIcon(iconName) {
   return iconName && Object.prototype.hasOwnProperty.call(fontAwesomeIcons, iconName);
+}
+
+// Animal icon mapper
+function getAnimalIcon(iconPath?: string) {
+  if (!iconPath) return null;
+  
+  const iconMap: Record<string, any> = {
+    'Large Mammals.png': require('../../assets/animalIcons/Large Mammals.png'),
+    'Medium Mammals.png': require('../../assets/animalIcons/Medium Mammals.png'),
+    'Small Mammals.png': require('../../assets/animalIcons/Small Mammals.png'),
+    'Sea Mammals.png': require('../../assets/animalIcons/Sea Mammals.png'),
+    'Large Birds.png': require('../../assets/animalIcons/Large Birds.png'),
+    'Medium Birds.png': require('../../assets/animalIcons/Medium Birds.png'),
+    'Small Birds.png': require('../../assets/animalIcons/Small Birds.png'),
+    'Flightless Birds.png': require('../../assets/animalIcons/Flightless Birds.png'),
+    'Arachnids.png': require('../../assets/animalIcons/Arachnids.png'),
+    'Butterflies & Moths.png': require('../../assets/animalIcons/Butterflies & Moths.png'),
+    'Bees, Wasps, Ants.png': require('../../assets/animalIcons/Bees, Wasps, Ants.png'),
+    'Beetles.png': require('../../assets/animalIcons/Beetles.png'),
+    'Dragonflies.png': require('../../assets/animalIcons/Dragonflies.png'),
+    'Worms.png': require('../../assets/animalIcons/Worms.png'),
+    'Snakes.png': require('../../assets/animalIcons/Snakes.png'),
+    'Turtles & Tortoises.png': require('../../assets/animalIcons/Turtles & Tortoises.png'),
+    'Large Reptiles.png': require('../../assets/animalIcons/Large Reptiles.png'),
+    'Medium Reptiles.png': require('../../assets/animalIcons/Medium Reptiles.png'),
+    'Small Reptiles.png': require('../../assets/animalIcons/Small Reptiles.png'),
+    'Frogs & Toads.png': require('../../assets/animalIcons/Frogs & Toads.png'),
+    'Salamanders & Newts.png': require('../../assets/animalIcons/Salamanders & Newts.png'),
+    'Caecilians.png': require('../../assets/animalIcons/Caecilians.png'),
+    'Large Fish.png': require('../../assets/animalIcons/Large Fish.png'),
+    'Medium Fish.png': require('../../assets/animalIcons/Medium Fish.png'),
+    'Small Fish.png': require('../../assets/animalIcons/Small Fish.png'),
+    'Freshwater Fish.png': require('../../assets/animalIcons/Freshwater Fish.png'),
+    'Saltwater Fish.png': require('../../assets/animalIcons/Saltwater Fish.png'),
+    'Crustaceans.png': require('../../assets/animalIcons/Crustaceans.png'),
+    'Mollusks.png': require('../../assets/animalIcons/Mollusks.png'),
+    'Insects.png': require('../../assets/animalIcons/Insects.png'),
+  };
+  
+  return iconMap[iconPath] || null;
 }
 
 const AnimalTrackerScreen = () => {
@@ -117,6 +157,7 @@ const AnimalTrackerScreen = () => {
               caption: sighting.caption || '',
               mediaUrls: sighting.mediaUrls || [],
               userName: sighting.userName || '',
+              iconPath: sighting.animal?.iconPath,
               coordinate: {
                 latitude: Number(sighting.location.coordinates[1]),
                 longitude: Number(sighting.location.coordinates[0]),
@@ -200,30 +241,37 @@ const AnimalTrackerScreen = () => {
           // If you have a custom map style, import it correctly, otherwise remove this line or set to []
           customMapStyle={[]}
         >
-          {animals.map(sighting => (
-            <Marker
-              key={sighting.id}
-              ref={ref => { markerRefs.current[sighting.id] = ref; }}
-              coordinate={{
-                latitude: Number(sighting.coordinate.latitude),
-                longitude: Number(sighting.coordinate.longitude),
-              }}
-            >
-              {/* Custom marker icon */}
-              <View style={MapStyles.animalMarker}>
-                <Icon name={isValidIcon(sighting.animal) ? sighting.animal : 'question'} style={MapStyles.markerIcon} />
-              </View>
-              {/* Callout with info */}
-              <Callout style={{ borderRadius: 16, padding: 0, backgroundColor: 'transparent' }}>
-                <AnimalMarker
-                  name={sighting.animal?.commonName || 'Unknown'}
-                  caption={sighting.caption}
-                  mediaUrls={sighting.mediaUrls}
-                  userName={sighting.userName}
-                />
-              </Callout>
-            </Marker>
-          ))}
+          {animals.map(sighting => {
+            const animalIconSource = getAnimalIcon(sighting.iconPath);
+            return (
+              <Marker
+                key={sighting.id}
+                ref={ref => { markerRefs.current[sighting.id] = ref; }}
+                coordinate={{
+                  latitude: Number(sighting.coordinate.latitude),
+                  longitude: Number(sighting.coordinate.longitude),
+                }}
+              >
+                {/* Custom marker icon */}
+                <View style={MapStyles.animalMarker}>
+                  {animalIconSource ? (
+                    <Image source={animalIconSource} style={{ width: 40, height: 40 }} />
+                  ) : (
+                    <Icon name="question" style={MapStyles.markerIcon} />
+                  )}
+                </View>
+                {/* Callout with info */}
+                <Callout style={{ borderRadius: 16, padding: 0, backgroundColor: 'transparent' }}>
+                  <AnimalMarker
+                    name={sighting.name}
+                    caption={sighting.caption}
+                    mediaUrls={sighting.mediaUrls}
+                    userName={sighting.userName}
+                  />
+                </Callout>
+              </Marker>
+            );
+          })}
         </MapView>
       );
     }
@@ -327,21 +375,28 @@ const AnimalTrackerScreen = () => {
             >
               {animals.length > 0 ? (
                 <View style={menuStyles.gridContainer}>
-                  {animals.map(sighting => (
-                    <TouchableOpacity
-                      key={sighting.id}
-                      style={menuStyles.gridItem}
-                      onPress={() => {
-                        goToSighting(sighting);
-                        closeSightingsMenu();
-                      }}
-                    >
-                      <View style={menuStyles.gridIconWrap}>
-                        <Icon name={isValidIcon(sighting.animal) ? sighting.animal : 'question'} size={28} color="#fff" />
-                      </View>
-                      <Text style={menuStyles.gridText} numberOfLines={2}>{sighting.animal?.commonName || 'Unknown'}</Text>
-                    </TouchableOpacity>
-                  ))}
+                  {animals.map(sighting => {
+                    const animalIconSource = getAnimalIcon(sighting.iconPath);
+                    return (
+                      <TouchableOpacity
+                        key={sighting.id}
+                        style={menuStyles.gridItem}
+                        onPress={() => {
+                          goToSighting(sighting);
+                          closeSightingsMenu();
+                        }}
+                      >
+                        <View style={menuStyles.gridIconWrap}>
+                          {animalIconSource ? (
+                            <Image source={animalIconSource} style={{ width: 32, height: 32 }} />
+                          ) : (
+                            <Icon name="question" size={28} color="#fff" />
+                          )}
+                        </View>
+                        <Text style={menuStyles.gridText} numberOfLines={2}>{sighting.name}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               ) : (
                 <Text style={menuStyles.noSightingsText}>No sightings nearby</Text>

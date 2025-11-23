@@ -43,6 +43,11 @@ const animalSchema = new Schema(
       type: String,
       default: 'Not Evaluated',
     },
+    // Icon file path (relative to animalIcons folder)
+    iconPath: {
+      type: String,
+      trim: true,
+    },
     // Taxonomic classification fields
     kingdom: {
       type: String,
