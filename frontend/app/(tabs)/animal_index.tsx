@@ -251,6 +251,12 @@ export default function AnimalDexScreen() {
     const items = (userSightings as Sighting[])
       .filter(s => !!s.animalId && Array.isArray(s.mediaUrls) && s.mediaUrls.length > 0);
 
+    console.log('🖼️ Building userThumbByAnimalId map:', {
+      totalSightings: userSightings.length,
+      sightingsWithAnimalId: items.length,
+      sampleSighting: items[0] || 'none'
+    });
+
     // Sort newest first so latest sighting provides the thumb
     items.sort((a, b) => {
       const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
@@ -263,11 +269,14 @@ export default function AnimalDexScreen() {
       if (!map[aid]) {
         const raw = pickImageUrl(s.mediaUrls);
         if (raw) {
-          const tiny = toTinyPreview(raw, 112) || raw;
+          const tiny = toTinyPreview(raw, 96) || raw;
           map[aid] = tiny;
+          console.log(`✅ Mapped image for animal ${aid}:`, tiny.substring(0, 80) + '...');
         }
       }
     });
+    
+    console.log('🖼️ Final userThumbByAnimalId map:', Object.keys(map).length, 'animals with images');
     return map;
   }, [userSightings]);
 
@@ -733,6 +742,15 @@ export default function AnimalDexScreen() {
     const displayImage = userThumb || getAnimalImage(animal);
     const animalIconSource = getAnimalIcon(animal.iconPath);
     
+    console.log(`🎴 Rendering ${animal.commonName}:`, {
+      spotted,
+      animalId: animal._id,
+      hasUserThumb: !!userThumb,
+      userThumb: userThumb ? userThumb.substring(0, 80) : 'none',
+      displayImage: displayImage.substring(0, 80),
+      willShowUserPhoto: spotted && !!userThumb
+    });
+    
     return (
       <TouchableOpacity
         key={animal._id}
@@ -742,10 +760,12 @@ export default function AnimalDexScreen() {
       >
         {spotted ? (
           <Image 
-            source={{ uri: displayImage, cache: 'force-cache' }} 
+            source={{ uri: displayImage }} 
             style={styles.animalImage}
             resizeMode="cover"
             fadeDuration={100}
+            onError={(e) => console.error(`❌ Image load error for ${animal.commonName}:`, e.nativeEvent.error)}
+            onLoad={() => console.log(`✅ Image loaded for ${animal.commonName}`)}
           />
         ) : (
           <View style={styles.silhouette}>
