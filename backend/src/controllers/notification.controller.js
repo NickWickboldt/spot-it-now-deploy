@@ -1,6 +1,6 @@
-import { asyncHandler } from '../utils/asyncHandler.util.js';
-import { ApiResponse } from '../utils/ApiResponse.js';
 import { notificationService } from '../services/notification.service.js';
+import { ApiResponse } from '../utils/ApiResponse.js';
+import { asyncHandler } from '../utils/asyncHandler.util.js';
 
 /**
  * Controller for an admin to send a notification to a specific user.
@@ -60,21 +60,19 @@ const markAllNotificationsAsRead = asyncHandler(async (req, res) => {
 });
 
 /**
- * Controller for an admin to delete any notification.
+ * Controller to delete a notification. Users can delete their own notifications, admins can delete any.
  */
 const deleteNotification = asyncHandler(async (req, res) => {
   const { notificationId } = req.params;
-  await notificationService.deleteNotification(notificationId);
+  const userId = req.user._id;
+  const isAdmin = req.admin ? true : false;
+  
+  await notificationService.deleteNotification(notificationId, userId, isAdmin);
   return res
     .status(200)
     .json(new ApiResponse(200, {}, 'Notification deleted successfully'));
 });
 
 export {
-  sendNotificationToUser,
-  sendGlobalNotification,
-  getMyNotifications,
-  markNotificationAsRead,
-  markAllNotificationsAsRead,
-  deleteNotification,
+    deleteNotification, getMyNotifications, markAllNotificationsAsRead, markNotificationAsRead, sendGlobalNotification, sendNotificationToUser
 };

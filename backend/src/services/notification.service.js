@@ -113,14 +113,23 @@ const markAllNotificationsAsRead = async (userId) => {
 
 
 /**
- * Deletes a specific notification.
+ * Deletes a specific notification. Users can only delete their own notifications unless they're admin.
  * @param {string} notificationId - The ID of the notification to delete.
+ * @param {string} userId - The ID of the user attempting to delete.
+ * @param {boolean} isAdmin - Whether the user is an admin.
  */
-const deleteNotification = async (notificationId) => {
-  const notification = await Notification.findByIdAndDelete(notificationId);
+const deleteNotification = async (notificationId, userId, isAdmin = false) => {
+  const notification = await Notification.findById(notificationId);
   if (!notification) {
     throw new ApiError(404, 'Notification not found');
   }
+  
+  // Check ownership unless admin
+  if (!isAdmin && notification.user && notification.user.toString() !== userId.toString()) {
+    throw new ApiError(403, 'You can only delete your own notifications');
+  }
+  
+  await Notification.findByIdAndDelete(notificationId);
 };
 
 export const notificationService = {

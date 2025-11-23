@@ -69,6 +69,20 @@ export const apiMarkAllNotificationsAsRead = async (token: string): Promise<void
 };
 
 /**
+ * Delete a specific notification
+ */
+export const apiDeleteNotification = async (
+  token: string,
+  notificationId: string
+): Promise<void> => {
+  await fetchWithAuth(
+    `/notifications/${notificationId}`,
+    token,
+    { method: 'DELETE' }
+  );
+};
+
+/**
  * Admin: Send notification to a specific user
  */
 export const apiSendNotificationToUser = async (
@@ -103,16 +117,4 @@ export const apiSendGlobalNotification = async (
     }
   );
   return response.data;
-};
-
-/**
- * Admin: Delete a notification
- */
-export const apiDeleteNotification = async (
-  token: string,
-  notificationId: string
-): Promise<void> => {
-  await fetchWithAuth(`/notifications/delete/${notificationId}`, token, {
-    method: 'DELETE',
-  });
 };

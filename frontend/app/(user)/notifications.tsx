@@ -1,9 +1,9 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
-import { apiGetMyNotifications, apiMarkAllNotificationsAsRead, apiMarkNotificationAsRead, DbNotification } from '../../api/notification';
+import { apiDeleteNotification, apiGetMyNotifications, apiMarkAllNotificationsAsRead, apiMarkNotificationAsRead, DbNotification } from '../../api/notification';
 import { apiUpdateUserDetails } from '../../api/user';
 import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
@@ -77,6 +77,18 @@ export default function NotificationsScreen() {
     }
   };
 
+  const handleDeleteNotification = async (notificationId: string) => {
+    if (!token) return;
+
+    try {
+      await apiDeleteNotification(token, notificationId);
+      setNotifications(prev => prev.filter(n => n._id !== notificationId));
+      notification.success('Notification deleted');
+    } catch (error: any) {
+      notification.error('Error', 'Failed to delete notification');
+    }
+  };
+
   const handleNotificationToggle = async (value: boolean): Promise<void> => {
     try {
       setNotificationsEnabled(value);
@@ -135,40 +147,49 @@ export default function NotificationsScreen() {
   };
 
   const renderNotification = ({ item }: { item: DbNotification }) => (
-    <Pressable
-      style={[styles.notificationItem, !item.isRead && styles.unreadNotification]}
-      onPress={() => handleMarkAsRead(item._id)}
-    >
-      <View style={styles.iconContainer}>
-        <LinearGradient
-          colors={item.isRead ? ['#e5e7eb', '#d1d5db'] : [Colors.light.primaryGreen, Colors.light.secondaryGreen]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.iconCircle}
-        >
-          <Icon
-            name={getNotificationIcon(item.type)}
-            size={20}
-            color={item.isRead ? '#6b7280' : '#fff'}
-          />
-        </LinearGradient>
-      </View>
+    <View style={styles.notificationWrapper}>
+      <Pressable
+        style={[styles.notificationItem, !item.isRead && styles.unreadNotification]}
+        onPress={() => handleMarkAsRead(item._id)}
+      >
+        <View style={styles.iconContainer}>
+          <LinearGradient
+            colors={item.isRead ? ['#e5e7eb', '#d1d5db'] : [Colors.light.primaryGreen, Colors.light.secondaryGreen]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.iconCircle}
+          >
+            <Icon
+              name={getNotificationIcon(item.type)}
+              size={20}
+              color={item.isRead ? '#6b7280' : '#fff'}
+            />
+          </LinearGradient>
+        </View>
 
-      <View style={styles.notificationContent}>
-        <Text style={[styles.notificationTitle, !item.isRead && styles.unreadTitle]}>
-          {item.title}
-        </Text>
-        {item.subtitle && (
-          <Text style={styles.notificationSubtitle}>{item.subtitle}</Text>
-        )}
-        <Text style={styles.notificationMessage} numberOfLines={2}>
-          {item.message}
-        </Text>
-        <Text style={styles.notificationTime}>{getRelativeTime(item.createdAt)}</Text>
-      </View>
+        <View style={styles.notificationContent}>
+          <Text style={[styles.notificationTitle, !item.isRead && styles.unreadTitle]}>
+            {item.title}
+          </Text>
+          {item.subtitle && (
+            <Text style={styles.notificationSubtitle}>{item.subtitle}</Text>
+          )}
+          <Text style={styles.notificationMessage} numberOfLines={2}>
+            {item.message}
+          </Text>
+          <Text style={styles.notificationTime}>{getRelativeTime(item.createdAt)}</Text>
+        </View>
 
-      {!item.isRead && <View style={styles.unreadDot} />}
-    </Pressable>
+        {!item.isRead && <View style={styles.unreadDot} />}
+      </Pressable>
+      
+      <TouchableOpacity 
+        style={styles.deleteButton}
+        onPress={() => handleDeleteNotification(item._id)}
+      >
+        <Icon name="trash" size={18} color="#ef4444" />
+      </TouchableOpacity>
+    </View>
   );
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
@@ -373,14 +394,25 @@ const styles = StyleSheet.create({
   listContent: {
     flexGrow: 1,
   },
+  notificationWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
   notificationItem: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'flex-start',
     paddingHorizontal: 16,
     paddingVertical: 16,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
+  },
+  deleteButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   unreadNotification: {
     backgroundColor: '#f0fdf4',
