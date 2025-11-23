@@ -36,13 +36,15 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<any | null>(null);
   const [token, setToken] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // Start with true to prevent flash
+  const [isInitialized, setIsInitialized] = useState(false);
   const router = useRouter();
   const segments = useSegments();
 
   useEffect(() => {
     // Try to restore token from storage on startup
     const restore = async () => {
+      setIsLoading(true);
       try {
         let storedToken: string | null = null;
         if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
@@ -53,12 +55,38 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (storedToken) {
           setToken(storedToken);
           setAuthToken(storedToken);
+          
+          // Fetch user data with the restored token
+          try {
+            const resp = await apiGetCurrentUser(storedToken);
+            if (resp && resp.data) {
+              setUser(resp.data);
+            }
+          } catch (e) {
+            console.warn('Failed to fetch user with stored token, logging out', e);
+            // Token might be expired, clear it
+            setToken(null);
+            setAuthToken(null);
+            if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+              window.localStorage.removeItem('authToken');
+            } else if (AsyncStorage) {
+              await AsyncStorage.removeItem('authToken');
+            }
+          }
         }
       } catch (e) {
         console.warn('Failed to restore auth token', e);
+      } finally {
+        setIsLoading(false);
+        setIsInitialized(true);
       }
     };
     restore();
+  }, []); // Only run once on mount
+
+  useEffect(() => {
+    // Don't navigate until initialization is complete
+    if (!isInitialized) return;
 
     const inTabsGroup = segments[0] === '(tabs)';
     const inUserGroup = segments[0] === '(user)';
@@ -80,7 +108,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         router.navigate({ pathname: '/(tabs)/feed' } as any);
       }
     }
-  }, [token, segments, user?.onboardingCompleted]);
+  }, [token, segments, user?.onboardingCompleted, isInitialized]);
 
   const login = async (credentials: {email: string, password: string}) => {
     setIsLoading(true);

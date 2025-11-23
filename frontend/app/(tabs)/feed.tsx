@@ -2,7 +2,7 @@ import { ResizeMode, Video } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Dimensions, Easing, FlatList, Image, KeyboardAvoidingView, Modal, PanResponder, Platform, RefreshControl, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Dimensions, Easing, FlatList, Image, KeyboardAvoidingView, Modal, PanResponder, Platform, RefreshControl, Share, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { apiGetPersonalizedFeed, apiGetPersonalizedFollowingFeed, apiGetPersonalizedLocalFeed, apiTrackSightingComment, apiTrackSightingLike, apiTrackSightingView } from '../../api/algorithm';
@@ -36,6 +36,22 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
 };
 
 const { width } = Dimensions.get('window');
+
+// Share handler function
+const handleShareSighting = async (sighting: any) => {
+  try {
+    const animalName = sighting.animal?.commonName || sighting.aiIdentification || 'an animal';
+    const userName = sighting.user?.username || sighting.userName || 'Someone';
+    const caption = sighting.caption || '';
+    const message = `Check out this ${animalName} spotted by ${userName}!${caption ? `\n\n"${caption}"` : ''}\n\nShared from SpotItNow 🦊`;
+    
+    await Share.share({
+      message: message,
+    });
+  } catch (error) {
+    console.error('Error sharing:', error);
+  }
+};
 
 // Simple Coming Soon placeholder for non-Discover tabs
 const ComingSoonScreen = () => (
@@ -1102,7 +1118,7 @@ export default function FeedScreen() {
               <Text style={FeedScreenStyles.actionText}>{Number(item.comments || 0)}</Text>
             </View>
           </View>
-          <TouchableOpacity style={FeedScreenStyles.cardActionBtn} onPress={() => {/* TODO: hook up share */ }}>
+          <TouchableOpacity style={FeedScreenStyles.cardActionBtn} onPress={() => handleShareSighting(item)}>
             <Icon name="share" size={24} color="#6b7280" />
           </TouchableOpacity>
         </View>
@@ -1412,7 +1428,7 @@ export default function FeedScreen() {
                   <TouchableOpacity style={FeedScreenStyles.menuItem} onPress={() => { /* TODO: hook up report */ handleMenuClose(); }}>
                     <Text style={FeedScreenStyles.menuText}>Report</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={FeedScreenStyles.menuItem} onPress={() => { /* TODO: hook up share */ handleMenuClose(); }}>
+                  <TouchableOpacity style={FeedScreenStyles.menuItem} onPress={() => { selectedSighting && handleShareSighting(selectedSighting); handleMenuClose(); }}>
                     <Text style={FeedScreenStyles.menuText}>Share</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={FeedScreenStyles.menuItem} onPress={handleMenuClose}>

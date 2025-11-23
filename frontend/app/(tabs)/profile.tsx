@@ -1,6 +1,6 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Image, Modal, Pressable, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, Modal, Pressable, Share, Switch, Text, View } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { apiGetMySightings } from '../../api/sighting'; // Use authenticated endpoint to get all sightings
 import { apiDeleteUserAccount, apiUpdateUserDetails } from '../../api/user';
@@ -254,7 +254,18 @@ export default function ProfileScreen(): React.JSX.Element | null {
                 </View>
 
                 {/* Share Button */}
-                <Pressable style={profileStyles.shareButton}>
+                <Pressable 
+                  style={profileStyles.shareButton}
+                  onPress={async () => {
+                    try {
+                      await Share.share({
+                        message: `Check out ${user.username}'s wildlife profile on SpotItNow! 🦊\n\nThey've spotted ${sightings.length} animals and counting!`,
+                      });
+                    } catch (error) {
+                      console.error('Error sharing profile:', error);
+                    }
+                  }}
+                >
                   <Icon name="share-alt" size={14} color="#333" />
                   <Text style={profileStyles.shareButtonText}>Share</Text>
                 </Pressable>
