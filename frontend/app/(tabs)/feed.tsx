@@ -9,11 +9,10 @@ import { apiGetPersonalizedFeed, apiGetPersonalizedFollowingFeed, apiGetPersonal
 import { apiCreateComment, apiDeleteComment, apiGetCommentsForSighting, apiUpdateComment } from '../../api/comment';
 import { apiGetLikedSightingsByUser, apiToggleSightingLike } from '../../api/like';
 import { apiGetMyNotifications } from '../../api/notification';
-import { CommunityVoteType, apiAdminDeleteSighting, apiGetCommunitySighting, apiGetRecentSightings, apiGetSightingsNear, apiSubmitCommunityVote } from '../../api/sighting';
+import { CommunityVoteType, apiAdminDeleteSighting, apiGetCommunitySighting, apiGetFollowingRecentSightings, apiGetRecentSightings, apiGetSightingsNear, apiSubmitCommunityVote } from '../../api/sighting';
 import { Colors } from '../../constants/Colors';
 import { FeedScreenStyles } from '../../constants/FeedStyles';
 import { useAuth } from '../../context/AuthContext';
-import { useNotification } from '../../hooks/useNotification';
 
 const LOCAL_PAGE_SIZE = 10;
 const getSightingTimestamp = (doc: any) => {
@@ -55,7 +54,6 @@ type TabKey = typeof TABS[number];
 export default function FeedScreen() {
   const router = useRouter();
   const { token, user } = useAuth();
-  const notification = useNotification();
   const [activeTab, setActiveTab] = useState<TabKey>('Discover');
   const [sightings, setSightings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -135,6 +133,7 @@ export default function FeedScreen() {
   const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [lastNotificationIds, setLastNotificationIds] = useState<Set<string>>(new Set());
+  const notificationPollingInterval = useRef<NodeJS.Timeout | null>(null);
 
   const getScale = (id: string) => {
     if (!scaleMapRef.current[id]) {
@@ -304,32 +303,10 @@ export default function FeedScreen() {
       const notifications = await apiGetMyNotifications(token);
       const unreadCount = notifications.filter(n => !n.isRead).length;
       setUnreadNotificationCount(unreadCount);
-      
-      // Check for new notifications (that we haven't seen before)
-      const currentNotificationIds = new Set(notifications.map((n: any) => n._id));
-      const newNotifications = notifications.filter((n: any) => 
-        !lastNotificationIds.has(n._id) && !n.isRead
-      );
-      
-      // Show in-app alerts for new like notifications
-      newNotifications.forEach((notif: any) => {
-        if (notif.type === 'sighting_liked' || notif.type === 'new_like') {
-          // Show toast notification
-          notification.success('❤️ ' + notif.title, notif.subtitle || notif.message, 4000);
-        } else if (notif.type === 'nearby_sighting') {
-          // Show location-based notification
-          notification.info('📍 ' + notif.title, notif.subtitle || notif.message, 5000);
-        } else if (notif.type === 'new_comment') {
-          notification.info('💬 ' + notif.title, notif.subtitle || notif.message, 4000);
-        }
-      });
-      
-      // Update the last seen notification IDs
-      setLastNotificationIds(currentNotificationIds);
     } catch (error) {
       console.error('Failed to load notification count', error);
     }
-  }, [token, lastNotificationIds, notification]);
+  }, [token]);
 
   useEffect(() => {
     loadNotificationCount();

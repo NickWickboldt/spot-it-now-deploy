@@ -127,8 +127,6 @@ export default function NotificationsScreen() {
       case 'new_like':
       case 'sighting_liked':
         return 'heart';
-      case 'nearby_sighting':
-        return 'map-marker';
       case 'admin_message':
         return 'bullhorn';
       default:
