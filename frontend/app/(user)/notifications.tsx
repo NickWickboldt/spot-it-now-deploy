@@ -125,6 +125,7 @@ export default function NotificationsScreen() {
       case 'new_comment':
         return 'comment';
       case 'new_like':
+      case 'sighting_liked':
         return 'heart';
       case 'admin_message':
         return 'bullhorn';

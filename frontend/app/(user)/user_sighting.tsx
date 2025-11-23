@@ -256,16 +256,38 @@ export default function UserSightingScreen() {
         return (
         <View style={FeedScreenStyles.card}>
             <View style={FeedScreenStyles.cardHeader}>
-                <Image
-                    source={{ uri: item.userProfilePictureUrl || 'https://ui-avatars.com/api/?name=User' }}
-                    style={FeedScreenStyles.avatar}
-                />
-                <View style={{ flex: 1 }}>
-                    <Text style={FeedScreenStyles.username}>{item.userName || 'Unknown'}</Text>
-                    <Text style={FeedScreenStyles.time}>{getRelativeTime(item.createdAt)}</Text>
+                <View style={FeedScreenStyles.headerLeft}>
+                    <LinearGradient
+                        colors={[Colors.light.primaryGreen, Colors.light.secondaryGreen]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={FeedScreenStyles.avatarRing}
+                    >
+                        <View style={FeedScreenStyles.avatar}>
+                            {item.userProfilePictureUrl ? (
+                                <Image
+                                    source={{ uri: item.userProfilePictureUrl }}
+                                    style={{ width: 44, height: 44, borderRadius: 22 }}
+                                />
+                            ) : (
+                                <Text style={FeedScreenStyles.avatarText}>
+                                    {(item.userName || 'U').charAt(0).toUpperCase()}
+                                </Text>
+                            )}
+                        </View>
+                    </LinearGradient>
+                    <View style={FeedScreenStyles.userInfo}>
+                        <Text style={FeedScreenStyles.username}>{item.userName || 'Unknown'}</Text>
+                        <Text style={FeedScreenStyles.time}>{getRelativeTime(item.createdAt)}</Text>
+                    </View>
                 </View>
-                <TouchableOpacity onPress={() => handleMenuOpen(item)}>
-                    <Icon name="ellipsis-h" size={22} color={Colors.light.darkNeutral} />
+                <TouchableOpacity
+                    onPress={() => handleMenuOpen(item)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    style={FeedScreenStyles.menuButton}
+                    activeOpacity={0.7}
+                >
+                    <Icon name="ellipsis-h" size={20} color="#6b7280" />
                 </TouchableOpacity>
             </View>
             {renderImages(item.mediaUrls, item._id)}
@@ -283,27 +305,39 @@ export default function UserSightingScreen() {
                     ))}
                 </View>
             )}
-            <Text style={FeedScreenStyles.cardCaption}>{item.caption}</Text>
-            <View style={FeedScreenStyles.cardActions}>
-                <TouchableOpacity style={FeedScreenStyles.cardActionBtn} onPress={() => handleToggleLike(item)} activeOpacity={0.8}>
-                    {((likesCountMap[item._id] ?? Number(item.likes ?? 0)) > 0) && (
-                        <Text style={{ marginRight: 10, color: Colors.light.primaryGreen }}>
-                            {likesCountMap[item._id] ?? Number(item.likes ?? 0)}
-                        </Text>
-                    )}
-                    <Animated.View style={{ transform: [{ scale: getScale(item._id) }] }}>
-                        <Icon name={likedMap[item._id] ? 'heart' : 'heart-o'} size={18} color={likedMap[item._id] ? '#e0245e' : Colors.light.buttonText} />
-                    </Animated.View>
-                </TouchableOpacity>
-                <View style={{ flexDirection: 'row', marginLeft: 'auto' }}>
+            <View style={FeedScreenStyles.cardContent}>
+                <View style={FeedScreenStyles.captionRow}>
+                    <Text style={FeedScreenStyles.cardCaption}>{item.caption}</Text>
+                </View>
+                <View style={FeedScreenStyles.cardActions}>
+                    <View style={{ flexDirection: 'row', gap: 16 }}>
+                        <View style={FeedScreenStyles.actionGroup}>
+                            <TouchableOpacity
+                                style={FeedScreenStyles.cardActionBtn}
+                                onPress={() => handleToggleLike(item)}
+                                activeOpacity={0.8}
+                            >
+                                <Animated.View style={{ transform: [{ scale: getScale(item._id) }] }}>
+                                    <Icon
+                                        name={likedMap[item._id] ? 'heart' : 'heart-o'}
+                                        size={24}
+                                        color={likedMap[item._id] ? '#e0245e' : '#6b7280'}
+                                    />
+                                </Animated.View>
+                            </TouchableOpacity>
+                            <Text style={FeedScreenStyles.actionText}>{likesCountMap[item._id] ?? Number(item.likes ?? 0)}</Text>
+                        </View>
+                        <View style={FeedScreenStyles.actionGroup}>
+                            <TouchableOpacity style={FeedScreenStyles.cardActionBtn}>
+                                <Icon name="comment-o" size={24} color="#6b7280" />
+                            </TouchableOpacity>
+                            <Text style={FeedScreenStyles.actionText}>0</Text>
+                        </View>
+                    </View>
                     <TouchableOpacity style={FeedScreenStyles.cardActionBtn}>
-                        <Icon name="comment" size={18} color={Colors.light.buttonText} />
-                    </TouchableOpacity>
-                    <TouchableOpacity style={FeedScreenStyles.cardActionBtn}>
-                        <Icon name="share" size={18} color={Colors.light.buttonText} />
+                        <Icon name="share" size={24} color="#6b7280" />
                     </TouchableOpacity>
                 </View>
-
             </View>
         </View>
         );

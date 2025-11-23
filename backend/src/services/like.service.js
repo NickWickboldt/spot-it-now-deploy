@@ -1,6 +1,8 @@
 import { Like } from '../models/like.model.js';
 import { Sighting } from '../models/sighting.model.js';
+import { User } from '../models/user.model.js';
 import { ApiError } from '../utils/ApiError.util.js';
+import { notificationService } from './notification.service.js';
 
 /**
  * Toggles a like on a sighting for a given user.
@@ -11,7 +13,7 @@ import { ApiError } from '../utils/ApiError.util.js';
  */
 const toggleLike = async (sightingId, userId) => {
   // First, check if the sighting actually exists to avoid orphaned likes.
-  const sighting = await Sighting.findById(sightingId);
+  const sighting = await Sighting.findById(sightingId).populate('user', 'username notificationsEnabled');
   if (!sighting) {
     throw new ApiError(404, 'Sighting not found');
   }
@@ -35,6 +37,32 @@ const toggleLike = async (sightingId, userId) => {
     });
     // increment denormalized counter on Sighting
     await Sighting.findByIdAndUpdate(sightingId, { $inc: { likes: 1 } });
+    
+    // Send notification to the post owner (but not if they liked their own post)
+    const postOwnerId = sighting.user._id.toString();
+    const likerId = userId.toString();
+    
+    if (postOwnerId !== likerId) {
+      // Get the liker's username
+      const liker = await User.findById(userId, 'username');
+      const likerUsername = liker?.username || 'Someone';
+      
+      // Only send notification if the post owner has notifications enabled
+      if (sighting.user.notificationsEnabled !== false) {
+        try {
+          await notificationService.sendNotificationToUser(postOwnerId, {
+            type: 'sighting_liked',
+            title: 'New Like',
+            subtitle: `${likerUsername} liked your post`,
+            message: `${likerUsername} liked your sighting: "${sighting.caption?.substring(0, 50) || 'your post'}"`,
+          });
+        } catch (error) {
+          // Log error but don't fail the like operation
+          console.error('Failed to send like notification:', error);
+        }
+      }
+    }
+    
     return { liked: true }; // The user now likes this post
   }
 };
