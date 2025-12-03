@@ -7,7 +7,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { useFocusEffect, useNavigation } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from "react"; // 1. Import useCallback
-import { ActivityIndicator, Alert, Image, Modal, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Animated, Image, Modal, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { PinchGestureHandler, State } from 'react-native-gesture-handler';
 import { apiCreateSighting } from '../../api/sighting';
 import { isRemoteUrl, uploadToCloudinarySigned } from '../../api/upload';
@@ -94,9 +94,49 @@ export default function SpotItScreen() {
   
   const navigation = useNavigation();
 
+  // Animation refs for capture button
+  const captureButtonScale = useRef(new Animated.Value(1)).current;
+  const capturePulse = useRef(new Animated.Value(1)).current;
+
+  // Start pulse animation for capture button
+  useEffect(() => {
+    const pulseAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(capturePulse, {
+          toValue: 1.05,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(capturePulse, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulseAnimation.start();
+    return () => pulseAnimation.stop();
+  }, []);
+
+  const handleCaptureButtonPressIn = () => {
+    Animated.spring(captureButtonScale, {
+      toValue: 0.92,
+      useNativeDriver: true,
+      tension: 100,
+      friction: 5,
+    }).start();
+  };
+
+  const handleCaptureButtonPressOut = () => {
+    Animated.spring(captureButtonScale, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 100,
+      friction: 5,
+    }).start();
+  };
 
   const baseZoom = useRef(0);
-
 
   const { token, user } = useAuth();
   const [showSightingForm, setShowSightingForm] = useState(false);
@@ -1082,19 +1122,23 @@ return (
         </View>
       )}
 
-      {/* Capture button */}
-      <TouchableOpacity
-        style={[styles.captureButton, isVideoMode ? styles.captureButtonVideo : null]}
-        onPress={capture}
-        disabled={isProcessing}
-      >
-        <View
-          style={[
-            styles.captureInner,
-            isVideoMode && isRecording ? styles.captureInnerVideo : isVideoMode ? styles.captureInnerVideoIdle : null,
-          ]}
-        />
-      </TouchableOpacity>
+      {/* Capture button with animation */}
+      <Animated.View style={{ transform: [{ scale: Animated.multiply(captureButtonScale, capturePulse) }] }}>
+        <TouchableOpacity
+          style={[styles.captureButton, isVideoMode ? styles.captureButtonVideo : null]}
+          onPress={capture}
+          onPressIn={handleCaptureButtonPressIn}
+          onPressOut={handleCaptureButtonPressOut}
+          disabled={isProcessing}
+        >
+          <View
+            style={[
+              styles.captureInner,
+              isVideoMode && isRecording ? styles.captureInnerVideo : isVideoMode ? styles.captureInnerVideoIdle : null,
+            ]}
+          />
+        </TouchableOpacity>
+      </Animated.View>
 
       {/* Toggle photo/video mode (disabled while recording) */}
       <TouchableOpacity

@@ -124,7 +124,9 @@ export const LoginScreenStyles = StyleSheet.create({
     googleIcon: {
         width: 20,
         height: 20,
-        marginRight: 8,
+        marginRight: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     googleButtonText: {
         color: '#374151',
@@ -133,10 +135,11 @@ export const LoginScreenStyles = StyleSheet.create({
     },
     footerLinks: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
+        justifyContent: 'center',
         width: '100%',
         maxWidth: 400,
         marginTop: 24,
+        gap: 32,
     },
     linkText: {
         color: Colors.light.primaryGreen,

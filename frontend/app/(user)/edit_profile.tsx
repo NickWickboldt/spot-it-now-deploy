@@ -1,7 +1,8 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { apiUpdateUserDetails } from '../../api/user';
 import { Colors } from '../../constants/Colors';
@@ -19,14 +20,27 @@ type EditProfileForm = {
   longitude: number | null;
 };
 
-export default function EditProfileScreen(): React.JSX.Element | null {
-  const { user, token, refreshUser } = useAuth();
+export default function EditProfileScreen(): React.JSX.Element {
+  const { user, token, refreshUser, isLoading } = useAuth();
   const router = useRouter();
   const notification = useNotification();
 
+  // Show loading while auth is loading
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f5f5' }}>
+        <ActivityIndicator size="large" color="#40743dff" />
+      </View>
+    );
+  }
+
+  // Redirect if not logged in
   if (!user || !token) {
-    if (router.canGoBack()) router.back();
-    return null;
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f5f5' }}>
+        <Text>Please log in to edit your profile</Text>
+      </View>
+    );
   }
 
   const initialLatitude = typeof user.latitude === 'number' && Number.isFinite(user.latitude)
@@ -170,18 +184,26 @@ export default function EditProfileScreen(): React.JSX.Element | null {
   };
 
   return (
-    <View style={EditProfileStyles.container}>
-      <View style={EditProfileStyles.header}>
-        <View style={EditProfileStyles.sideContainer}>
-          <Pressable onPress={() => router.back()}>
-            <Icon name='chevron-left' size={22} color={Colors.light.primaryGreen} />
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" />
+      
+      {/* Hero Header */}
+      <LinearGradient
+        colors={['#40743dff', '#5a9a55', '#7FA37C']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.heroHeader}
+      >
+        <View style={styles.topBar}>
+          <Pressable onPress={() => router.back()} style={styles.backButton}>
+            <Icon name="chevron-left" size={18} color="#fff" />
+          </Pressable>
+          <Text style={styles.headerTitle}>Edit Profile</Text>
+          <Pressable onPress={handleSave} style={styles.saveButton}>
+            <Text style={styles.saveButtonText}>Save</Text>
           </Pressable>
         </View>
-        <View style={EditProfileStyles.centerContainer}>
-          <Text style={EditProfileStyles.screenTitle}>Edit Profile</Text>
-        </View>
-        <View style={EditProfileStyles.sideContainer} />
-      </View>
+      </LinearGradient>
 
       <ScrollView style={EditProfileStyles.formContainer}>
         <Text style={EditProfileStyles.fieldLabel}>Profile Picture URL</Text>
@@ -311,3 +333,46 @@ export default function EditProfileScreen(): React.JSX.Element | null {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: Colors.light.softBeige,
+  },
+  heroHeader: {
+    paddingTop: Platform.OS === 'ios' ? 60 : (StatusBar.currentHeight || 0) + 20,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+  },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  saveButton: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  saveButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#40743dff',
+  },
+});

@@ -92,16 +92,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const inUserGroup = segments[0] === '(user)';
     const inAdminGroup = segments[0] === '(admin)';
     
-    // Check if the current route is the login/index page.
-    // We're on login if we're not in any of the main groups
-    const onLoginPage = !inTabsGroup && !inUserGroup && !inAdminGroup;
+    // Check if the current route is specifically the login/index page
+    // segments will be ['index'] or [] when on the root login page
+    const onLoginPage = segments.length === 0 || 
+                        (segments.length === 1 && segments[0] === 'index') ||
+                        (!inTabsGroup && !inUserGroup && !inAdminGroup && segments[0] !== '+not-found');
 
     // Only redirect if we have a definitive state
     if (token === null && inTabsGroup) {
       router.replace('/');
     } 
-    else if (token && user && onLoginPage) {
-      // If onboarding is not complete, go to profile setup (not registration)
+    else if (token && user && onLoginPage && segments.length <= 1) {
+      // Only redirect from login page, not when navigating between authenticated routes
       if (!user.onboardingCompleted) {
         router.navigate({ pathname: '/(user)/onboarding_profile' } as any);
       } else {
@@ -163,7 +165,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setUser(userData);
     } catch (error) {
       console.error("Login failed:", error);
-      alert(String(error));
+      throw error; // Re-throw to let the login screen handle it
     } finally {
       setIsLoading(false);
     }

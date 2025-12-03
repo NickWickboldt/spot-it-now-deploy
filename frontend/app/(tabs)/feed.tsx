@@ -1130,22 +1130,39 @@ export default function FeedScreen() {
   const baseStatus = Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0;
   const iosExtra = Platform.OS === 'ios' ? 44 : 0; // additional space for notch/dynamic island
   const statusPad = baseStatus + iosExtra;
-  const tabBarHeight = 56; // Height of the gradient header
+  const headerHeight = 100; // Height of the gradient header (title + tabs)
   const bottomTabHeight = 80; // Height of bottom navigation
   const screenHeight = Dimensions.get('window').height;
-  const postHeight = screenHeight - statusPad - tabBarHeight - bottomTabHeight;
+  const postHeight = screenHeight - statusPad - headerHeight - bottomTabHeight - 20; // Extra padding for content
 
   return (
     <View style={FeedScreenStyles.container}>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar barStyle="light-content" />
 
       {/* Gradient header with tabs */}
       <LinearGradient
-        colors={[Colors.light.background, Colors.light.softBeige]}
+        colors={['#40743dff', '#5a9a55', '#7FA37C']}
         start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
+        end={{ x: 1, y: 1 }}
         style={[tabStyles.gradientHeader, { paddingTop: statusPad }]}
       >
+        <View style={tabStyles.titleRow}>
+          <Text style={tabStyles.headerTitle}>Feed</Text>
+          <TouchableOpacity
+            onPress={() => router.push('/(user)/notifications')}
+            style={tabStyles.notificationButton}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Icon name="bell" size={20} color="#fff" />
+            {unreadNotificationCount > 0 && (
+              <View style={tabStyles.notificationBadge}>
+                <Text style={tabStyles.notificationBadgeText}>
+                  {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
         <View style={tabStyles.tabRow}>
           {TABS.map((tab) => (
             <TouchableOpacity
@@ -1160,30 +1177,10 @@ export default function FeedScreen() {
                 {tab}
               </Text>
               {activeTab === tab && (
-                <LinearGradient
-                  colors={[Colors.light.primaryGreen, Colors.light.secondaryGreen]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={tabStyles.activeIndicator}
-                />
+                <View style={tabStyles.activeIndicator} />
               )}
             </TouchableOpacity>
           ))}
-          {/* Notification Bell Icon */}
-          <TouchableOpacity
-            onPress={() => router.push('/(user)/notifications')}
-            style={tabStyles.notificationButton}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Icon name="bell" size={22} color={Colors.light.primaryGreen} />
-            {unreadNotificationCount > 0 && (
-              <View style={tabStyles.notificationBadge}>
-                <Text style={tabStyles.notificationBadgeText}>
-                  {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
         </View>
       </LinearGradient>
 
@@ -1719,54 +1716,69 @@ const communityStyles = StyleSheet.create({
 const tabStyles = StyleSheet.create({
   gradientHeader: {
     width: '100%',
-    paddingBottom: 12,
-    shadowColor: Colors.light.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 3,
+    paddingBottom: 16,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 8,
   },
-  tabRow: {
+  titleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: 20,
+    marginBottom: 8,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  tabRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: 8,
   },
   tabButton: {
     position: 'relative',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
   tabButtonText: {
-    fontSize: 18,
-    color: Colors.light.secondaryGreen,
-    fontWeight: '500',
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.7)',
+    fontWeight: '600',
   },
   tabButtonTextActive: {
-    color: Colors.light.primaryGreen,
+    color: '#fff',
     fontWeight: '700',
   },
   activeIndicator: {
     position: 'absolute',
-    bottom: -8,
-    left: 0,
-    right: 0,
+    bottom: -4,
+    left: 4,
+    right: 4,
     height: 3,
-    borderTopLeftRadius: 2,
-    borderTopRightRadius: 2,
+    borderRadius: 2,
+    backgroundColor: '#fff',
   },
   notificationButton: {
     position: 'relative',
     padding: 8,
-    marginLeft: 8,
+    marginLeft: 4,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 20,
   },
   notificationBadge: {
     position: 'absolute',
-    top: 4,
-    right: 4,
+    top: 2,
+    right: 2,
     backgroundColor: '#ef4444',
     borderRadius: 10,
     minWidth: 18,

@@ -1,7 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { useFocusEffect } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Dimensions, Image, Modal, PanResponder, ScrollView, StatusBar, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Dimensions, Image, Modal, ScrollView, StatusBar, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { apiGetAllAnimals } from '../../api/animal';
 import { apiGetMySightings } from '../../api/sighting';
@@ -9,6 +9,70 @@ import { apiGetUserDiscoveries } from '../../api/userDiscovery';
 import { modalStyles, styles } from '../../constants/animalIndexStyle';
 import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
+
+// Animated wrapper for animal cards with staggered entrance
+const AnimatedAnimalCard = ({ children, index, style, onPress, activeOpacity }: { 
+  children: React.ReactNode; 
+  index: number; 
+  style: any;
+  onPress?: () => void;
+  activeOpacity?: number;
+}) => {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.8)).current;
+  const pressScale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const delay = Math.min(index * 30, 300); // Cap delay at 300ms
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        delay,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        tension: 50,
+        friction: 7,
+        delay,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
+
+  const handlePressIn = () => {
+    Animated.spring(pressScale, {
+      toValue: 0.95,
+      useNativeDriver: true,
+      tension: 100,
+      friction: 5,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(pressScale, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 100,
+      friction: 5,
+    }).start();
+  };
+
+  return (
+    <Animated.View style={{ opacity: fadeAnim, transform: [{ scale: Animated.multiply(scaleAnim, pressScale) }] }}>
+      <TouchableOpacity
+        style={style}
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        activeOpacity={activeOpacity}
+      >
+        {children}
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
@@ -129,41 +193,23 @@ interface Sighting {
 
 export default function AnimalDexScreen() {
   const { user, token } = useAuth();
+  const router = useRouter();
   const [search, setSearch] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [userSightings, setUserSightings] = useState<any[]>([]);
   const [userDiscoveries, setUserDiscoveries] = useState<any[]>([]);
   const [mapped, setMapped] = useState<Record<string, EntryMeta>>({});
-  const [badgeModalVisible, setBadgeModalVisible] = useState(false);
-  const [selectedAnimal, setSelectedAnimal] = useState<Animal | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const [reopenSheetAfterPreview, setReopenSheetAfterPreview] = useState(false);
   const [unknownGroupModalVisible, setUnknownGroupModalVisible] = useState(false);
   const [reopenUnknownAfterPreview, setReopenUnknownAfterPreview] = useState(false);
   const [selectedUnknownKey, setSelectedUnknownKey] = useState<string | null>(null);
   const [selectedTab, setSelectedTab] = useState('');
   const [viewMode, setViewMode] = useState<'KNOWN' | 'UNKNOWN'>('KNOWN');
-  const [infoLoading, setInfoLoading] = useState(false);
   const [animals, setAnimals] = useState<Animal[]>([]);
   const [loading, setLoading] = useState(true);
   const [animalCategories, setAnimalCategories] = useState<AnimalCategory[]>([]);
   // Admin-only linking moved to Admin page
-
-  const handlePanResponder = React.useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        // Only respond to vertical swipes starting on the handle
-        return Math.abs(gestureState.dy) > 10 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        // If swipe down is significant, close modal
-        if (gestureState.dy > 50) {
-          setBadgeModalVisible(false);
-        }
-      },
-    })
-  ).current;
 
   // Fetch animals from database on mount and when the tab gains focus
   const fetchData = useCallback(async () => {
@@ -306,12 +352,12 @@ export default function AnimalDexScreen() {
 
 
   const getAnimalImage = (animal: Animal) => {
-    // Use the first image URL if available, otherwise fallback to Unsplash
-    // Reduced to 96px for faster loading in 3-column grid
+    // Use the first image URL if available, otherwise return null to show icon placeholder
     if (animal.imageUrls && animal.imageUrls.length > 0) {
       return toTinyPreview(animal.imageUrls[0], 96) || animal.imageUrls[0];
     }
-    return `https://source.unsplash.com/56x56/?${encodeURIComponent(animal.commonName)},animal`;
+    // Return null to indicate no image - will show category icon instead
+    return null;
   };
 
   const lowerToCanonical = useMemo(() => {
@@ -441,59 +487,33 @@ export default function AnimalDexScreen() {
     };
   }, [selectedTab, search, animalCategories]);
 
-  const openBadgeModal = async (animal: Animal) => {
-    setSelectedAnimal(animal);
-    setInfoLoading(true);
-
-    // Since we're now using database animals, we can show the database info
-    // Instead of external API, we'll show the animal's database information
-    setInfoLoading(false);
-    setBadgeModalVisible(true);
-  };
-
-  const selectedAnimalSightings = useMemo(() => {
-    if (!selectedAnimal) return [] as Sighting[];
-    const list = (userSightings as Sighting[]).filter(s => String(s.animalId || '') === selectedAnimal._id);
-    // Fallback: legacy match by name if animalId missing
-    if (list.length === 0) {
-      const name = selectedAnimal.commonName.toLowerCase();
-      const legacy = (userSightings as any[]).filter(s => s?.identification?.commonName?.toLowerCase?.() === name);
-      return legacy.sort((a, b) => {
-        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return tb - ta;
-      });
-    }
-    return list.sort((a, b) => {
-      const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return tb - ta;
+  const navigateToAnimalDetail = (animal: Animal) => {
+    const discoveryInfo = mapped[animal.commonName] || { spotted: false };
+    router.push({
+      pathname: '/(user)/animal_detail',
+      params: {
+        animal: JSON.stringify(animal),
+        discoveryInfo: JSON.stringify(discoveryInfo),
+      },
     });
-  }, [selectedAnimal, userSightings]);
+  };
 
   // Helpers to show/hide the full-screen preview without stacking Modals
   const openPreview = useCallback((uri: string) => {
-    // Close any open sheet/modal while previewing to avoid nested Modals issues
-    if (badgeModalVisible) {
-      setReopenSheetAfterPreview(true);
-      setBadgeModalVisible(false);
-    } else if (unknownGroupModalVisible) {
+    if (unknownGroupModalVisible) {
       setReopenUnknownAfterPreview(true);
       setUnknownGroupModalVisible(false);
     }
     setPreviewImage(uri);
-  }, [badgeModalVisible, unknownGroupModalVisible]);
+  }, [unknownGroupModalVisible]);
 
   const closePreview = useCallback(() => {
     setPreviewImage(null);
     if (reopenUnknownAfterPreview) {
       setReopenUnknownAfterPreview(false);
       setUnknownGroupModalVisible(true);
-    } else if (reopenSheetAfterPreview) {
-      setReopenSheetAfterPreview(false);
-      setBadgeModalVisible(true);
     }
-  }, [reopenSheetAfterPreview, reopenUnknownAfterPreview]);
+  }, [reopenUnknownAfterPreview]);
 
   const unknownGroups = useMemo(() => {
     const list = (userSightings as Sighting[]).filter(s => !s.animalId);
@@ -729,7 +749,7 @@ export default function AnimalDexScreen() {
     </ScrollView>
   );
 
-  const renderAnimalSquare = (animal: Animal) => {
+  const renderAnimalSquare = (animal: Animal, index: number) => {
     const meta = mapped[animal.commonName] || {
       name: animal.commonName,
       spotted: false,
@@ -739,40 +759,30 @@ export default function AnimalDexScreen() {
     } as EntryMeta;
     const spotted = meta.spotted;
     const userThumb = userThumbByAnimalId[animal._id];
-    const displayImage = userThumb || getAnimalImage(animal);
+    const displayImage = spotted ? (userThumb || getAnimalImage(animal)) : null;
     const animalIconSource = getAnimalIcon(animal.iconPath);
     
-    console.log(`🎴 Rendering ${animal.commonName}:`, {
-      spotted,
-      animalId: animal._id,
-      hasUserThumb: !!userThumb,
-      userThumb: userThumb ? userThumb.substring(0, 80) : 'none',
-      displayImage: displayImage.substring(0, 80),
-      willShowUserPhoto: spotted && !!userThumb
-    });
-    
     return (
-      <TouchableOpacity
+      <AnimatedAnimalCard
         key={animal._id}
+        index={index}
         style={[styles.square, spotted ? styles.spottedSquare : styles.lockedSquare]}
-        onPress={() => openBadgeModal(animal)}
-        activeOpacity={spotted ? 0.7 : 1}
+        onPress={() => navigateToAnimalDetail(animal)}
+        activeOpacity={0.8}
       >
-        {spotted ? (
+        {spotted && displayImage ? (
           <Image 
-            source={{ uri: displayImage }} 
+            source={{ uri: displayImage, cache: 'force-cache' }} 
             style={styles.animalImage}
             resizeMode="cover"
-            fadeDuration={100}
-            onError={(e) => console.error(`❌ Image load error for ${animal.commonName}:`, e.nativeEvent.error)}
-            onLoad={() => console.log(`✅ Image loaded for ${animal.commonName}`)}
+            fadeDuration={0}
           />
         ) : (
           <View style={styles.silhouette}>
             {animalIconSource ? (
-              <Image source={animalIconSource} style={{ width: 48, height: 48 }} />
+              <Image source={animalIconSource} style={{ width: 40, height: 40, opacity: 0.7 }} />
             ) : (
-              <Icon name="question" size={24} color={Colors.light.darkNeutral} />
+              <Icon name="question" size={22} color={Colors.light.darkNeutral} style={{ opacity: 0.5 }} />
             )}
           </View>
         )}
@@ -781,9 +791,8 @@ export default function AnimalDexScreen() {
             <Text style={styles.spottedChipText}>Spotted</Text>
           </View>
         )}
-        <Text style={styles.animalName}>{animal.commonName}</Text>
-        {/* Removed verification badges from grid view - they only show in modal now */}
-      </TouchableOpacity>
+        <Text style={styles.animalName} numberOfLines={2}>{animal.commonName}</Text>
+      </AnimatedAnimalCard>
     );
   };
 
@@ -845,7 +854,7 @@ export default function AnimalDexScreen() {
         <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
           <View style={styles.grid}>
             {currentSection.data.length > 0
-              ? currentSection.data.map(renderAnimalSquare)
+              ? currentSection.data.map((animal, index) => renderAnimalSquare(animal, index))
               : <Text style={styles.empty}>No animals match that search.</Text>
             }
           </View>
@@ -853,159 +862,6 @@ export default function AnimalDexScreen() {
       ) : (
         renderUnknownList()
       )}
-      <Modal
-        visible={badgeModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setBadgeModalVisible(false)}
-      >
-        <View style={modalStyles.backdrop}>
-          <View style={modalStyles.sheet}>
-            <TouchableOpacity style={modalStyles.handle} onPress={() => setBadgeModalVisible(false)} {...handlePanResponder.panHandlers} />
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-              <Text style={modalStyles.sheetTitle}>{selectedAnimal?.commonName}</Text>
-              <TouchableOpacity onPress={() => setBadgeModalVisible(false)} style={{ marginLeft: 'auto', padding: 6 }}>
-                <Icon name="times" size={18} color="#aaa" />
-              </TouchableOpacity>
-            </View>
-            {infoLoading ? (
-              <Text style={{ color: '#666', textAlign: 'center', marginBottom: 10 }}>Loading info...</Text>
-            ) : selectedAnimal ? (
-              <>
-                <ScrollView style={{ flexGrow: 0, marginBottom: 10 }} contentContainerStyle={{ paddingBottom: 12 }}>
-                  <View style={styles.swipeInfoContainer}>
-                    <Text style={styles.swipeInfoTitle}>{selectedAnimal.commonName}</Text>
-
-                    {/* Discovery Status */}
-                    {selectedAnimal && mapped[selectedAnimal.commonName]?.spotted && (
-                      <View style={{ marginBottom: 12, padding: 10, backgroundColor: '#e8f5e8', borderRadius: 8 }}>
-                        <Text style={[styles.swipeInfoLabel, { color: '#2d5a2d', marginBottom: 4 }]}>
-                          🎉 Discovered!
-                        </Text>
-                        {mapped[selectedAnimal.commonName]?.discoveredAt && (
-                          <Text style={{ color: '#2d5a2d', fontSize: 12, marginBottom: 4 }}>
-                            Discovered on: {new Date(mapped[selectedAnimal.commonName].discoveredAt!).toLocaleDateString()}
-                          </Text>
-                        )}
-
-                        {/* Verification Badges */}
-                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
-                          {mapped[selectedAnimal.commonName]?.verifiedByAI && (
-                            <View style={{
-                              backgroundColor: '#4CAF50', // Green for AI
-                              paddingHorizontal: 8,
-                              paddingVertical: 2,
-                              borderRadius: 12
-                            }}>
-                              <Text style={{ color: '#fff', fontSize: 10, fontWeight: '500' }}>
-                                AI Verified
-                              </Text>
-                            </View>
-                          )}
-                          {mapped[selectedAnimal.commonName]?.verifiedByUser && (
-                            <View style={{
-                              backgroundColor: '#FFC107', // Yellow for User
-                              paddingHorizontal: 8,
-                              paddingVertical: 2,
-                              borderRadius: 12
-                            }}>
-                              <Text style={{ color: '#fff', fontSize: 10, fontWeight: '500' }}>
-                                User Verified
-                              </Text>
-                            </View>
-                          )}
-                          {mapped[selectedAnimal.commonName]?.verifiedByCommunity && (
-                            <View style={{
-                              backgroundColor: '#2196F3', // Blue for Community
-                              paddingHorizontal: 8,
-                              paddingVertical: 2,
-                              borderRadius: 12
-                            }}>
-                              <Text style={{ color: '#fff', fontSize: 10, fontWeight: '500' }}>
-                                Community Verified
-                              </Text>
-                            </View>
-                          )}
-                        </View>
-                      </View>
-                    )}
-
-                    {selectedAnimal.scientificName && (
-                      <Text style={styles.swipeInfoText}>
-                        <Text style={styles.swipeInfoLabel}>Scientific Name: </Text>
-                        {selectedAnimal.scientificName}
-                      </Text>
-                    )}
-
-                    {selectedAnimal.description && (
-                      <Text style={styles.swipeInfoText}>
-                        <Text style={styles.swipeInfoLabel}>Description: </Text>
-                        {selectedAnimal.description}
-                      </Text>
-                    )}
-
-                    {selectedAnimal.category && (
-                      <Text style={styles.swipeInfoText}>
-                        <Text style={styles.swipeInfoLabel}>Category: </Text>
-                        {selectedAnimal.category}
-                      </Text>
-                    )}
-
-                    {selectedAnimal.rarityLevel && (
-                      <Text style={styles.swipeInfoText}>
-                        <Text style={styles.swipeInfoLabel}>Rarity: </Text>
-                        {selectedAnimal.rarityLevel}
-                      </Text>
-                    )}
-
-                    {selectedAnimal.conservationStatus && (
-                      <Text style={styles.swipeInfoText}>
-                        <Text style={styles.swipeInfoLabel}>Conservation Status: </Text>
-                        {selectedAnimal.conservationStatus}
-                      </Text>
-                    )}
-
-                    {/* User Sightings Gallery */}
-                    {selectedAnimalSightings.length > 0 && (
-                      <View style={{ marginTop: 14 }}>
-                        <Text style={[styles.swipeInfoLabel, { marginBottom: 8 }]}>Your Sightings</Text>
-                        {/* Latest large preview */}
-                        {(() => {
-                          const first = selectedAnimalSightings[0];
-                          const raw = pickImageUrl(first.mediaUrls);
-                          const hero = toTinyPreview(raw, 512) || raw;
-                          return hero ? (
-                            <TouchableOpacity onPress={() => raw && openPreview(raw)}>
-                              <Image source={{ uri: hero }} style={{ width: '100%', height: 220, borderRadius: 10 }} />
-                            </TouchableOpacity>
-                          ) : null;
-                        })()}
-                        {/* Horizontal thumbnails */}
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
-                          <View style={{ flexDirection: 'row', gap: 8 }}>
-                            {selectedAnimalSightings.slice(0, 12).map(s => {
-                              const raw = pickImageUrl(s.mediaUrls);
-                              const thumb = toTinyPreview(raw, 96) || raw;
-                              if (!thumb) return null;
-                              return (
-                                <TouchableOpacity key={s._id} onPress={() => raw && openPreview(raw)}>
-                                  <Image source={{ uri: thumb }} style={{ width: 96, height: 96, borderRadius: 8 }} />
-                                </TouchableOpacity>
-                              );
-                            })}
-                          </View>
-                        </ScrollView>
-                      </View>
-                    )}
-                  </View>
-                </ScrollView>
-              </>
-            ) : (
-              <Text style={{ color: '#666', textAlign: 'center', marginBottom: 10 }}>No info found.</Text>
-            )}
-          </View>
-        </View>
-      </Modal>
 
       {/* Unknown Group Modal */}
       <Modal

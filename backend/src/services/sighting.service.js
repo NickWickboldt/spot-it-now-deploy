@@ -627,7 +627,16 @@ const getSightingsByUser = async (userId) => {
 
 // Internal use for owner/admin: includes private posts
 const getSightingsByUserAll = async (userId) => {
-  return await Sighting.find({ user: userId }).sort({ createdAt: -1 });
+  const sightings = await Sighting.find({ user: userId })
+    .populate('animalId', 'commonName iconPath')
+    .sort({ createdAt: -1 })
+    .lean();
+  
+  // Map to include animalName for frontend species count
+  return sightings.map((doc) => ({
+    ...doc,
+    animalName: doc.animalId?.commonName || doc.aiIdentification || null,
+  }));
 };
 
 /**

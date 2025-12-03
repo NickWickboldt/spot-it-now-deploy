@@ -1,7 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { Tabs } from 'expo-router';
-import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useRef } from 'react';
+import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { Colors } from '../../constants/Colors';
 import { getTakePictureRef, subscribeCaptureState, type CaptureState } from '../../utils/captureRegistry';
@@ -14,87 +14,139 @@ const TAB_ICONS = [
   { name: 'profile', icon: 'user', label: 'Profile' },
 ];
 
+// Animated Tab Button Component
+const AnimatedTabButton = ({ 
+  tab, 
+  focused, 
+  onPress, 
+  capState 
+}: { 
+  tab: typeof TAB_ICONS[0]; 
+  focused: boolean; 
+  onPress: () => void;
+  capState?: CaptureState;
+}) => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.9,
+      useNativeDriver: true,
+      tension: 100,
+      friction: 5,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 100,
+      friction: 5,
+    }).start();
+  };
+
+  if (tab.isCenter) {
+    return (
+      <TouchableOpacity
+        key={tab.name}
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        activeOpacity={1}
+        style={styles.tabItem}
+      >
+        <Animated.View style={[styles.iconWrapper, { transform: [{ scale: scaleAnim }] }]}>
+          <LinearGradient
+            colors={[Colors.light.primaryGreen, Colors.light.secondaryGreen]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.postGradient}
+          >
+            {capState?.isVideoMode ? (
+              <Icon name={capState.isRecording ? 'stop' : 'dot-circle-o'} size={24} color={capState.isRecording ? '#ff4040' : Colors.light.softBeige} />
+            ) : (
+              <Icon name={tab.icon} size={24} color={Colors.light.softBeige} />
+            )}
+          </LinearGradient>
+        </Animated.View>
+        <Text style={[styles.tabLabel, { color: focused ? Colors.light.primaryGreen : Colors.light.darkNeutral }]}>
+          {tab.label}
+        </Text>
+      </TouchableOpacity>
+    );
+  }
+
+  return (
+    <TouchableOpacity
+      key={tab.name}
+      onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      style={styles.tabItem}
+      activeOpacity={1}
+    >
+      <Animated.View style={[styles.iconWrapper, { transform: [{ scale: scaleAnim }] }]}>
+        {focused && (
+          <LinearGradient
+            colors={[Colors.light.background, Colors.light.shadow]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.activeBackground}
+          />
+        )}
+        <Icon
+          name={tab.icon}
+          size={24}
+          color={focused ? Colors.light.primaryGreen : Colors.light.secondaryGreen}
+        />
+      </Animated.View>
+      <Text
+        style={[
+          styles.tabLabel,
+          { color: focused ? Colors.light.primaryGreen : Colors.light.secondaryGreen }
+        ]}
+      >
+        {tab.label}
+      </Text>
+    </TouchableOpacity>
+  );
+};
+
 function CustomTabBar({ state, navigation }) {
   const [capState, setCapState] = React.useState<CaptureState>({ isVideoMode: false, isRecording: false });
   React.useEffect(() => {
     const unsub = subscribeCaptureState(setCapState);
     return unsub;
   }, []);
+  
   return (
     <View style={styles.tabBarWrapper}>
       <View style={styles.tabRow}>
         {TAB_ICONS.map((tab, idx) => {
           const focused = state.index === idx;
 
-          if (tab.isCenter) {
-            const handlePress = () => {
+          const handlePress = () => {
+            if (tab.isCenter) {
               const cb = getTakePictureRef();
               if (focused && typeof cb === 'function') {
                 cb();
               } else {
                 navigation.navigate(tab.name);
               }
-            };
-
-            return (
-              <TouchableOpacity
-                key={tab.name}
-                onPress={handlePress}
-                activeOpacity={0.7}
-                style={styles.tabItem}
-              >
-                <View style={styles.iconWrapper}>
-                  <LinearGradient
-                    colors={[Colors.light.primaryGreen, Colors.light.secondaryGreen]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.postGradient}
-                  >
-                    {capState.isVideoMode ? (
-                      <Icon name={capState.isRecording ? 'stop' : 'dot-circle-o'} size={24} color={capState.isRecording ? '#ff4040' : Colors.light.softBeige} />
-                    ) : (
-                      <Icon name={tab.icon} size={24} color={Colors.light.softBeige} />
-                    )}
-                  </LinearGradient>
-                </View>
-                <Text style={[styles.tabLabel, { color: focused ? Colors.light.primaryGreen : Colors.light.darkNeutral }]}>
-                  {tab.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          }
+            } else {
+              navigation.navigate(tab.name);
+            }
+          };
 
           return (
-            <TouchableOpacity
+            <AnimatedTabButton
               key={tab.name}
-              onPress={() => navigation.navigate(tab.name)}
-              style={styles.tabItem}
-              activeOpacity={0.7}
-            >
-              <View style={styles.iconWrapper}>
-                {focused && (
-                  <LinearGradient
-                    colors={[Colors.light.background, Colors.light.shadow]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.activeBackground}
-                  />
-                )}
-                <Icon
-                  name={tab.icon}
-                  size={24}
-                  color={focused ? Colors.light.primaryGreen : Colors.light.secondaryGreen}
-                />
-              </View>
-              <Text
-                style={[
-                  styles.tabLabel,
-                  { color: focused ? Colors.light.primaryGreen : Colors.light.secondaryGreen }
-                ]}
-              >
-                {tab.label}
-              </Text>
-            </TouchableOpacity>
+              tab={tab}
+              focused={focused}
+              onPress={handlePress}
+              capState={tab.isCenter ? capState : undefined}
+            />
           );
         })}
       </View>

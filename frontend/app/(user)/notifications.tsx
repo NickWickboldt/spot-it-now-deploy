@@ -1,7 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, Platform, Pressable, RefreshControl, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { apiDeleteNotification, apiGetMyNotifications, apiMarkAllNotificationsAsRead, apiMarkNotificationAsRead, DbNotification } from '../../api/notification';
 import { apiUpdateUserDetails } from '../../api/user';
@@ -196,18 +196,35 @@ export default function NotificationsScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
+      <StatusBar barStyle="light-content" />
+      
+      {/* Hero Header */}
       <LinearGradient
-        colors={[Colors.light.background, Colors.light.softBeige]}
+        colors={['#40743dff', '#5a9a55', '#7FA37C']}
         start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
+        end={{ x: 1, y: 1 }}
         style={styles.header}
       >
-        <Pressable onPress={() => router.back()} style={styles.backButton}>
-          <Icon name="arrow-left" size={24} color={Colors.light.primaryGreen} />
-        </Pressable>
-        <Text style={styles.headerTitle}>Notifications</Text>
-        <View style={styles.headerRight} />
+        <View style={styles.topBar}>
+          <Pressable onPress={() => router.back()} style={styles.backButton}>
+            <Icon name="chevron-left" size={18} color="#fff" />
+          </Pressable>
+          <Text style={styles.headerTitle}>Notifications</Text>
+          {unreadCount > 0 ? (
+            <Pressable onPress={handleMarkAllAsRead} style={styles.markAllHeaderButton}>
+              <Icon name="check-double" size={16} color="#fff" />
+            </Pressable>
+          ) : (
+            <View style={styles.headerRight} />
+          )}
+        </View>
+        
+        {unreadCount > 0 && (
+          <View style={styles.unreadBadge}>
+            <Icon name="bell" size={14} color="#fff" />
+            <Text style={styles.unreadBadgeText}>{unreadCount} unread</Text>
+          </View>
+        )}
       </LinearGradient>
 
       {loading ? (
@@ -280,32 +297,59 @@ export default function NotificationsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.light.background,
+    backgroundColor: Colors.light.softBeige,
   },
   header: {
+    paddingTop: Platform.OS === 'ios' ? 60 : (StatusBar.currentHeight || 0) + 20,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+  },
+  topBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 60,
-    paddingBottom: 16,
-    shadowColor: Colors.light.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 3,
+    justifyContent: 'space-between',
   },
   backButton: {
-    padding: 8,
-    marginRight: 8,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
-    flex: 1,
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '700',
-    color: Colors.light.mainText,
+    color: '#fff',
   },
   headerRight: {
     width: 40,
+  },
+  markAllHeaderButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  unreadBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    alignSelf: 'flex-start',
+    marginTop: 12,
+    gap: 6,
+  },
+  unreadBadgeText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#fff',
   },
   settingsSection: {
     backgroundColor: '#fff',
