@@ -11,6 +11,7 @@ export interface ChallengeDTO {
   radiusMeters: number;
   center: { type: 'Point'; coordinates: [number, number] };
   distanceMeters: number;
+  completed?: boolean;
 }
 
 export const apiGetTodayChallenges = async (lat: number, lng: number): Promise<{ data: ChallengeDTO[] }> => {

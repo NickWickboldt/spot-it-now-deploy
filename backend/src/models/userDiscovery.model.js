@@ -95,7 +95,8 @@ userDiscoverySchema.virtual('completionPercentage').get(function() {
 
 // Method to check if user has discovered an animal
 userDiscoverySchema.methods.hasDiscovered = function(animalId) {
-  return this.discoveredAnimals.includes(animalId);
+  const animalIdStr = animalId.toString();
+  return this.discoveredAnimals.some(id => id.toString() === animalIdStr);
 };
 
 // Method to add a new discovery

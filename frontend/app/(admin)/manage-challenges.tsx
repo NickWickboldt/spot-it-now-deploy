@@ -1,4 +1,7 @@
+import { FontAwesome5 } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
+import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
@@ -10,6 +13,7 @@ import { useAuth } from '../../context/AuthContext';
 // Minimal admin page to create and list challenges manually.
 export default function ManageChallenges(): React.JSX.Element {
   const { token } = useAuth();
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [animals, setAnimals] = useState<any[]>([]);
   const [list, setList] = useState<any[]>([]);
@@ -135,21 +139,42 @@ export default function ManageChallenges(): React.JSX.Element {
 
   if (loading) {
     return (
-      <View style={styles.centered}><ActivityIndicator color={Colors.light.primaryGreen} /></View>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={Colors.light.primaryGreen} />
+        <Text style={styles.loadingText}>Loading challenges...</Text>
+      </View>
     );
   }
 
   return (
     <View style={styles.container}>
+      {/* Gradient Header */}
+      <LinearGradient
+        colors={[Colors.light.primaryGreen, Colors.light.secondaryGreen]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.header}
+      >
+        <Pressable style={styles.backButton} onPress={() => router.back()}>
+          <FontAwesome5 name="arrow-left" size={20} color="#fff" />
+        </Pressable>
+        <View style={styles.headerContent}>
+          <FontAwesome5 name="trophy" size={32} color="#fff" />
+          <Text style={styles.headerTitle}>Manage Challenges</Text>
+          <Text style={styles.headerSubtitle}>{list.length} active challenges</Text>
+        </View>
+      </LinearGradient>
+
       <FlatList
         data={list}
         keyExtractor={(c: any) => c._id}
         ListHeaderComponent={
           <View>
-            <Text style={styles.h1}>Manage Challenges</Text>
             {/* Preset Card */}
             <View style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>Daily Challenge Preset</Text>
+              <Text style={styles.sectionTitle}>
+                <FontAwesome5 name="calendar-day" size={16} color={Colors.light.primaryGreen} /> Daily Challenge Preset
+              </Text>
               <Text style={styles.sectionSub}>Pick a city, radius, and animals. Defaults: 1 day, 50 mi radius.</Text>
             </View>
 
@@ -255,61 +280,120 @@ export default function ManageChallenges(): React.JSX.Element {
 
             {/* Step 4: Create */}
             <Pressable style={styles.createBtn} onPress={() => createChallenge()}>
+              <FontAwesome5 name="plus-circle" size={18} color="#fff" style={{ marginRight: 8 }} />
               <Text style={styles.createBtnText}>Create Daily Challenge</Text>
             </Pressable>
 
             {/* Existing */}
-            <Text style={[styles.h2, { marginTop: 16 }]}>Existing</Text>
+            <View style={styles.existingHeader}>
+              <FontAwesome5 name="list" size={16} color={Colors.light.primaryGreen} />
+              <Text style={styles.h2}>Existing Challenges</Text>
+            </View>
           </View>
         }
         renderItem={({ item }) => (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>{item.title}</Text>
+            <View style={styles.cardHeader}>
+              <FontAwesome5 name="trophy" size={16} color={Colors.light.primaryGreen} />
+              <Text style={styles.cardTitle}>{item.title || 'Daily Challenge'}</Text>
+            </View>
             {item.description ? <Text style={styles.cardDesc}>{item.description}</Text> : null}
-            <Text style={styles.cardMeta}>From {new Date(item.activeFrom).toLocaleString()} to {new Date(item.activeTo).toLocaleString()}</Text>
-            <Text style={styles.cardMeta}>Radius {(item.radiusMeters/1000).toFixed(2)} km • Center [{item.center?.coordinates?.[1]?.toFixed(4)}, {item.center?.coordinates?.[0]?.toFixed(4)}]</Text>
-            <Text style={styles.cardMeta}>Target {item.targetCount ?? item.animals?.length} of {item.animals?.length} animals</Text>
+            <View style={styles.cardMetaRow}>
+              <FontAwesome5 name="clock" size={12} color="#999" />
+              <Text style={styles.cardMeta}>{new Date(item.activeFrom).toLocaleDateString()} - {new Date(item.activeTo).toLocaleDateString()}</Text>
+            </View>
+            <View style={styles.cardMetaRow}>
+              <FontAwesome5 name="map-marker-alt" size={12} color="#999" />
+              <Text style={styles.cardMeta}>{(item.radiusMeters/1609.34).toFixed(0)} mi radius • [{item.center?.coordinates?.[1]?.toFixed(2)}, {item.center?.coordinates?.[0]?.toFixed(2)}]</Text>
+            </View>
+            <View style={styles.cardMetaRow}>
+              <FontAwesome5 name="paw" size={12} color="#999" />
+              <Text style={styles.cardMeta}>{item.targetCount ?? item.animals?.length} of {item.animals?.length} animals</Text>
+            </View>
           </View>
         )}
-        contentContainerStyle={{ padding: 16, paddingBottom: 28 }}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <FontAwesome5 name="trophy" size={48} color="#ccc" />
+            <Text style={styles.emptyText}>No challenges yet</Text>
+          </View>
+        }
+        contentContainerStyle={styles.listContent}
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.light.background, padding: 16 },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  h1: { fontSize: 22, fontWeight: '700', color: Colors.light.primaryGreen, marginBottom: 10 },
-  h2: { fontSize: 16, fontWeight: '700', color: Colors.light.mainText, marginTop: 14, marginBottom: 8 },
-  sectionCard: { backgroundColor: '#fff', borderRadius: 12, padding: 12, borderColor: Colors.light.shadow, borderWidth: 1, marginBottom: 12 },
+  container: { flex: 1, backgroundColor: Colors.light.background },
+  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.light.background },
+  loadingText: { marginTop: 12, fontSize: 16, color: '#666' },
+  header: {
+    paddingTop: 50,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+  },
+  backButton: {
+    position: 'absolute',
+    top: 50,
+    left: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerContent: {
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginTop: 8,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 4,
+  },
+  listContent: { padding: 16, paddingBottom: 28 },
+  h2: { fontSize: 18, fontWeight: '700', color: Colors.light.primaryGreen, marginLeft: 8 },
+  existingHeader: { flexDirection: 'row', alignItems: 'center', marginTop: 24, marginBottom: 8 },
+  sectionCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2, marginBottom: 12 },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: Colors.light.mainText },
-  sectionSub: { marginTop: 4, color: Colors.light.darkNeutral, fontSize: 12 },
-  stepLabel: { fontSize: 14, fontWeight: '700', color: Colors.light.primaryGreen, marginBottom: 8 },
+  sectionSub: { marginTop: 4, color: '#666', fontSize: 13 },
+  stepLabel: { fontSize: 14, fontWeight: '700', color: Colors.light.primaryGreen, marginBottom: 10 },
   formRow: { marginBottom: 8 },
-  label: { fontSize: 12, color: Colors.light.darkNeutral, marginBottom: 4 },
-  input: { backgroundColor: '#fff', borderColor: Colors.light.shadow, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 },
-  search: { backgroundColor: '#fff', borderColor: Colors.light.shadow, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, marginBottom: 8 },
-  smallBtn: { alignSelf: 'flex-start', backgroundColor: Colors.light.primaryGreen, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
-  smallBtnText: { color: '#fff', fontWeight: '700' },
-  cityItem: { padding: 10, borderBottomColor: '#eee', borderBottomWidth: 1 },
-  cityItemSelected: { backgroundColor: '#eefaf2' },
-  cityText: { color: Colors.light.mainText },
-  cityHint: { color: Colors.light.darkNeutral, fontSize: 12 },
-  selectionMeta: { marginTop: 6, color: Colors.light.darkNeutral, fontSize: 12 },
+  label: { fontSize: 12, color: '#666', marginBottom: 4 },
+  input: { backgroundColor: '#f8f8f8', borderColor: '#e0e0e0', borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 },
+  search: { backgroundColor: '#f8f8f8', borderColor: '#e0e0e0', borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 8 },
+  smallBtn: { alignSelf: 'flex-start', backgroundColor: Colors.light.primaryGreen, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
+  smallBtnText: { color: '#fff', fontWeight: '600' },
+  cityItem: { padding: 12, borderBottomColor: '#eee', borderBottomWidth: 1 },
+  cityItemSelected: { backgroundColor: Colors.light.primaryGreen + '15' },
+  cityText: { color: Colors.light.mainText, fontWeight: '500' },
+  cityHint: { color: '#999', fontSize: 12 },
+  selectionMeta: { marginTop: 8, color: '#666', fontSize: 12, fontStyle: 'italic' },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  chipsRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' as any },
-  chip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: Colors.light.shadow, backgroundColor: '#fff' },
-  chipSelected: { backgroundColor: Colors.light.primaryGreen },
-  chipText: { color: Colors.light.mainText, fontSize: 12 },
-  chipTextSelected: { color: '#fff', fontWeight: '700' },
-  countInput: { width: 44, height: 28, backgroundColor: '#fff', borderRadius: 6, borderWidth: 1, borderColor: Colors.light.background, textAlign: 'center', color: Colors.light.mainText },
-  animalItem: { flexDirection: 'row', alignItems: 'center', padding: 10, borderBottomColor: '#eee', borderBottomWidth: 1 },
-  animalName: { marginLeft: 10, color: Colors.light.mainText },
-  createBtn: { marginTop: 12, backgroundColor: Colors.light.primaryGreen, borderRadius: 8, paddingVertical: 12, alignItems: 'center' },
-  createBtnText: { color: '#fff', fontWeight: '700' },
-  card: { backgroundColor: '#fff', borderRadius: 12, padding: 12, marginTop: 12, borderColor: Colors.light.shadow, borderWidth: 1 },
-  cardTitle: { fontSize: 16, fontWeight: '700', color: Colors.light.mainText },
-  cardDesc: { marginTop: 4, color: Colors.light.darkNeutral },
-  cardMeta: { marginTop: 6, color: Colors.light.darkNeutral, fontSize: 12 },
+  chipsRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' as any, marginBottom: 12 },
+  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#e0e0e0', backgroundColor: '#fff' },
+  chipSelected: { backgroundColor: Colors.light.primaryGreen, borderColor: Colors.light.primaryGreen },
+  chipText: { color: Colors.light.mainText, fontSize: 13 },
+  chipTextSelected: { color: '#fff', fontWeight: '600' },
+  countInput: { width: 44, height: 28, backgroundColor: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#ddd', textAlign: 'center', color: Colors.light.mainText },
+  animalItem: { flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomColor: '#eee', borderBottomWidth: 1 },
+  animalName: { marginLeft: 12, color: Colors.light.mainText, fontSize: 14 },
+  createBtn: { marginTop: 16, backgroundColor: Colors.light.primaryGreen, borderRadius: 12, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' },
+  createBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  card: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginTop: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  cardTitle: { fontSize: 16, fontWeight: '700', color: Colors.light.mainText, marginLeft: 8 },
+  cardDesc: { marginTop: 4, color: '#666', fontSize: 13 },
+  cardMetaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 6 },
+  cardMeta: { color: '#999', fontSize: 12 },
+  emptyContainer: { alignItems: 'center', paddingVertical: 40 },
+  emptyText: { marginTop: 12, fontSize: 16, color: '#999' },
 });

@@ -184,11 +184,19 @@ interface AnimalCategory {
 
 interface Sighting {
   _id: string;
-  animalId?: string | null;
+  animalId?: string | { _id: string; commonName?: string; iconPath?: string } | null;
   aiIdentification?: string | null;
   confidence?: number | null;
   mediaUrls?: string[];
   createdAt?: string;
+}
+
+// Helper to extract animal ID from potentially populated animalId field
+function getAnimalIdString(animalId: string | { _id: string } | null | undefined): string | null {
+  if (!animalId) return null;
+  if (typeof animalId === 'string') return animalId;
+  if (typeof animalId === 'object' && animalId._id) return animalId._id;
+  return null;
 }
 
 export default function AnimalDexScreen() {
@@ -295,7 +303,7 @@ export default function AnimalDexScreen() {
   const userThumbByAnimalId = useMemo(() => {
     const map: Record<string, string> = {};
     const items = (userSightings as Sighting[])
-      .filter(s => !!s.animalId && Array.isArray(s.mediaUrls) && s.mediaUrls.length > 0);
+      .filter(s => !!getAnimalIdString(s.animalId) && Array.isArray(s.mediaUrls) && s.mediaUrls.length > 0);
 
     console.log('🖼️ Building userThumbByAnimalId map:', {
       totalSightings: userSightings.length,
@@ -311,8 +319,8 @@ export default function AnimalDexScreen() {
     });
 
     items.forEach(s => {
-      const aid = String(s.animalId);
-      if (!map[aid]) {
+      const aid = getAnimalIdString(s.animalId);
+      if (aid && !map[aid]) {
         const raw = pickImageUrl(s.mediaUrls);
         if (raw) {
           const tiny = toTinyPreview(raw, 96) || raw;
@@ -459,7 +467,7 @@ export default function AnimalDexScreen() {
 
     // New: mark as discovered using sighting.animalId (mapping-aware)
     (userSightings || []).forEach(s => {
-      const aId = s.animalId ? String(s.animalId) : '';
+      const aId = getAnimalIdString(s.animalId);
       if (!aId) return;
       const common = idToCommon[aId];
       if (!common || !map[common]) return;
@@ -516,7 +524,7 @@ export default function AnimalDexScreen() {
   }, [reopenUnknownAfterPreview]);
 
   const unknownGroups = useMemo(() => {
-    const list = (userSightings as Sighting[]).filter(s => !s.animalId);
+    const list = (userSightings as Sighting[]).filter(s => !getAnimalIdString(s.animalId));
     const groups: Record<string, Sighting[]> = {};
     list.forEach(s => {
       const key = (s.aiIdentification || 'Unknown identification').trim().toLowerCase();

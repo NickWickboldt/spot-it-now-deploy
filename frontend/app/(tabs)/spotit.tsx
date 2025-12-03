@@ -9,12 +9,14 @@ import { useFocusEffect, useNavigation } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from "react"; // 1. Import useCallback
 import { ActivityIndicator, Alert, Animated, Image, Modal, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { PinchGestureHandler, State } from 'react-native-gesture-handler';
+import { XPResult } from '../../api/experience';
 import { apiCreateSighting } from '../../api/sighting';
 import { isRemoteUrl, uploadToCloudinarySigned } from '../../api/upload';
 import { apiVerifyImage } from '../../api/verification';
 import ConfirmationModal from "../../components/ConfirmationModal";
 import ImageCropModal from '../../components/ImageCropModal';
 import VideoFramePickerModal from '../../components/VideoFramePickerModal';
+import XPGainPopup from '../../components/XPGainPopup';
 import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
 import { setCaptureState, setTakePictureRef } from '../../utils/captureRegistry';
@@ -159,6 +161,10 @@ export default function SpotItScreen() {
   const [verificationWarningMessage, setVerificationWarningMessage] = useState('');
   const [captureMethod, setCaptureMethod] = useState<'CAMERA' | 'UPLOAD'>('CAMERA');
   const [isSubmittingSighting, setIsSubmittingSighting] = useState(false);
+
+  // XP popup state
+  const [showXPPopup, setShowXPPopup] = useState(false);
+  const [xpResult, setXpResult] = useState<XPResult | null>(null);
 
   const resetManualInputs = () => {
     setManualCommonName('');
@@ -918,7 +924,14 @@ const handleOverride = useCallback(async (uri?: string) => {
       captureMethod: captureMethod // Use the tracked capture method (CAMERA or UPLOAD)
     };
 
-    await apiCreateSighting(token, sightingData);
+    const responseData = await apiCreateSighting(token, sightingData);
+    
+    // Show XP popup if XP was awarded
+    if (responseData?.data?.xpResult && responseData.data.xpResult.xpAwarded > 0) {
+      setXpResult(responseData.data.xpResult);
+      setShowXPPopup(true);
+    }
+    
     Alert.alert("Success", "Sighting posted successfully!");
     // Reset states and navigate back
     setShowSightingForm(false);
@@ -1237,6 +1250,16 @@ return (
           setCaptureState({ isVideoMode: false, isRecording: false });
           setPhotoUri(croppedUri);
           await analyzeAndHandle(croppedUri);
+        }}
+      />
+
+      {/* XP Gain Popup */}
+      <XPGainPopup
+        visible={showXPPopup}
+        xpResult={xpResult}
+        onClose={() => {
+          setShowXPPopup(false);
+          setXpResult(null);
         }}
       />
     </View>

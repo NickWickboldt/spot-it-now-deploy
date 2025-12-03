@@ -10,11 +10,21 @@ const createSighting = asyncHandler(async (req, res) => {
   // The user's ID is attached to the request by the verifyJWT middleware
   const userId = req.user._id;
   log.route('sighting-controller', 'Create sighting request', { userId, bodyKeys: Object.keys(req.body || {}) }, userId);
-  const newSighting = await sightingService.createSighting(userId, req.user.username, req.body, );
-  log.info('sighting-controller', 'Create sighting success', { sightingId: newSighting._id }, userId);
+  const result = await sightingService.createSighting(userId, req.user.username, req.body);
+  
+  // Handle both old format (direct sighting) and new format (with xpResult)
+  const sighting = result.sighting || result;
+  const xpResult = result.xpResult || null;
+  
+  log.info('sighting-controller', 'Create sighting success', { 
+    sightingId: sighting._id,
+    xpAwarded: xpResult?.xpAwarded || 0,
+    leveledUp: xpResult?.leveledUp || false,
+  }, userId);
+  
   return res
     .status(201)
-    .json(new ApiResponse(201, newSighting, 'Sighting created successfully'));
+    .json(new ApiResponse(201, { sighting, xpResult }, 'Sighting created successfully'));
 });
 
 /**
@@ -189,9 +199,9 @@ const removeMediaUrlFromSighting = asyncHandler(async (req, res) => {
 });
 
 export {
-  addMediaUrlToSighting, createSighting,
-  deleteSighting, findSightingsNear,
-  // admin
-  getAllSightings, getRecentSightings, getFollowingRecentSightings, getCommunityReviewSighting, submitCommunityVerificationVote, getSightingById, getSightingsByAnimal, getSightingsByUser, getMySightings, removeMediaUrlFromSighting, updateSightingField
+    addMediaUrlToSighting, createSighting,
+    deleteSighting, findSightingsNear,
+    // admin
+    getAllSightings, getCommunityReviewSighting, getFollowingRecentSightings, getMySightings, getRecentSightings, getSightingById, getSightingsByAnimal, getSightingsByUser, removeMediaUrlFromSighting, submitCommunityVerificationVote, updateSightingField
 };
 

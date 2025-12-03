@@ -1,7 +1,8 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Dimensions, Platform, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Dimensions, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { apiGetTodayChallenges, ChallengeDTO } from '../../api/challenge';
 import { ChallengesList } from '../../components/ChallengesList';
@@ -12,6 +13,7 @@ const SCREEN_WIDTH = Dimensions.get('window').width;
 
 export default function ChallengesScreen() {
   const { token } = useAuth();
+  const insets = useSafeAreaInsets();
   const [challenges, setChallenges] = useState<ChallengeDTO[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +47,13 @@ export default function ChallengesScreen() {
     return () => { mounted = false; };
   }, [token]);
 
-  const completedCount = challenges.filter(c => c.completed).length;
+  // Calculate completion - check tasks if completed field not provided
+  const completedCount = challenges.filter(c => 
+    c.completed ?? (
+      Array.isArray(c.tasks) && c.tasks.length > 0 &&
+      c.tasks.every(t => (t.completed ?? 0) >= t.required)
+    )
+  ).length;
   const totalCount = challenges.length;
 
   return (
@@ -57,25 +65,29 @@ export default function ChallengesScreen() {
         colors={['#40743dff', '#5a9a55', '#7FA37C']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={styles.heroHeader}
+        style={[styles.heroHeader, { paddingTop: insets.top + 48 }]}
       >
-        <View style={styles.topBar}>
-          <Text style={styles.heroTitle}>Challenges</Text>
+        {/* Daily Badge */}
+        <View style={styles.dailyBadgeRow}>
           <View style={styles.streakBadge}>
             <Icon name="fire" size={14} color="#FF6B35" />
-            <Text style={styles.streakText}>Daily</Text>
+            <Text style={styles.streakText}>Daily Challenges</Text>
           </View>
         </View>
 
-        <Text style={styles.heroSubtitle}>
-          Complete challenges to earn XP and discover new wildlife!
-        </Text>
+        {/* Title Section */}
+        <View style={styles.titleSection}>
+          <Text style={styles.heroTitle}>Today's Challenges</Text>
+          <Text style={styles.heroSubtitle}>
+            Complete challenges to earn XP and discover new wildlife!
+          </Text>
+        </View>
 
         {/* Stats Row */}
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
             <View style={[styles.statIconCircle, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-              <Icon name="check-circle" size={18} color="#fff" />
+              <Icon name="check-circle" size={20} color="#fff" />
             </View>
             <Text style={styles.statNumber}>{completedCount}</Text>
             <Text style={styles.statLabel}>Completed</Text>
@@ -83,7 +95,7 @@ export default function ChallengesScreen() {
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
             <View style={[styles.statIconCircle, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-              <Icon name="list" size={18} color="#fff" />
+              <Icon name="list" size={20} color="#fff" />
             </View>
             <Text style={styles.statNumber}>{totalCount}</Text>
             <Text style={styles.statLabel}>Available</Text>
@@ -91,7 +103,7 @@ export default function ChallengesScreen() {
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
             <View style={[styles.statIconCircle, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-              <Icon name="star" size={18} color="#FFD700" />
+              <Icon name="star" size={20} color="#FFD700" />
             </View>
             <Text style={styles.statNumber}>{Math.round((completedCount / Math.max(totalCount, 1)) * 100)}%</Text>
             <Text style={styles.statLabel}>Progress</Text>
@@ -123,49 +135,52 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.light.softBeige,
   },
   heroHeader: {
-    paddingTop: Platform.OS === 'ios' ? 60 : (StatusBar.currentHeight || 0) + 20,
     paddingHorizontal: 20,
-    paddingBottom: 24,
+    paddingBottom: 28,
     width: '100%',
     borderBottomLeftRadius: 28,
     borderBottomRightRadius: 28,
   },
-  topBar: {
+  dailyBadgeRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  heroTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#fff',
+    justifyContent: 'flex-start',
+    marginBottom: 16,
   },
   streakBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 8,
   },
   streakText: {
     fontSize: 13,
     fontWeight: '600',
     color: '#fff',
+    letterSpacing: 0.3,
+  },
+  titleSection: {
+    marginBottom: 24,
+  },
+  heroTitle: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#fff',
+    marginBottom: 8,
+    letterSpacing: -0.5,
   },
   heroSubtitle: {
-    fontSize: 14,
+    fontSize: 15,
     color: 'rgba(255,255,255,0.9)',
-    marginBottom: 20,
-    lineHeight: 20,
+    lineHeight: 22,
   },
   statsRow: {
     flexDirection: 'row',
     backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 20,
+    padding: 18,
     alignItems: 'center',
     justifyContent: 'space-around',
   },
@@ -174,27 +189,27 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   statIconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   statNumber: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '700',
     color: '#fff',
-    marginBottom: 2,
+    marginBottom: 4,
   },
   statLabel: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.8)',
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.85)',
     fontWeight: '500',
   },
   statDivider: {
     width: 1,
-    height: 40,
+    height: 50,
     backgroundColor: 'rgba(255,255,255,0.2)',
   },
   loadingContainer: {

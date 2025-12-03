@@ -10,6 +10,7 @@ import { ApiError } from '../utils/ApiError.util.js';
 import { log } from '../utils/logger.util.js';
 import { animalService } from './animal.service.js';
 import { animalMappingService } from './animalMapping.service.js';
+import { experienceService } from './experience.service.js';
 import { userDiscoveryService } from './userDiscovery.service.js';
 
 const isCloudinaryConfigured = () => Boolean(
@@ -464,17 +465,51 @@ const createSighting = async (userId, userName, sightingData) => {
     requiresAdminReview
   });
 
+  // Track XP result for returning to the user
+  let xpResult = null;
+
   // Auto-add discovery if animal is identified and linked
   if (linkedAnimalId && identification) {
     try {
       const verifiedBy = identification.source === 'USER' ? 'USER' : 'AI';
-      await userDiscoveryService.addDiscovery(userId, linkedAnimalId, sighting._id, verifiedBy);
+      
+      // Check if this is a first discovery BEFORE adding (addDiscovery returns boolean)
+      const isFirstDiscovery = await userDiscoveryService.addDiscovery(userId, linkedAnimalId, sighting._id, verifiedBy);
+      
       log.info('sighting-service', 'Discovery added for sighting', { 
         sightingId: sighting._id, 
         userId, 
         animalId: linkedAnimalId,
-        verifiedBy 
+        verifiedBy,
+        isNewDiscovery: isFirstDiscovery
       });
+
+      // Award XP for the sighting based on animal rarity and discovery status
+      try {
+        xpResult = await experienceService.processSightingXP(userId, linkedAnimalId, {
+          verifiedBy: verifiedBy,
+          captureMethod: captureMethod || 'UNKNOWN',
+          isFirstDiscovery: isFirstDiscovery,
+        });
+        
+        if (xpResult.awarded) {
+          log.info('sighting-service', 'XP awarded for sighting', {
+            sightingId: sighting._id,
+            userId,
+            xpAwarded: xpResult.xpAwarded,
+            newLevel: xpResult.newLevel,
+            leveledUp: xpResult.leveledUp,
+            isFirstDiscovery: xpResult.isFirstDiscovery,
+            rarityLevel: xpResult.rarityLevel,
+          });
+        }
+      } catch (xpError) {
+        // Don't fail sighting creation if XP awarding fails
+        log.warn('sighting-service', 'Failed to award XP for sighting', {
+          sightingId: sighting._id,
+          error: xpError.message,
+        });
+      }
     } catch (error) {
       // Don't fail sighting creation if discovery fails
       log.warn('sighting-service', 'Failed to add discovery for sighting', { 
@@ -564,7 +599,21 @@ const createSighting = async (userId, userName, sightingData) => {
   }
 
   log.info('sighting-service', 'Sighting created', { sightingId: sighting._id, userId });
-  return sighting;
+  
+  // Return sighting with XP info if available
+  return {
+    sighting,
+    xpResult: xpResult ? {
+      xpAwarded: xpResult.xpAwarded,
+      isFirstDiscovery: xpResult.isFirstDiscovery,
+      rarityLevel: xpResult.rarityLevel,
+      animalName: xpResult.animalName,
+      leveledUp: xpResult.leveledUp,
+      newLevel: xpResult.newLevel,
+      levelProgress: xpResult.levelProgress,
+      reason: xpResult.reason,
+    } : null,
+  };
 };
 
 /**

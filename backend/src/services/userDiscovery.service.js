@@ -47,22 +47,48 @@ const getUserDiscovery = async (userId) => {
  * @returns {Promise<boolean>} True if new discovery, false if already discovered
  */
 const addDiscovery = async (userId, animalId, sightingId, verifiedBy = 'AI') => {
-  const userDiscovery = await getUserDiscovery(userId);
   const animal = await Animal.findById(animalId);
   
   if (!animal) {
     throw new ApiError(404, 'Animal not found');
   }
 
-  const isNewDiscovery = await userDiscovery.addDiscovery(animalId, sightingId, verifiedBy);
-  
-  if (isNewDiscovery) {
-    // Update rarity stats
-    await updateRarityStats(userDiscovery, animal.rarityLevel, 1);
-    await updateCategoryStats(userDiscovery, animal.category);
+  // Direct DB check: does this user already have this animal in their discoveries?
+  const existingDiscovery = await UserDiscovery.findOne({
+    user: userId,
+    discoveredAnimals: animalId
+  });
+
+  if (existingDiscovery) {
+    // Already discovered - not a new discovery
+    return false;
   }
 
-  return isNewDiscovery;
+  // It's a new discovery - add it
+  const userDiscovery = await getUserDiscovery(userId);
+  
+  // Add to discoveredAnimals array
+  userDiscovery.discoveredAnimals.push(animalId);
+  
+  // Add detailed record
+  userDiscovery.animalDiscoveries.push({
+    animal: animalId,
+    discoveredAt: new Date(),
+    firstSighting: sightingId,
+    verifiedByAI: verifiedBy === 'AI',
+    verifiedByUser: verifiedBy === 'USER',
+    verifiedByCommunity: verifiedBy === 'COMMUNITY'
+  });
+
+  // Update stats
+  userDiscovery.stats.totalDiscovered = userDiscovery.discoveredAnimals.length;
+  await userDiscovery.save();
+
+  // Update rarity and category stats
+  await updateRarityStats(userDiscovery, animal.rarityLevel, 1);
+  await updateCategoryStats(userDiscovery, animal.category);
+
+  return true;
 };
 
 /**

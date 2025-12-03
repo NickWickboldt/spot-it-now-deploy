@@ -22,7 +22,7 @@ const HEADER_HEIGHT = 320;
 
 interface Sighting {
   _id: string;
-  animalId?: string | null;
+  animalId?: string | { _id: string; commonName?: string; iconPath?: string } | null;
   aiIdentification?: string | null;
   confidence?: number | null;
   mediaUrls?: string[];
@@ -30,6 +30,14 @@ interface Sighting {
   location?: {
     coordinates?: [number, number];
   };
+}
+
+// Helper to extract animal ID from potentially populated animalId field
+function getAnimalIdString(animalId: string | { _id: string } | null | undefined): string | null {
+  if (!animalId) return null;
+  if (typeof animalId === 'string') return animalId;
+  if (typeof animalId === 'object' && animalId._id) return animalId._id;
+  return null;
 }
 
 // Helper: choose the best image URL from media list
@@ -212,7 +220,7 @@ export default function AnimalDetailScreen() {
       try {
         const response = await apiGetMySightings(token);
         const allSightings = (response.data || []) as Sighting[];
-        const filtered = allSightings.filter(s => String(s.animalId) === animal._id);
+        const filtered = allSightings.filter(s => getAnimalIdString(s.animalId) === animal._id);
         // Sort newest first
         filtered.sort((a, b) => {
           const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;

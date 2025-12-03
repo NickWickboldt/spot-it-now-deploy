@@ -3,6 +3,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, Dimensions, FlatList, Image, Modal, Pressable, Share, StyleSheet, Switch, Text, View } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
+import { getLevelColor, getMyLevelInfo, LevelProgress } from '../../api/experience';
 import { apiGetMySightings } from '../../api/sighting';
 import { apiDeleteUserAccount, apiUpdateUserDetails } from '../../api/user';
 import { apiGetUserDiscoveries } from '../../api/userDiscovery';
@@ -97,6 +98,7 @@ export default function ProfileScreen(): React.JSX.Element | null {
   const [badgeFilter, setBadgeFilter] = useState<'all' | 'earned'>('all');
   const [selectedBadge, setSelectedBadge] = useState<typeof userBadges[0] | null>(null);
   const [discoveries, setDiscoveries] = useState<any[]>([]);
+  const [levelInfo, setLevelInfo] = useState<LevelProgress | null>(null);
 
   const [sightings, setSightings] = useState<Sighting[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -111,9 +113,10 @@ export default function ProfileScreen(): React.JSX.Element | null {
   const loadMySightings = useCallback(async () => {
     if (!user?._id || !token) { setIsLoading(false); return; }
     try {
-      const [sightingsResponse, discoveriesResponse] = await Promise.all([
+      const [sightingsResponse, discoveriesResponse, levelResponse] = await Promise.all([
         apiGetMySightings(token),
-        apiGetUserDiscoveries(token).catch(() => ({ data: null }))
+        apiGetUserDiscoveries(token).catch(() => ({ data: null })),
+        getMyLevelInfo(token).catch(() => null)
       ]);
       
       if (sightingsResponse && sightingsResponse.data) {
@@ -130,6 +133,11 @@ export default function ProfileScreen(): React.JSX.Element | null {
       
       if (discoveriesResponse?.data?.animalDiscoveries) {
         setDiscoveries(discoveriesResponse.data.animalDiscoveries);
+      }
+
+      if (levelResponse) {
+        setLevelInfo(levelResponse);
+        console.log('[Profile] Level info loaded:', levelResponse);
       }
     } catch (error) {
       console.error("Failed to fetch sightings:", error);
@@ -307,9 +315,45 @@ export default function ProfileScreen(): React.JSX.Element | null {
           <View style={styles.heroUserInfo}>
             <Text style={styles.heroUsername} numberOfLines={1}>{user.username}</Text>
             <Text style={styles.heroBio} numberOfLines={2}>{user.bio || "No bio yet"}</Text>
-            <View style={styles.heroXPBadge}>
-              <Icon name="star" size={12} color="#FFD700" />
-              <Text style={styles.heroXPText}>{user.experiencePoints} XP</Text>
+            
+            {/* Level and XP Badge Row */}
+            <View style={styles.levelXPContainer}>
+              {levelInfo ? (
+                <View style={[styles.levelBadge, { borderColor: getLevelColor(levelInfo.level) }]}>
+                  <Text style={[styles.levelNumber, { color: getLevelColor(levelInfo.level) }]}>
+                    Lv.{levelInfo.level}
+                  </Text>
+                </View>
+              ) : (
+                <View style={[styles.levelBadge, { borderColor: '#6B7280' }]}>
+                  <Text style={[styles.levelNumber, { color: '#6B7280' }]}>Lv.1</Text>
+                </View>
+              )}
+              <View style={styles.heroXPBadge}>
+                <Icon name="star" size={12} color="#FFD700" />
+                <Text style={styles.heroXPText}>{levelInfo?.currentXP ?? user.experiencePoints ?? 0} XP</Text>
+              </View>
+            </View>
+            
+            {/* Level Title */}
+            <Text style={styles.levelTitle}>{levelInfo?.title || 'Novice Spotter'}</Text>
+            
+            {/* XP Progress Bar */}
+            <View style={styles.xpProgressContainer}>
+              <View style={styles.xpProgressBar}>
+                <View 
+                  style={[
+                    styles.xpProgressFill, 
+                    { 
+                      width: `${Math.max(levelInfo?.progressPercentage || 0, 3)}%`,
+                      backgroundColor: levelInfo ? getLevelColor(levelInfo.level) : '#6B7280'
+                    }
+                  ]} 
+                />
+              </View>
+              <Text style={styles.xpProgressText}>
+                {levelInfo ? `${levelInfo.xpInLevel}/${levelInfo.xpForNextLevel} to Lv.${levelInfo.level + 1}` : '0/100 to Lv.2'}
+              </Text>
             </View>
           </View>
         </View>
@@ -724,6 +768,51 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.9)',
     marginBottom: 10,
     lineHeight: 20,
+  },
+  levelXPContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  levelBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 2,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+  },
+  levelNumber: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  levelTitle: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.8)',
+    fontStyle: 'italic',
+  },
+  xpProgressContainer: {
+    marginTop: 10,
+    width: '100%',
+  },
+  xpProgressBar: {
+    height: 8,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    borderRadius: 4,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  xpProgressFill: {
+    height: '100%',
+    borderRadius: 4,
+    minWidth: 4,
+  },
+  xpProgressText: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.9)',
+    marginTop: 5,
+    fontWeight: '500',
   },
   heroXPBadge: {
     flexDirection: 'row',
