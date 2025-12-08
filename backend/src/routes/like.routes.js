@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import {
-  toggleSightingLike,
-  getSightingLikes,
-  getLikedSightingsByUser,
+    getLikedSightingsByUser,
+    getSightingLikes,
+    getUserActivityFeed,
+    toggleSightingLike,
 } from '../controllers/like.controller.js';
 import { verifyJWT } from '../middlewares/auth.middleware.js';
 
@@ -18,6 +19,10 @@ router.route('/toggle/:sightingId').post(verifyJWT, toggleSightingLike);
 // Anyone can see who liked a post or which posts a user has liked.
 router.route('/sighting/:sightingId').get(getSightingLikes);
 router.route('/user/:userId').get(getLikedSightingsByUser);
+
+// --- Secured Route ---
+// Activity feed (likes and comments) - requires auth to see own activity
+router.route('/user/:userId/activity').get(verifyJWT, getUserActivityFeed);
 
 
 export default router;

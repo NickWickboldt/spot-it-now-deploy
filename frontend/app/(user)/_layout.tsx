@@ -12,6 +12,7 @@ export default function UserLayout() {
       <Stack.Screen name="challenges" options={{ headerShown: false }} />
       <Stack.Screen name="notifications" options={{ headerShown: false }} />
       <Stack.Screen name="animal_detail" options={{ headerShown: false }} />
+      <Stack.Screen name="search" options={{ headerShown: false, animation: 'fade' }} />
     </Stack>
   );
 }

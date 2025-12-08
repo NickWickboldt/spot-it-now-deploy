@@ -1,16 +1,37 @@
 import * as Location from 'expo-location';
+import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Icon from 'react-native-vector-icons/FontAwesome';
 import { apiGetTodayChallenges, type ChallengeDTO } from '../../api/challenge';
+import { apiGetUserChallenges, UserChallengeDTO } from '../../api/regionalChallenge';
 import { ChallengesList } from '../../components/ChallengesList';
 import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
 
 export default function UserChallengesScreen() {
   const { token } = useAuth();
+  const insets = useSafeAreaInsets();
   const [challenges, setChallenges] = useState<ChallengeDTO[]>([]);
+  const [userChallenge, setUserChallenge] = useState<UserChallengeDTO | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Animation for skeleton loader
+  const pulseAnim = React.useRef(new Animated.Value(0.3)).current;
+  
+  React.useEffect(() => {
+    if (isGenerating) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 0.3, duration: 800, useNativeDriver: true }),
+        ])
+      ).start();
+    }
+  }, [isGenerating]);
 
   useEffect(() => {
     let mounted = true;
@@ -18,6 +39,8 @@ export default function UserChallengesScreen() {
       try {
         setLoading(true);
         setError(null);
+        console.log('[USER CHALLENGES] Starting to fetch challenges...');
+        
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
           setError('Location permission is required to fetch challenges');
@@ -27,12 +50,39 @@ export default function UserChallengesScreen() {
         const loc = await Location.getCurrentPositionAsync({});
         const lat = loc.coords.latitude;
         const lng = loc.coords.longitude;
-        const resp: any = await apiGetTodayChallenges(lat, lng);
+        console.log('[USER CHALLENGES] Got location:', { lat, lng });
+        
+        setIsGenerating(true);
+        
+        // Fetch both traditional and user-specific AI challenges
+        const [traditionalResp, userChallengeResp] = await Promise.allSettled([
+          apiGetTodayChallenges(lat, lng),
+          apiGetUserChallenges(lat, lng),
+        ]);
+        
+        console.log('[USER CHALLENGES] traditionalResp:', traditionalResp);
+        console.log('[USER CHALLENGES] userChallengeResp:', userChallengeResp);
+        
         if (!mounted) return;
-        setChallenges(resp?.data || []);
+        
+        if (traditionalResp.status === 'fulfilled') {
+          setChallenges((traditionalResp.value as any)?.data || []);
+        }
+        
+        if (userChallengeResp.status === 'fulfilled') {
+          const data = (userChallengeResp.value as any)?.data;
+          console.log('[USER CHALLENGES] User challenge data:', data);
+          setUserChallenge(data || null);
+        } else {
+          console.error('[USER CHALLENGES] User challenge error:', userChallengeResp.reason);
+        }
+        
+        setIsGenerating(false);
       } catch (e: any) {
         if (!mounted) return;
+        console.error('[USER CHALLENGES] Error:', e);
         setError(e?.message || 'Failed to load challenges');
+        setIsGenerating(false);
       } finally {
         if (!mounted) return;
         setLoading(false);
@@ -41,15 +91,455 @@ export default function UserChallengesScreen() {
     return () => { mounted = false; };
   }, [token]);
 
-  if (loading) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={Colors.light.primaryGreen} /></View>;
-  if (error) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 }}><Text>{error}</Text></View>;
+  if (loading) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: insets.top }}>
+        <ActivityIndicator color={Colors.light.primaryGreen} />
+      </View>
+    );
+  }
+  
+  if (error) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16, paddingTop: insets.top }}>
+        <Text>{error}</Text>
+      </View>
+    );
+  }
 
   return (
-    <View style={{ flex: 1, backgroundColor: Colors.light.softBeige }}>
-      <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
+    <View style={{ flex: 1, backgroundColor: Colors.light.softBeige, paddingTop: insets.top }}>
+      <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>
         <Text style={{ fontSize: 24, fontWeight: '700', color: Colors.light.primaryGreen }}>Today's Challenges</Text>
       </View>
-      <ChallengesList challenges={challenges} />
+      
+      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+        {/* AI Regional Challenges Section */}
+        {isGenerating ? (
+          <View style={styles.skeletonContainer}>
+            <Animated.View style={[styles.skeletonCard, { opacity: pulseAnim }]}>
+              <View style={styles.skeletonIcon}>
+                <Icon name="compass" size={24} color="#40743dff" />
+              </View>
+              <Text style={styles.scoutingText}>Scouting local area...</Text>
+              <Text style={styles.scoutingSubtext}>Finding wildlife in your region</Text>
+              <View style={styles.skeletonItems}>
+                <View style={styles.skeletonItem} />
+                <View style={styles.skeletonItem} />
+                <View style={styles.skeletonItem} />
+              </View>
+            </Animated.View>
+          </View>
+        ) : userChallenge ? (
+          <View style={styles.regionalSection}>
+            {/* Location Header */}
+            <View style={styles.locationHeader}>
+              <Icon name="map-marker" size={16} color="#40743dff" />
+              <Text style={styles.locationText}>{userChallenge.location}</Text>
+            </View>
+            
+            {/* Daily Challenges */}
+            {userChallenge.daily && (
+              <View style={styles.challengeSection}>
+                <View style={styles.sectionHeader}>
+                  <Icon name="sun-o" size={18} color="#FF9500" />
+                  <Text style={styles.sectionTitle}>Daily Challenge</Text>
+                  {userChallenge.daily.completed ? (
+                    <View style={styles.completedBadge}>
+                      <Icon name="check" size={10} color="#fff" />
+                      <Text style={styles.completedBadgeText}>Complete!</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.expiresText}>
+                      Ends {new Date(userChallenge.daily.expires_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  )}
+                </View>
+                {/* XP Reward Banner */}
+                {userChallenge.daily.completed && userChallenge.daily.xp_awarded > 0 && (
+                  <View style={styles.xpRewardBanner}>
+                    <Icon name="star" size={16} color="#FFD700" />
+                    <Text style={styles.xpRewardText}>+{userChallenge.daily.xp_awarded} XP Earned!</Text>
+                  </View>
+                )}
+                {!userChallenge.daily.completed && userChallenge.daily.xp_potential > 0 && (
+                  <View style={styles.xpPotentialBanner}>
+                    <Icon name="star-o" size={14} color="#FF9500" />
+                    <Text style={styles.xpPotentialText}>+{userChallenge.daily.xp_potential} XP</Text>
+                  </View>
+                )}
+                {userChallenge.daily.animals.map((animal, index) => (
+                  <TouchableOpacity 
+                    key={`daily-${index}`} 
+                    style={[styles.animalCard, (animal.progress || 0) >= animal.count && styles.animalCardComplete]}
+                    onPress={() => router.push({ pathname: '/(user)/animal_detail', params: { animalName: animal.name } })}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.animalInfo}>
+                      <Text style={styles.animalName}>{animal.name}</Text>
+                      <View style={styles.animalMeta}>
+                      <View style={[styles.difficultyBadge, 
+                        animal.probability >= 50 ? styles.difficultyEasy :
+                        animal.probability >= 15 ? styles.difficultyMedium :
+                        styles.difficultyHard
+                      ]}>
+                        <Text style={styles.difficultyText}>
+                          {animal.probability >= 50 ? 'Easy' : animal.probability >= 15 ? 'Medium' : 'Hard'}
+                        </Text>
+                      </View>
+                      </View>
+                    </View>
+                    <View style={styles.progressContainer}>
+                      <Text style={[styles.progressText, (animal.progress || 0) >= animal.count && styles.progressComplete]}>
+                        {animal.progress || 0}/{animal.count}
+                      </Text>
+                      <Icon 
+                        name={(animal.progress || 0) >= animal.count ? "check-circle" : "camera"} 
+                        size={20} 
+                        color={(animal.progress || 0) >= animal.count ? "#34C759" : "#999"} 
+                      />
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+            
+            {/* Weekly Challenges */}
+            {userChallenge.weekly && (
+              <View style={styles.challengeSection}>
+                <View style={styles.sectionHeader}>
+                  <Icon name="moon-o" size={18} color="#5856D6" />
+                  <Text style={styles.sectionTitle}>Weekly Challenge</Text>
+                  {userChallenge.weekly.completed ? (
+                    <View style={styles.completedBadge}>
+                      <Icon name="check" size={10} color="#fff" />
+                      <Text style={styles.completedBadgeText}>Complete!</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.expiresText}>
+                      {userChallenge.weekly.animals.reduce((sum, a) => sum + a.count - (a.progress || 0), 0)} left
+                    </Text>
+                  )}
+                </View>
+                {/* XP Reward Banner */}
+                {userChallenge.weekly.completed && userChallenge.weekly.xp_awarded > 0 && (
+                  <View style={[styles.xpRewardBanner, styles.xpRewardBannerWeekly]}>
+                    <Icon name="star" size={16} color="#FFD700" />
+                    <Text style={styles.xpRewardText}>+{userChallenge.weekly.xp_awarded} XP Earned!</Text>
+                  </View>
+                )}
+                {!userChallenge.weekly.completed && userChallenge.weekly.xp_potential > 0 && (
+                  <View style={[styles.xpPotentialBanner, styles.xpPotentialBannerWeekly]}>
+                    <Icon name="star-o" size={14} color="#5856D6" />
+                    <Text style={styles.xpPotentialText}>+{userChallenge.weekly.xp_potential} XP</Text>
+                  </View>
+                )}
+                {userChallenge.weekly.animals.map((animal, index) => (
+                  <TouchableOpacity 
+                    key={`weekly-${index}`} 
+                    style={[styles.animalCard, (animal.progress || 0) >= animal.count && styles.animalCardComplete]}
+                    onPress={() => router.push({ pathname: '/(user)/animal_detail', params: { animalName: animal.name } })}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.animalInfo}>
+                      <Text style={styles.animalName}>{animal.name}</Text>
+                      <View style={styles.animalMeta}>
+                        <View style={[styles.difficultyBadge, 
+                          animal.probability >= 50 ? styles.difficultyEasy :
+                          animal.probability >= 15 ? styles.difficultyMedium :
+                          styles.difficultyHard
+                        ]}>
+                          <Text style={styles.difficultyText}>
+                            {animal.probability >= 50 ? 'Easy' : animal.probability >= 15 ? 'Medium' : 'Hard'}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                    <View style={styles.progressContainer}>
+                      <Text style={[styles.progressText, (animal.progress || 0) >= animal.count && styles.progressComplete]}>
+                        {animal.progress || 0}/{animal.count}
+                      </Text>
+                      <Icon 
+                        name={(animal.progress || 0) >= animal.count ? "check-circle" : "camera"} 
+                        size={20} 
+                        color={(animal.progress || 0) >= animal.count ? "#34C759" : "#999"} 
+                      />
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+        ) : (
+          <View style={styles.skeletonContainer}>
+            <View style={styles.errorCard}>
+              <Icon name="exclamation-triangle" size={32} color="#FF9500" />
+              <Text style={styles.errorCardTitle}>Unable to load regional challenges</Text>
+              <Text style={styles.errorCardText}>Please try again later</Text>
+            </View>
+          </View>
+        )}
+        
+        {/* Traditional Challenges */}
+        {challenges.length > 0 && (
+          <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: '#333', marginBottom: 12 }}>More Challenges</Text>
+            <ChallengesList challenges={challenges} />
+          </View>
+        )}
+      </ScrollView>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  skeletonContainer: {
+    padding: 16,
+  },
+  skeletonCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  skeletonIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(64, 116, 61, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  scoutingText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 8,
+  },
+  scoutingSubtext: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 20,
+  },
+  skeletonItems: {
+    width: '100%',
+    gap: 12,
+  },
+  skeletonItem: {
+    height: 48,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 12,
+    width: '100%',
+  },
+  regionalSection: {
+    padding: 16,
+  },
+  locationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 8,
+  },
+  locationText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    flex: 1,
+  },
+  newBadge: {
+    backgroundColor: 'rgba(64, 116, 61, 0.1)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  newBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#40743dff',
+  },
+  challengeSection: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 10,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#333',
+    flex: 1,
+  },
+  expiresText: {
+    fontSize: 12,
+    color: '#888',
+  },
+  animalCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f8f8',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+  },
+  animalInfo: {
+    flex: 1,
+  },
+  animalName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 6,
+  },
+  animalMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  difficultyBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  difficultyEasy: {
+    backgroundColor: 'rgba(52, 199, 89, 0.15)',
+  },
+  difficultyMedium: {
+    backgroundColor: 'rgba(255, 149, 0, 0.15)',
+  },
+  difficultyHard: {
+    backgroundColor: 'rgba(255, 59, 48, 0.15)',
+  },
+  difficultyText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#666',
+    textTransform: 'capitalize',
+  },
+  countBadge: {
+    backgroundColor: 'rgba(88, 86, 214, 0.12)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  countText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#5856D6',
+  },
+  progressContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  progressText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#40743dff',
+  },
+  progressComplete: {
+    color: '#34C759',
+  },
+  animalCardComplete: {
+    backgroundColor: 'rgba(52, 199, 89, 0.1)',
+    borderColor: '#34C759',
+    borderWidth: 1,
+  },
+  completedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#34C759',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  completedBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  xpRewardBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 215, 0, 0.15)',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 215, 0, 0.3)',
+  },
+  xpRewardBannerWeekly: {
+    backgroundColor: 'rgba(88, 86, 214, 0.1)',
+    borderColor: 'rgba(88, 86, 214, 0.25)',
+  },
+  xpRewardText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#B8860B',
+  },
+  xpPotentialBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 149, 0, 0.12)',
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 149, 0, 0.2)',
+  },
+  xpPotentialBannerWeekly: {
+    backgroundColor: 'rgba(88, 86, 214, 0.12)',
+    borderColor: 'rgba(88, 86, 214, 0.2)',
+  },
+  xpPotentialText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+  },
+  errorCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+    gap: 12,
+  },
+  errorCardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#333',
+    textAlign: 'center',
+  },
+  errorCardText: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+  },
+});

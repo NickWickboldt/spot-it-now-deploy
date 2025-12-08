@@ -45,7 +45,27 @@ const getLikedSightingsByUser = asyncHandler(async (req, res) => {
         .json(new ApiResponse(200, likedSightings, 'User\'s liked sightings fetched successfully'));
 });
 
+/**
+ * Controller to get user's activity feed (liked and commented sightings)
+ */
+const getUserActivityFeed = asyncHandler(async (req, res) => {
+    const { userId } = req.params;
+    const { page = 1, pageSize = 20 } = req.query;
+    
+    const result = await likeService.getUserActivityFeed(
+      userId, 
+      parseInt(page, 10), 
+      parseInt(pageSize, 10)
+    );
+    
+    return res
+        .status(200)
+        .set('Cache-Control', 'no-cache, no-store, must-revalidate')
+        .json(new ApiResponse(200, result, 'User activity feed fetched successfully'));
+});
+
 
 export {
-    getLikedSightingsByUser, getSightingLikes, toggleSightingLike
+    getLikedSightingsByUser, getSightingLikes, getUserActivityFeed, toggleSightingLike
 };
+

@@ -46,10 +46,48 @@ const deleteSighting = asyncHandler(async (req, res) => {
  */
 const getSightingById = asyncHandler(async (req, res) => {
   const { sightingId } = req.params;
+  const userId = req.user?._id; // Optional - user might not be logged in
+  
+  console.log('[GET SIGHTING BY ID]', {
+    sightingId,
+    hasReqUser: !!req.user,
+    userId: userId || 'NOT AUTHENTICATED',
+    username: req.user?.username || 'N/A'
+  });
+  
   const sighting = await sightingService.getSightingById(sightingId);
+  
+  // Convert to plain object to allow adding new fields
+  let sightingData = sighting.toObject ? sighting.toObject() : sighting;
+  
+  // Add isLikedByUser field if user is logged in
+  if (userId) {
+    const { Like } = await import('../models/like.model.js');
+    const existingLike = await Like.findOne({ user: userId, sighting: sightingId });
+    sightingData.isLikedByUser = !!existingLike;
+    
+    // Log sighting view with like status
+    console.log('[SIGHTING VIEW]', {
+      sightingId: sightingId,
+      userId: userId,
+      isLikedByUser: sightingData.isLikedByUser,
+      likes: sightingData.likes || 0,
+      caption: sightingData.caption?.substring(0, 50) || 'No caption',
+    });
+  } else {
+    console.log('[SIGHTING VIEW - UNAUTHENTICATED]', {
+      sightingId: sightingId,
+      likes: sightingData.likes || 0,
+      caption: sightingData.caption?.substring(0, 50) || 'No caption',
+    });
+  }
+  
   return res
     .status(200)
-    .json(new ApiResponse(200, sighting, 'Sighting fetched successfully'));
+    .set('Cache-Control', 'no-cache, no-store, must-revalidate')
+    .set('Pragma', 'no-cache')
+    .set('Expires', '0')
+    .json(new ApiResponse(200, sightingData, 'Sighting fetched successfully'));
 });
 
 /**

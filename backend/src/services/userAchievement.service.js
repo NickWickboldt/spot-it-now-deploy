@@ -1,11 +1,11 @@
-import { UserAchievement } from '../models/userAchievement.model.js';
 import { Achievement } from '../models/achievement.model.js';
 import { User } from '../models/user.model.js';
+import { UserAchievement } from '../models/userAchievement.model.js';
 import { ApiError } from '../utils/ApiError.util.js';
 
 /**
  * Awards an achievement to a user.
- * This also adds the achievement's point reward to the user's total experience points.
+ * This also adds the achievement's XP reward to the user's total experience points.
  * @param {string} userId - The ID of the user receiving the achievement.
  * @param {string} achievementId - The ID of the achievement being awarded.
  * @returns {Promise<UserAchievement>} The created UserAchievement object.
@@ -33,17 +33,20 @@ const awardAchievement = async (userId, achievementId) => {
     achievement: achievementId,
   });
 
-  // 2. Update the user's experience points
-  await User.findByIdAndUpdate(userId, {
-    $inc: { experiencePoints: achievement.pointsReward },
-  });
+  // 2. Update the user's experience points (use xpReward, fallback to pointsReward for legacy)
+  const xpToAward = achievement.xpReward || achievement.pointsReward || 0;
+  if (xpToAward > 0) {
+    await User.findByIdAndUpdate(userId, {
+      $inc: { experiencePoints: xpToAward },
+    });
+  }
 
   return userAchievement;
 };
 
 /**
  * Revokes an achievement from a user.
- * This also subtracts the points from the user's total experience points.
+ * This also subtracts the XP from the user's total experience points.
  * @param {string} userId - The ID of the user.
  * @param {string} achievementId - The ID of the achievement to revoke.
  */
@@ -57,13 +60,16 @@ const revokeAchievement = async (userId, achievementId) => {
         throw new ApiError(404, 'User has not earned this achievement, cannot revoke.');
     }
 
-    // Find the point value of the achievement that was just revoked
+    // Find the XP value of the achievement that was just revoked
     const achievement = await Achievement.findById(achievementId);
     if (achievement) {
-        // Subtract the points from the user's total
-        await User.findByIdAndUpdate(userId, {
-            $inc: { experiencePoints: -achievement.pointsReward },
-        });
+        // Subtract the XP from the user's total (use xpReward, fallback to pointsReward)
+        const xpToRevoke = achievement.xpReward || achievement.pointsReward || 0;
+        if (xpToRevoke > 0) {
+            await User.findByIdAndUpdate(userId, {
+                $inc: { experiencePoints: -xpToRevoke },
+            });
+        }
     }
 };
 

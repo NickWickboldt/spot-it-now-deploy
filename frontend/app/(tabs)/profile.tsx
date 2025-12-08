@@ -1,9 +1,11 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Dimensions, FlatList, Image, Modal, Pressable, Share, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Dimensions, FlatList, Image, Modal, Pressable, RefreshControl, Share, StyleSheet, Switch, Text, View } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
+import { apiGetMyBadgeProgress, Badge, getBadgeCategoryColor, getBadgeIcon } from '../../api/badge';
 import { getLevelColor, getMyLevelInfo, LevelProgress } from '../../api/experience';
+import { ActivityItem, apiGetUserActivityFeed } from '../../api/like';
 import { apiGetMySightings } from '../../api/sighting';
 import { apiDeleteUserAccount, apiUpdateUserDetails } from '../../api/user';
 import { apiGetUserDiscoveries } from '../../api/userDiscovery';
@@ -96,12 +98,26 @@ export default function ProfileScreen(): React.JSX.Element | null {
   const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(user?.notificationsEnabled ?? true);
   const [activeStatTab, setActiveStatTab] = useState<'species' | 'badges' | null>(null);
   const [badgeFilter, setBadgeFilter] = useState<'all' | 'earned'>('all');
-  const [selectedBadge, setSelectedBadge] = useState<typeof userBadges[0] | null>(null);
+  const [selectedBadge, setSelectedBadge] = useState<Badge | null>(null);
   const [discoveries, setDiscoveries] = useState<any[]>([]);
   const [levelInfo, setLevelInfo] = useState<LevelProgress | null>(null);
+  
+  // Badge state
+  const [userBadges, setUserBadges] = useState<Badge[]>([]);
+  const [badgesLoading, setBadgesLoading] = useState(false);
+  const [badgeSummary, setBadgeSummary] = useState<{ totalBadges: number; earnedCount: number; totalXPFromBadges: number; } | null>(null);
 
   const [sightings, setSightings] = useState<Sighting[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  
+  // Profile/Activity tab state
+  const [profileTab, setProfileTab] = useState<'profile' | 'activity'>('profile');
+  const [activityFeed, setActivityFeed] = useState<ActivityItem[]>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityPage, setActivityPage] = useState(1);
+  const [hasMoreActivity, setHasMoreActivity] = useState(true);
+  const [activityRefreshing, setActivityRefreshing] = useState(false);
+  const tabIndicatorAnim = useRef(new Animated.Value(0)).current;
 
   // Sync notification state with user data
   useEffect(() => {
@@ -146,8 +162,76 @@ export default function ProfileScreen(): React.JSX.Element | null {
     }
   }, [user?._id, user?.username, user?.profilePictureUrl, token]);
 
-  useEffect(() => { loadMySightings(); }, [loadMySightings]);
-  useFocusEffect(useCallback(() => { loadMySightings(); return () => {}; }, [loadMySightings]));
+  // Load user badges from API
+  const loadBadges = useCallback(async () => {
+    if (!token) return;
+    setBadgesLoading(true);
+    try {
+      const response = await apiGetMyBadgeProgress();
+      // Response is wrapped in ApiResponse: { statusCode, data, message, success }
+      if (response?.data) {
+        setUserBadges(response.data.all || []);
+        setBadgeSummary(response.data.summary || null);
+        console.log('[Profile] Badges loaded:', response.data.summary);
+      }
+    } catch (error) {
+      console.error('[Profile] Failed to load badges:', error);
+    } finally {
+      setBadgesLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => { loadMySightings(); loadBadges(); }, [loadMySightings, loadBadges]);
+  useFocusEffect(useCallback(() => { loadMySightings(); loadBadges(); return () => {}; }, [loadMySightings, loadBadges]));
+
+  // Load activity feed when tab switches to activity
+  const loadActivityFeed = useCallback(async (page = 1, append = false) => {
+    if (!user?._id) return;
+    
+    if (page === 1) {
+      setActivityLoading(true);
+    }
+    
+    try {
+      const response = await apiGetUserActivityFeed(user._id, page, 15);
+      const data = response.data;
+      
+      if (append) {
+        setActivityFeed(prev => [...prev, ...data.activities]);
+      } else {
+        setActivityFeed(data.activities);
+      }
+      setHasMoreActivity(data.hasMore);
+      setActivityPage(page);
+    } catch (error) {
+      console.error('Failed to load activity feed:', error);
+    } finally {
+      setActivityLoading(false);
+    }
+  }, [user?._id]);
+
+  // Handle pull-to-refresh for activity feed
+  const handleActivityRefresh = useCallback(async () => {
+    setActivityRefreshing(true);
+    try {
+      await loadActivityFeed(1, false);
+    } finally {
+      setActivityRefreshing(false);
+    }
+  }, [loadActivityFeed]);
+
+  // Animate tab indicator and load data when tab changes
+  useEffect(() => {
+    Animated.spring(tabIndicatorAnim, {
+      toValue: profileTab === 'profile' ? 0 : 1,
+      useNativeDriver: true,
+      friction: 8,
+    }).start();
+    
+    if (profileTab === 'activity' && activityFeed.length === 0) {
+      loadActivityFeed(1);
+    }
+  }, [profileTab, loadActivityFeed, activityFeed.length, tabIndicatorAnim]);
 
   const isVideoUrl = (url: string | undefined | null): boolean => {
     if (!url) return false;
@@ -196,6 +280,88 @@ export default function ProfileScreen(): React.JSX.Element | null {
         onPress={() => handleSightingPress(index)}
       />
     );
+  };
+
+  // Activity feed item renderer
+  const renderActivityItem = ({ item }: { item: ActivityItem }) => {
+    const thumb = pickThumbnail(item.sighting.mediaUrls);
+    const activityDate = new Date(item.activityDate);
+    const timeAgo = getTimeAgo(activityDate);
+    
+    const handleActivityPress = () => {
+      router.push({
+        pathname: '/(user)/sighting_detail',
+        params: { sightingId: item.sighting._id }
+      });
+    };
+    
+    return (
+      <Pressable style={styles.activityItem} onPress={handleActivityPress}>
+        <Image
+          source={{ uri: thumb || undefined }}
+          style={styles.activityThumbnail}
+          defaultSource={{ uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==' }}
+        />
+        <View style={styles.activityContent}>
+          <View style={styles.activityHeader}>
+            <View style={[
+              styles.activityTypeBadge, 
+              item.type === 'like' ? styles.activityTypeLike : styles.activityTypeComment
+            ]}>
+              <Icon 
+                name={item.type === 'like' ? 'heart' : 'comment'} 
+                size={10} 
+                color={item.type === 'like' ? '#FF4444' : '#40743dff'} 
+              />
+              <Text style={[
+                styles.activityTypeText,
+                item.type === 'like' ? styles.activityTypeLikeText : styles.activityTypeCommentText
+              ]}>
+                {item.type === 'like' ? 'Liked' : 'Commented'}
+              </Text>
+            </View>
+            <Text style={styles.activityTime}>{timeAgo}</Text>
+          </View>
+          
+          <Text style={styles.activityCaption} numberOfLines={2}>
+            {item.sighting.caption || item.sighting.aiIdentification || 'Wildlife sighting'}
+          </Text>
+          
+          {item.type === 'comment' && item.commentText && (
+            <View style={styles.activityCommentPreview}>
+              <Icon name="quote-left" size={10} color="#999" />
+              <Text style={styles.activityCommentText} numberOfLines={1}>
+                {item.commentText}
+              </Text>
+            </View>
+          )}
+          
+          <View style={styles.activityMeta}>
+            <Text style={styles.activityUser}>
+              @{item.sighting.user?.username || 'Unknown'}
+            </Text>
+            {item.sighting.animalId && (
+              <Text style={styles.activityAnimal}>
+                · {item.sighting.animalId.commonName}
+              </Text>
+            )}
+          </View>
+        </View>
+        <Icon name="chevron-right" size={14} color="#ccc" />
+      </Pressable>
+    );
+  };
+  
+  // Helper function for time ago
+  const getTimeAgo = (date: Date): string => {
+    const now = new Date();
+    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    
+    if (seconds < 60) return 'Just now';
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
+    if (seconds < 604800) return `${Math.floor(seconds / 86400)}d`;
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
   const handleDeleteAccount = (): void => {
@@ -265,15 +431,8 @@ export default function ProfileScreen(): React.JSX.Element | null {
   const speciesList = [...new Set(sightings.map(s => s.animalName).filter(Boolean))];
   const uniqueSpecies = speciesList.length;
   
-  // Mock badges data - in production, fetch from API
-  const userBadges = [
-    { id: 1, name: 'First Sighting', icon: 'camera', earned: true, description: 'Logged your first wildlife sighting' },
-    { id: 2, name: 'Early Bird', icon: 'sun-o', earned: true, description: 'Made a sighting before 6 AM' },
-    { id: 3, name: 'Night Owl', icon: 'moon-o', earned: true, description: 'Made a sighting after 10 PM' },
-    { id: 4, name: 'Sharpshooter', icon: 'bullseye', earned: false, description: 'Get 10 verified sightings' },
-    { id: 5, name: 'Explorer', icon: 'compass', earned: false, description: 'Spot animals in 5 different locations' },
-  ];
-  const earnedBadges = userBadges.filter(b => b.earned);
+  // Filter badges for display
+  const earnedBadges = userBadges.filter(b => b.isEarned);
 
   return (
     <View style={profileStyles.container}>
@@ -453,80 +612,160 @@ export default function ProfileScreen(): React.JSX.Element | null {
 
                 {activeStatTab === 'badges' && (
                   <View style={styles.badgesContainer}>
-                    <View style={styles.badgesTabs}>
-                      <Pressable 
-                        style={[styles.badgesTab, badgeFilter === 'all' && styles.badgesTabActive]}
-                        onPress={() => setBadgeFilter('all')}
-                      >
-                        <Text style={[styles.badgesTabText, badgeFilter === 'all' && styles.badgesTabTextActive]}>All ({userBadges.length})</Text>
-                      </Pressable>
-                      <Pressable 
-                        style={[styles.badgesTab, badgeFilter === 'earned' && styles.badgesTabActive]}
-                        onPress={() => setBadgeFilter('earned')}
-                      >
-                        <Text style={[styles.badgesTabText, badgeFilter === 'earned' && styles.badgesTabTextActive]}>Earned ({earnedBadges.length})</Text>
-                      </Pressable>
-                    </View>
-                    
-                    <View style={styles.badgesGrid}>
-                      {(badgeFilter === 'all' ? userBadges : earnedBadges).map((badge) => (
-                        <Pressable 
-                          key={badge.id} 
-                          style={styles.badgeGridItem}
-                          onPress={() => setSelectedBadge(badge)}
-                        >
-                          <View style={[
-                            styles.badgeCircle,
-                            !badge.earned && styles.badgeCircleLocked
-                          ]}>
-                            <Icon 
-                              name={badge.icon} 
-                              size={24} 
-                              color={badge.earned ? '#40743dff' : '#bbb'} 
-                            />
-                            {!badge.earned && (
-                              <View style={{ position: 'absolute', bottom: -2, right: -2 }}>
-                                <Icon name="lock" size={12} color="#999" />
-                              </View>
-                            )}
-                          </View>
-                          <Text 
-                            style={[
-                              styles.badgeGridName,
-                              !badge.earned && styles.badgeGridNameLocked
-                            ]}
-                            numberOfLines={2}
+                    {badgesLoading ? (
+                      <View style={{ padding: 20, alignItems: 'center' }}>
+                        <ActivityIndicator color="#40743dff" />
+                        <Text style={{ marginTop: 8, color: '#666' }}>Loading badges...</Text>
+                      </View>
+                    ) : (
+                      <>
+                        <View style={styles.badgesTabs}>
+                          <Pressable 
+                            style={[styles.badgesTab, badgeFilter === 'all' && styles.badgesTabActive]}
+                            onPress={() => setBadgeFilter('all')}
                           >
-                            {badge.name}
+                            <Text style={[styles.badgesTabText, badgeFilter === 'all' && styles.badgesTabTextActive]}>All ({userBadges.length})</Text>
+                          </Pressable>
+                          <Pressable 
+                            style={[styles.badgesTab, badgeFilter === 'earned' && styles.badgesTabActive]}
+                            onPress={() => setBadgeFilter('earned')}
+                          >
+                            <Text style={[styles.badgesTabText, badgeFilter === 'earned' && styles.badgesTabTextActive]}>Earned ({earnedBadges.length})</Text>
+                          </Pressable>
+                        </View>
+                        
+                        <View style={styles.badgesGrid}>
+                          {(badgeFilter === 'all' ? userBadges : earnedBadges).map((badge) => (
+                            <Pressable 
+                              key={badge._id} 
+                              style={styles.badgeGridItem}
+                              onPress={() => setSelectedBadge(badge)}
+                            >
+                              <View style={[
+                                styles.badgeCircle,
+                                !badge.isEarned && styles.badgeCircleLocked,
+                                badge.isEarned && { borderColor: getBadgeCategoryColor(badge.category), borderWidth: 2 }
+                              ]}>
+                                <Icon 
+                                  name={getBadgeIcon(badge)} 
+                                  size={24} 
+                                  color={badge.isEarned ? getBadgeCategoryColor(badge.category) : '#bbb'} 
+                                />
+                                {!badge.isEarned && (
+                                  <View style={{ position: 'absolute', bottom: -2, right: -2 }}>
+                                    <Icon name="lock" size={12} color="#999" />
+                                  </View>
+                                )}
+                              </View>
+                              <Text 
+                                style={[
+                                  styles.badgeGridName,
+                                  !badge.isEarned && styles.badgeGridNameLocked
+                                ]}
+                                numberOfLines={2}
+                              >
+                                {badge.name}
+                              </Text>
+                              {/* Progress bar for unearned badges */}
+                              {!badge.isEarned && badge.progress > 0 && (
+                                <View style={{ width: '100%', height: 3, backgroundColor: '#eee', borderRadius: 2, marginTop: 4 }}>
+                                  <View style={{ width: `${badge.progress}%`, height: '100%', backgroundColor: getBadgeCategoryColor(badge.category), borderRadius: 2 }} />
+                                </View>
+                              )}
+                            </Pressable>
+                          ))}
+                        </View>
+                        
+                        {badgeSummary && (
+                          <Text style={{ fontSize: 12, color: '#666', textAlign: 'center', marginTop: 8 }}>
+                            {badgeSummary.earnedCount} of {badgeSummary.totalBadges} badges earned • {badgeSummary.totalXPFromBadges} XP from badges
                           </Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                    
-                    <Text style={{ fontSize: 12, color: '#999', textAlign: 'center', marginTop: 8 }}>
-                      Tap a badge to see requirements
-                    </Text>
+                        )}
+                      </>
+                    )}
                   </View>
                 )}
               </View>
             )}
 
-            {/* Recent Sightings Header */}
-            <View style={profileStyles.sectionHeader}>
-              <Text style={profileStyles.sectionTitle}>Recent Sightings</Text>
-              <Pressable onPress={() => {}}>
-                <Text style={profileStyles.seeAllText}>See All</Text>
-              </Pressable>
+            {/* Profile/Activity Tab Switcher */}
+            <View style={styles.profileTabContainer}>
+              <View style={styles.profileTabBar}>
+                <Pressable 
+                  style={[styles.profileTabButton, profileTab === 'profile' && styles.profileTabButtonActive]}
+                  onPress={() => setProfileTab('profile')}
+                >
+                  <Icon name="th" size={16} color={profileTab === 'profile' ? '#40743dff' : '#999'} />
+                  <Text style={[styles.profileTabText, profileTab === 'profile' && styles.profileTabTextActive]}>Posts</Text>
+                </Pressable>
+                <Pressable 
+                  style={[styles.profileTabButton, profileTab === 'activity' && styles.profileTabButtonActive]}
+                  onPress={() => setProfileTab('activity')}
+                >
+                  <Icon name="heart" size={16} color={profileTab === 'activity' ? '#40743dff' : '#999'} />
+                  <Text style={[styles.profileTabText, profileTab === 'activity' && styles.profileTabTextActive]}>Activity</Text>
+                </Pressable>
+              </View>
+              <Animated.View 
+                style={[
+                  styles.profileTabIndicator,
+                  {
+                    transform: [{
+                      translateX: tabIndicatorAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, (SCREEN_WIDTH - 32) / 2]
+                      })
+                    }]
+                  }
+                ]} 
+              />
             </View>
           </>
         }
-        data={sightings}
+        data={profileTab === 'profile' ? sightings : []}
         renderItem={renderSightingGridItem}
         keyExtractor={(item) => item._id}
         numColumns={3}
         columnWrapperStyle={profileStyles.gridRow}
+        refreshControl={
+          profileTab === 'activity' ? (
+            <RefreshControl
+              refreshing={activityRefreshing}
+              onRefresh={handleActivityRefresh}
+              tintColor="#40743dff"
+              colors={['#40743dff']}
+            />
+          ) : undefined
+        }
         ListEmptyComponent={
-          isLoading ? <ActivityIndicator style={{ marginTop: 20 }} /> : <Text style={profileStyles.emptyListText}>No sightings found.</Text>
+          profileTab === 'profile'
+            ? (isLoading ? <ActivityIndicator style={{ marginTop: 20 }} /> : <Text style={profileStyles.emptyListText}>No sightings found.</Text>)
+            : null
+        }
+        ListFooterComponent={
+          profileTab === 'activity' ? (
+            <FlatList
+              data={activityFeed}
+              renderItem={renderActivityItem}
+              keyExtractor={(item) => `${item.type}-${item.sighting._id}-${item.activityDate}`}
+              scrollEnabled={false}
+              ListEmptyComponent={
+                activityLoading 
+                  ? <ActivityIndicator style={{ marginTop: 20 }} /> 
+                  : <Text style={profileStyles.emptyListText}>No activity yet. Like or comment on posts!</Text>
+              }
+              ListFooterComponent={
+                hasMoreActivity && activityFeed.length > 0 ? (
+                  <Pressable 
+                    style={styles.loadMoreButton}
+                    onPress={() => loadActivityFeed(activityPage + 1, true)}
+                  >
+                    <Text style={styles.loadMoreText}>Load More</Text>
+                  </Pressable>
+                ) : null
+              }
+            />
+          ) : null
         }
         contentContainerStyle={{ paddingBottom: 100 }}
       />
@@ -645,36 +884,65 @@ export default function ProfileScreen(): React.JSX.Element | null {
               <>
                 <View style={[
                   styles.badgeModalIcon,
-                  selectedBadge.earned ? styles.badgeModalIconEarned : styles.badgeModalIconLocked
+                  selectedBadge.isEarned ? styles.badgeModalIconEarned : styles.badgeModalIconLocked,
+                  selectedBadge.isEarned && { borderColor: getBadgeCategoryColor(selectedBadge.category) }
                 ]}>
                   <Icon 
-                    name={selectedBadge.icon} 
+                    name={getBadgeIcon(selectedBadge)} 
                     size={40} 
-                    color={selectedBadge.earned ? '#40743dff' : '#999'} 
+                    color={selectedBadge.isEarned ? getBadgeCategoryColor(selectedBadge.category) : '#999'} 
                   />
                 </View>
                 
                 <Text style={styles.badgeModalTitle}>{selectedBadge.name}</Text>
                 
-                <View style={[
-                  styles.badgeModalStatus,
-                  selectedBadge.earned ? styles.badgeModalStatusEarned : styles.badgeModalStatusLocked
-                ]}>
-                  <Icon 
-                    name={selectedBadge.earned ? 'check-circle' : 'lock'} 
-                    size={14} 
-                    color={selectedBadge.earned ? '#40743dff' : '#999'} 
-                  />
-                  <Text style={[
-                    styles.badgeModalStatusText,
-                    selectedBadge.earned && styles.badgeModalStatusTextEarned
-                  ]}>
-                    {selectedBadge.earned ? 'Earned!' : 'Locked'}
+                {/* XP Reward */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                  <Icon name="star" size={14} color="#FFD700" />
+                  <Text style={{ marginLeft: 4, color: '#666', fontWeight: '600' }}>
+                    +{selectedBadge.xpReward} XP
                   </Text>
                 </View>
                 
+                <View style={[
+                  styles.badgeModalStatus,
+                  selectedBadge.isEarned ? styles.badgeModalStatusEarned : styles.badgeModalStatusLocked
+                ]}>
+                  <Icon 
+                    name={selectedBadge.isEarned ? 'check-circle' : 'lock'} 
+                    size={14} 
+                    color={selectedBadge.isEarned ? '#40743dff' : '#999'} 
+                  />
+                  <Text style={[
+                    styles.badgeModalStatusText,
+                    selectedBadge.isEarned && styles.badgeModalStatusTextEarned
+                  ]}>
+                    {selectedBadge.isEarned ? 'Earned!' : 'Locked'}
+                  </Text>
+                </View>
+                
+                {/* Progress bar for unearned badges */}
+                {!selectedBadge.isEarned && (
+                  <View style={{ width: '100%', marginVertical: 12 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <Text style={{ fontSize: 12, color: '#666' }}>Progress</Text>
+                      <Text style={{ fontSize: 12, color: '#666', fontWeight: '600' }}>
+                        {selectedBadge.current}/{selectedBadge.threshold}
+                      </Text>
+                    </View>
+                    <View style={{ width: '100%', height: 8, backgroundColor: '#eee', borderRadius: 4 }}>
+                      <View style={{ 
+                        width: `${selectedBadge.progress}%`, 
+                        height: '100%', 
+                        backgroundColor: getBadgeCategoryColor(selectedBadge.category), 
+                        borderRadius: 4 
+                      }} />
+                    </View>
+                  </View>
+                )}
+                
                 <Text style={styles.badgeModalRequirement}>
-                  {selectedBadge.earned ? 'You completed this achievement:' : 'Requirement:'}
+                  {selectedBadge.isEarned ? 'You completed this achievement:' : 'Requirement:'}
                 </Text>
                 <Text style={styles.badgeModalDescription}>
                   {selectedBadge.description}
@@ -1152,5 +1420,163 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     fontWeight: '600',
+  },
+  // Profile/Activity Tab Styles
+  profileTabContainer: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 12,
+  },
+  profileTabBar: {
+    flexDirection: 'row',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 12,
+    padding: 4,
+  },
+  profileTabButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    gap: 8,
+    borderRadius: 10,
+  },
+  profileTabButtonActive: {
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  profileTabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#999',
+  },
+  profileTabTextActive: {
+    color: '#40743dff',
+  },
+  profileTabIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    left: 4,
+    width: '48%',
+    height: 3,
+    backgroundColor: '#40743dff',
+    borderRadius: 2,
+    display: 'none', // Hidden since we use background for active state
+  },
+  // Activity Item Styles
+  activityItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    marginHorizontal: 16,
+    marginBottom: 10,
+    borderRadius: 12,
+    padding: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  activityThumbnail: {
+    width: 64,
+    height: 64,
+    borderRadius: 10,
+    backgroundColor: '#f0f0f0',
+  },
+  activityContent: {
+    flex: 1,
+    marginLeft: 12,
+    marginRight: 8,
+  },
+  activityHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  activityTypeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    gap: 4,
+  },
+  activityTypeLike: {
+    backgroundColor: '#FFEBEE',
+  },
+  activityTypeComment: {
+    backgroundColor: '#E8F5E9',
+  },
+  activityTypeText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  activityTypeLikeText: {
+    color: '#FF4444',
+  },
+  activityTypeCommentText: {
+    color: '#40743dff',
+  },
+  activityTime: {
+    fontSize: 11,
+    color: '#999',
+  },
+  activityCaption: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#333',
+    marginBottom: 4,
+    lineHeight: 18,
+  },
+  activityCommentPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#f8f8f8',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginBottom: 4,
+  },
+  activityCommentText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#666',
+    fontStyle: 'italic',
+  },
+  activityMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  activityUser: {
+    fontSize: 12,
+    color: '#40743dff',
+    fontWeight: '500',
+  },
+  activityAnimal: {
+    fontSize: 12,
+    color: '#999',
+    marginLeft: 4,
+  },
+  loadMoreButton: {
+    alignSelf: 'center',
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 20,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  loadMoreText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#40743dff',
   },
 });
