@@ -1,3 +1,4 @@
+import { Comment } from '../models/comment.model.js';
 import { Like } from '../models/like.model.js';
 import { Sighting } from '../models/sighting.model.js';
 import { User } from '../models/user.model.js';
@@ -94,10 +95,110 @@ const getSightingsLikedByUser = async (userId) => {
     return await Like.find({ user: userId }).populate('sighting');
 };
 
+/**
+ * Gets user's activity feed - liked sightings and commented sightings sorted by date
+ * @param {string} userId - The ID of the user.
+ * @param {number} page - Page number for pagination
+ * @param {number} pageSize - Number of items per page
+ * @returns {Promise<{activities: Array, hasMore: boolean}>} Activities sorted by date
+ */
+const getUserActivityFeed = async (userId, page = 1, pageSize = 20) => {
+  const skip = (page - 1) * pageSize;
+  
+  // Get likes with sighting and sighting user populated
+  const likes = await Like.find({ user: userId })
+    .populate({
+      path: 'sighting',
+      populate: [
+        { path: 'user', select: 'username profilePictureUrl' },
+        { path: 'animalId', select: 'commonName scientificName' }
+      ]
+    })
+    .sort({ createdAt: -1 })
+    .lean();
+  
+  // Get comments with sighting and sighting user populated
+  const comments = await Comment.find({ user: userId })
+    .populate({
+      path: 'sighting',
+      populate: [
+        { path: 'user', select: 'username profilePictureUrl' },
+        { path: 'animalId', select: 'commonName scientificName' }
+      ]
+    })
+    .sort({ createdAt: -1 })
+    .lean();
+  
+  // Transform likes into activity items
+  const likeActivities = likes
+    .filter(like => like.sighting) // Filter out likes with deleted sightings
+    .map(like => ({
+      type: 'like',
+      activityDate: like.createdAt,
+      sighting: {
+        _id: like.sighting._id,
+        caption: like.sighting.caption,
+        mediaUrls: like.sighting.mediaUrls,
+        createdAt: like.sighting.createdAt,
+        likes: like.sighting.likes || 0,
+        comments: like.sighting.comments || 0,
+        user: like.sighting.user,
+        animalId: like.sighting.animalId,
+        aiIdentification: like.sighting.aiIdentification,
+      },
+    }));
+  
+  // Transform comments into activity items
+  const commentActivities = comments
+    .filter(comment => comment.sighting) // Filter out comments with deleted sightings
+    .map(comment => ({
+      type: 'comment',
+      activityDate: comment.createdAt,
+      commentText: comment.commentText,
+      sighting: {
+        _id: comment.sighting._id,
+        caption: comment.sighting.caption,
+        mediaUrls: comment.sighting.mediaUrls,
+        createdAt: comment.sighting.createdAt,
+        likes: comment.sighting.likes || 0,
+        comments: comment.sighting.comments || 0,
+        user: comment.sighting.user,
+        animalId: comment.sighting.animalId,
+        aiIdentification: comment.sighting.aiIdentification,
+      },
+    }));
+  
+  // Combine and sort by activity date (most recent first)
+  const allActivities = [...likeActivities, ...commentActivities]
+    .sort((a, b) => new Date(b.activityDate).getTime() - new Date(a.activityDate).getTime());
+  
+  // Deduplicate by sighting ID (keep most recent activity for each sighting)
+  const seenSightings = new Set();
+  const uniqueActivities = allActivities.filter(activity => {
+    const sightingId = activity.sighting._id.toString();
+    if (seenSightings.has(sightingId)) {
+      return false;
+    }
+    seenSightings.add(sightingId);
+    return true;
+  });
+  
+  // Paginate
+  const paginatedActivities = uniqueActivities.slice(skip, skip + pageSize);
+  const hasMore = uniqueActivities.length > skip + pageSize;
+  
+  return {
+    activities: paginatedActivities,
+    total: uniqueActivities.length,
+    hasMore,
+  };
+};
+
 
 export const likeService = {
   toggleLike,
   getLikeCountForSighting,
   getUsersWhoLikedSighting,
   getSightingsLikedByUser,
+  getUserActivityFeed,
 };

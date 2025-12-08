@@ -1,14 +1,21 @@
 import { Router } from 'express';
 import {
-  awardAchievementToUser,
-  revokeAchievementFromUser,
-  getAchievementsForUser,
-  getUsersWithAchievement,
+    awardAchievementToUser,
+    getAchievementsForUser,
+    getMyAchievements,
+    getMyBadgeProgress,
+    getUsersWithAchievement,
+    revokeAchievementFromUser,
 } from '../controllers/userAchievement.controller.js';
-import { verifyJWT } from '../middlewares/auth.middleware.js';
 import { verifyAdmin } from '../middlewares/admin.middleware.js';
+import { verifyJWT } from '../middlewares/auth.middleware.js';
 
 const router = Router();
+
+// --- Authenticated User Routes ---
+// Get badge progress for the currently authenticated user
+router.route('/me/badges').get(verifyJWT, getMyBadgeProgress);
+router.route('/me').get(verifyJWT, getMyAchievements);
 
 // --- Public Routes ---
 // Anyone can view which achievements a user has earned or who has a specific achievement.

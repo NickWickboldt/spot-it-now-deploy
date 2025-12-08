@@ -49,6 +49,19 @@ const userSchema = new Schema(
       type: Number,
       default: 0,
     },
+    // Badge-related tracking fields
+    challengesCompleted: {
+      type: Number,
+      default: 0,
+    },
+    sightingStreak: {
+      type: Number,
+      default: 0,
+    },
+    lastSightingDate: {
+      type: Date,
+      default: null,
+    },
     authProvider: {
       type: String,
       enum: ['google', 'apple', 'email'],

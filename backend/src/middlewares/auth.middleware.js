@@ -70,3 +70,85 @@ export const verifyJWT = asyncHandler(async (req, _, next) => {
   throw new ApiError(401, error?.message || "Invalid access token");
   }
 });
+
+/**
+ * Optional JWT middleware that attempts to verify a token but continues without error if none is present.
+ * Populates req.user if a valid token is found, otherwise req.user remains undefined.
+ * This is useful for routes that can benefit from user context but should remain publicly accessible.
+ */
+export const optionalJWT = async (req, _, next) => {
+  console.log('[OPTIONAL JWT - MIDDLEWARE HIT]', {
+    path: req.originalUrl,
+    method: req.method,
+  });
+  
+  try {
+    // Extract token from Authorization header or cookies
+    const authHeader = req.header("Authorization");
+    const token =
+      authHeader?.replace("Bearer ", "") ||
+      req.cookies?.accessToken;
+
+    console.log('[OPTIONAL JWT] Token extraction:', {
+      hasAuthHeader: !!authHeader,
+      authHeaderPrefix: authHeader?.substring(0, 20),
+      hasCookie: !!req.cookies?.accessToken,
+      tokenExtracted: !!token,
+      path: req.originalUrl
+    });
+
+    // If no token present, just continue without setting req.user
+    if (!token) {
+      console.log('[OPTIONAL JWT] No token, continuing as public');
+      log.debug('optional-auth-middleware', 'No token found, continuing as public request', { 
+        path: req.originalUrl 
+      });
+      return next();
+    }
+
+    // Try to verify the token
+    const decodedToken = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+    
+    console.log('[OPTIONAL JWT] Token verified:', {
+      userId: decodedToken?._id,
+      username: decodedToken?.username
+    });
+
+    // Find the user
+    const user = await User.findById(decodedToken?._id).select(
+      "-password -refreshToken"
+    );
+
+    if (!user) {
+      console.log('[OPTIONAL JWT] User not found, continuing as public');
+      log.warn('optional-auth-middleware', 'Token valid but user not found, continuing as public', {
+        tokenUserId: decodedToken?._id
+      });
+      return next();
+    }
+
+    // Attach user to request
+    req.user = user;
+    console.log('[OPTIONAL JWT] User authenticated:', {
+      userId: user._id,
+      username: user.username,
+      path: req.originalUrl
+    });
+    log.debug('optional-auth-middleware', 'User authenticated', {
+      userId: user._id,
+      username: user.username
+    });
+    next();
+  } catch (error) {
+    // If token verification fails, just continue as public request
+    console.log('[OPTIONAL JWT] Token verification failed:', {
+      error: error?.message || error,
+      path: req.originalUrl 
+    });
+    log.debug('optional-auth-middleware', 'Token verification failed, continuing as public request', { 
+      error: error?.message || error,
+      path: req.originalUrl 
+    });
+    next();
+  }
+};

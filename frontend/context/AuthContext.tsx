@@ -1,11 +1,13 @@
 // ==================================================================
 // File: context/AuthContext.tsx
 // ==================================================================
+import * as Location from 'expo-location';
 import { useRouter, useSegments } from "expo-router";
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 import { apiCompleteOnboarding, apiLoginUser, apiRegisterUser } from '../api/auth';
 import { setAuthToken } from '../api/client';
+import { apiGetUserChallenges } from '../api/regionalChallenge';
 import { apiGetCurrentUser } from '../api/user';
 // AsyncStorage is used on native platforms to persist the token between sessions
 let AsyncStorage: any = null;
@@ -32,6 +34,31 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+/**
+ * Pre-fetch challenges in the background after login.
+ * This ensures challenges are ready when the user navigates to the challenges screen.
+ * Fails silently since this is a background optimization.
+ */
+const prefetchChallenges = async () => {
+  try {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') {
+      console.log('[AuthContext] Location permission not granted, skipping challenge prefetch');
+      return;
+    }
+    
+    const location = await Location.getCurrentPositionAsync({});
+    const { latitude, longitude } = location.coords;
+    
+    console.log('[AuthContext] Prefetching challenges for location:', { latitude, longitude });
+    await apiGetUserChallenges(latitude, longitude);
+    console.log('[AuthContext] Challenges prefetched successfully');
+  } catch (error) {
+    // Fail silently - challenges will be fetched when user visits the challenges screen
+    console.log('[AuthContext] Challenge prefetch failed (non-critical):', error);
+  }
+};
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<any | null>(null);
@@ -61,6 +88,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             const resp = await apiGetCurrentUser(storedToken);
             if (resp && resp.data) {
               setUser(resp.data);
+              
+              // Prefetch challenges in the background on app restore
+              prefetchChallenges();
             }
           } catch (e) {
             console.warn('Failed to fetch user with stored token, logging out', e);
@@ -163,6 +193,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         console.warn('Failed to persist auth token', e);
       }
       setUser(userData);
+      
+      // Prefetch challenges in the background (don't await - fire and forget)
+      prefetchChallenges();
     } catch (error) {
       console.error("Login failed:", error);
       throw error; // Re-throw to let the login screen handle it

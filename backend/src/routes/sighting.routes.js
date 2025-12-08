@@ -1,23 +1,23 @@
 import { Router } from 'express';
 import {
-  addMediaUrlToSighting,
-  createSighting,
-  deleteSighting,
-  findSightingsNear,
-  getAllSightings,
-  getFollowingRecentSightings,
-  getCommunityReviewSighting,
-  getMySightings,
-  getRecentSightings,
-  getSightingById,
-  getSightingsByAnimal,
-  getSightingsByUser,
-  removeMediaUrlFromSighting,
-  submitCommunityVerificationVote,
-  updateSightingField
+    addMediaUrlToSighting,
+    createSighting,
+    deleteSighting,
+    findSightingsNear,
+    getAllSightings,
+    getCommunityReviewSighting,
+    getFollowingRecentSightings,
+    getMySightings,
+    getRecentSightings,
+    getSightingById,
+    getSightingsByAnimal,
+    getSightingsByUser,
+    removeMediaUrlFromSighting,
+    submitCommunityVerificationVote,
+    updateSightingField
 } from '../controllers/sighting.controller.js';
 import { verifyAdmin } from '../middlewares/admin.middleware.js';
-import { verifyJWT } from '../middlewares/auth.middleware.js';
+import { optionalJWT, verifyJWT } from '../middlewares/auth.middleware.js';
 
 const router = Router();
 
@@ -37,7 +37,7 @@ router.route('/community/next').get(verifyJWT, getCommunityReviewSighting);
 // Get current user's own sightings (including private) - place before param route to avoid 'my' matching :sightingId
 router.route('/my').get(verifyJWT, getMySightings);
 
-router.route('/:sightingId').get(getSightingById);
+router.route('/:sightingId').get(optionalJWT, getSightingById);
 
 // Admin: list all sightings
 router.route('/').get(verifyJWT, verifyAdmin(1), getAllSightings);

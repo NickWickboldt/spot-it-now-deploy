@@ -1148,20 +1148,29 @@ export default function FeedScreen() {
       >
         <View style={tabStyles.titleRow}>
           <Text style={tabStyles.headerTitle}>Feed</Text>
-          <TouchableOpacity
-            onPress={() => router.push('/(user)/notifications')}
-            style={tabStyles.notificationButton}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Icon name="bell" size={20} color="#fff" />
-            {unreadNotificationCount > 0 && (
-              <View style={tabStyles.notificationBadge}>
-                <Text style={tabStyles.notificationBadgeText}>
-                  {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
+          <View style={tabStyles.headerActions}>
+            <TouchableOpacity
+              onPress={() => router.push('/(user)/search')}
+              style={tabStyles.headerIconButton}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Icon name="search" size={20} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push('/(user)/notifications')}
+              style={tabStyles.notificationButton}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Icon name="bell" size={20} color="#fff" />
+              {unreadNotificationCount > 0 && (
+                <View style={tabStyles.notificationBadge}>
+                  <Text style={tabStyles.notificationBadgeText}>
+                    {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
         <View style={tabStyles.tabRow}>
           {TABS.map((tab) => (
@@ -1736,6 +1745,16 @@ const tabStyles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '700',
     color: '#fff',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerIconButton: {
+    padding: 8,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 20,
   },
   tabRow: {
     flexDirection: 'row',

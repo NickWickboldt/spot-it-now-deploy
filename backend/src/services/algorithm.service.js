@@ -141,14 +141,14 @@ const getPersonalizedFeed = async (userId, page = 1, pageSize = 10) => {
   
   // If algorithm is disabled, return chronological feed
   if (!preference.algorithmEnabled) {
-    const sightings = await Sighting.find()
+    const sightings = await Sighting.find({ isPrivate: { $ne: true } })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(pageSize)
       .populate('user', 'username profilePictureUrl')
       .populate('animal', 'commonName scientificName imageUrl category');
     
-    const total = await Sighting.countDocuments();
+    const total = await Sighting.countDocuments({ isPrivate: { $ne: true } });
     
     return {
       items: sightings,
@@ -164,7 +164,8 @@ const getPersonalizedFeed = async (userId, page = 1, pageSize = 10) => {
   
   // Get ALL recent sightings EXCEPT liked ones
   const sightings = await Sighting.find({
-    _id: { $nin: likedSightingIds } // Exclude liked sightings
+    _id: { $nin: likedSightingIds }, // Exclude liked sightings
+    isPrivate: { $ne: true } // Exclude private sightings
   })
     .sort({ createdAt: -1 })
     .limit(1000) // Get last 1000 non-liked sightings for scoring
@@ -382,7 +383,8 @@ const getPersonalizedFollowingFeed = async (userId, page = 1, pageSize = 10) => 
   // Get sightings only from followed users, excluding liked ones
   const sightings = await Sighting.find({
     user: { $in: followedUserIds },
-    _id: { $nin: likedSightingIds }
+    _id: { $nin: likedSightingIds },
+    isPrivate: { $ne: true }
   })
     .sort({ createdAt: -1 })
     .limit(1000)
@@ -461,7 +463,8 @@ const getPersonalizedLocalFeed = async (userId, longitude, latitude, radiusMeter
         $maxDistance: radiusMeters
       }
     },
-    _id: { $nin: likedSightingIds }
+    _id: { $nin: likedSightingIds },
+    isPrivate: { $ne: true }
   })
     .limit(1000)
     .populate('user', 'username profilePictureUrl')

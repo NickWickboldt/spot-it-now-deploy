@@ -1,6 +1,7 @@
-import { asyncHandler } from '../utils/asyncHandler.util.js';
-import { ApiResponse } from '../utils/ApiResponse.js';
+import { badgeService } from '../services/badge.service.js';
 import { userAchievementService } from '../services/userAchievement.service.js';
+import { ApiResponse } from '../utils/ApiResponse.js';
+import { asyncHandler } from '../utils/asyncHandler.util.js';
 
 /**
  * Controller to award an achievement to a specific user.
@@ -46,10 +47,60 @@ const getUsersWithAchievement = asyncHandler(async (req, res) => {
         .json(new ApiResponse(200, users, 'Users with this achievement fetched successfully'));
 });
 
+/**
+ * Controller to get badge progress for the authenticated user.
+ * Returns all badges with their earned status and progress percentage.
+ */
+const getMyBadgeProgress = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+  const badgesWithProgress = await badgeService.getBadgeProgress(userId);
+  
+  // Group badges by category for easier frontend display
+  const grouped = {
+    category_mastery: [],
+    rarity_hunting: [],
+    milestones: [],
+    challenges: [],
+    special: [],
+    social: [],
+  };
+  
+  for (const badge of badgesWithProgress) {
+    const category = badge.category || 'special';
+    if (grouped[category]) {
+      grouped[category].push(badge);
+    } else {
+      grouped.special.push(badge);
+    }
+  }
+  
+  // Calculate summary stats
+  const earned = badgesWithProgress.filter(b => b.isEarned);
+  const summary = {
+    totalBadges: badgesWithProgress.length,
+    earnedCount: earned.length,
+    totalXPFromBadges: earned.reduce((sum, b) => sum + (b.xpReward || 0), 0),
+    completionPercentage: Math.round((earned.length / badgesWithProgress.length) * 100),
+  };
+  
+  return res
+    .status(200)
+    .json(new ApiResponse(200, { badges: grouped, all: badgesWithProgress, summary }, 'Badge progress fetched successfully'));
+});
+
+/**
+ * Controller to get achievements for the authenticated user.
+ */
+const getMyAchievements = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+  const achievements = await userAchievementService.getAchievementsForUser(userId);
+  return res
+    .status(200)
+    .json(new ApiResponse(200, achievements, 'Your achievements fetched successfully'));
+});
+
 
 export {
-  awardAchievementToUser,
-  revokeAchievementFromUser,
-  getAchievementsForUser,
-  getUsersWithAchievement,
+    awardAchievementToUser, getAchievementsForUser, getMyAchievements, getMyBadgeProgress, getUsersWithAchievement, revokeAchievementFromUser
 };
+

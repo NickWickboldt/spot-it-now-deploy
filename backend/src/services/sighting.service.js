@@ -10,7 +10,9 @@ import { ApiError } from '../utils/ApiError.util.js';
 import { log } from '../utils/logger.util.js';
 import { animalService } from './animal.service.js';
 import { animalMappingService } from './animalMapping.service.js';
+import { badgeService } from './badge.service.js';
 import { experienceService } from './experience.service.js';
+import { updateChallengeProgress } from './regionalChallenge.service.js';
 import { userDiscoveryService } from './userDiscovery.service.js';
 
 const isCloudinaryConfigured = () => Boolean(
@@ -510,6 +512,67 @@ const createSighting = async (userId, userName, sightingData) => {
           error: xpError.message,
         });
       }
+
+      // Update challenge progress for this animal sighting
+      try {
+        // Get animal name from identification or fetch from database
+        let animalName = identification?.commonName;
+        
+        if (!animalName && linkedAnimalId) {
+          const animal = await Animal.findById(linkedAnimalId).select('commonName');
+          animalName = animal?.commonName;
+        }
+        
+        if (animalName) {
+          const challengeResult = await updateChallengeProgress(userId, animalName);
+          if (challengeResult.updated) {
+            log.info('sighting-service', 'Challenge progress updated for sighting', {
+              sightingId: sighting._id,
+              userId,
+              animalName,
+              dailyMatch: challengeResult.dailyMatch,
+              weeklyMatch: challengeResult.weeklyMatch,
+            });
+          }
+        }
+      } catch (challengeError) {
+        // Don't fail sighting creation if challenge update fails
+        log.warn('sighting-service', 'Failed to update challenge progress for sighting', {
+          sightingId: sighting._id,
+          error: challengeError.message,
+        });
+      }
+
+      // Check and award badges for this discovery
+      try {
+        const newBadges = await badgeService.checkBadgesAfterDiscovery(
+          userId, 
+          linkedAnimalId, 
+          sighting.createdAt
+        );
+        
+        if (newBadges.length > 0) {
+          log.info('sighting-service', 'Badges awarded for sighting', {
+            sightingId: sighting._id,
+            userId,
+            badges: newBadges.map(b => b.name),
+            totalXP: newBadges.reduce((sum, b) => sum + (b.xpReward || 0), 0),
+          });
+          
+          // Attach badges to xpResult for frontend display
+          if (xpResult) {
+            xpResult.newBadges = newBadges;
+          } else {
+            xpResult = { newBadges };
+          }
+        }
+      } catch (badgeError) {
+        // Don't fail sighting creation if badge check fails
+        log.warn('sighting-service', 'Failed to check badges for sighting', {
+          sightingId: sighting._id,
+          error: badgeError.message,
+        });
+      }
     } catch (error) {
       // Don't fail sighting creation if discovery fails
       log.warn('sighting-service', 'Failed to add discovery for sighting', { 
@@ -694,7 +757,7 @@ const getSightingsByUserAll = async (userId) => {
  * @returns {Promise<Sighting[]>} An array of sighting objects.
  */
 const getSightingsByAnimal = async (animalId) => {
-  return await Sighting.find({ animalId }).sort({ createdAt: -1 });
+  return await Sighting.find({ animalId, isPrivate: { $ne: true } }).sort({ createdAt: -1 });
 };
 
 /**
@@ -756,7 +819,7 @@ const getAllSightings = async () => {
  */
 const getSightingsPage = async ({ page = 1, pageSize = 20, q = '' } = {}) => {
   const skip = (page - 1) * pageSize;
-  const filter = {};
+  const filter = { isPrivate: { $ne: true } };
   if (q && q.trim()) {
     const regex = new RegExp(q.trim(), 'i');
     // Search caption or user username (requires populate later) or animal commonName

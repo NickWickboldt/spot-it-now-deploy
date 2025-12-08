@@ -2,6 +2,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+    ActivityIndicator,
     Animated,
     Dimensions,
     Image,
@@ -13,6 +14,7 @@ import {
     View,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
+import { apiSearchAnimals } from '../../api/animal';
 import { apiGetMySightings } from '../../api/sighting';
 import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
@@ -181,14 +183,50 @@ export default function AnimalDetailScreen() {
   const { token } = useAuth();
   const params = useLocalSearchParams();
   
-  // Parse animal data from params
-  const animal = useMemo(() => {
+  // State for animal lookup by name
+  const [loadedAnimal, setLoadedAnimal] = useState<any>(null);
+  const [isLoadingAnimal, setIsLoadingAnimal] = useState(false);
+  
+  // Parse animal data from params (if provided as full object)
+  const parsedAnimal = useMemo(() => {
     try {
       return params.animal ? JSON.parse(params.animal as string) : null;
     } catch {
       return null;
     }
   }, [params.animal]);
+
+  // Get animal name from params (for lookup)
+  const animalName = params.animalName as string | undefined;
+
+  // Look up animal by name if not provided as full object
+  useEffect(() => {
+    const lookupAnimal = async () => {
+      if (parsedAnimal || !animalName) return;
+      
+      setIsLoadingAnimal(true);
+      try {
+        const response = await apiSearchAnimals(animalName, token);
+        const animals = response.data || [];
+        // Find exact match or closest match
+        const exactMatch = animals.find((a: any) => 
+          a.commonName?.toLowerCase() === animalName.toLowerCase()
+        );
+        const animal = exactMatch || animals[0];
+        if (animal) {
+          setLoadedAnimal(animal);
+        }
+      } catch (error) {
+        console.error('Error looking up animal:', error);
+      } finally {
+        setIsLoadingAnimal(false);
+      }
+    };
+    lookupAnimal();
+  }, [animalName, parsedAnimal, token]);
+
+  // Use parsed animal or loaded animal
+  const animal = parsedAnimal || loadedAnimal;
 
   const discoveryInfo = useMemo(() => {
     try {
@@ -270,6 +308,15 @@ export default function AnimalDetailScreen() {
     outputRange: [1.1, 1],
     extrapolate: 'clamp',
   });
+
+  if (isLoadingAnimal) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={Colors.light.primaryGreen} />
+        <Text style={{ marginTop: 16, color: '#666' }}>Loading animal details...</Text>
+      </View>
+    );
+  }
 
   if (!animal) {
     return (

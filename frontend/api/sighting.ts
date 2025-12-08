@@ -7,9 +7,9 @@ export async function apiGetSightingsNear(long: number, lat: number, dist?: numb
     });
 }
 
-// Public getters
-export async function apiGetSightingById(sightingId: string) {
-    return fetchWithAuth(`/sightings/${sightingId}`, '');
+// Public getters (but pass token if available for user-specific data like isLikedByUser)
+export async function apiGetSightingById(sightingId: string, token?: string) {
+    return fetchWithAuth(`/sightings/${sightingId}`, token || '');
 }
 
 export async function apiGetSightingsByUser(userId: string) {
