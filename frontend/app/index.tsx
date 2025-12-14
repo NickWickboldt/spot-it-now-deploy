@@ -38,6 +38,7 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [emailError, setEmailError] = useState(false);
   const [passwordError, setPasswordError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   
   // Animations
   const floatAnim = useRef(new Animated.Value(0)).current;
@@ -122,12 +123,14 @@ export default function LoginScreen() {
     
     if (hasError) return;
     
+    setErrorMessage(''); // Clear previous errors
     try {
       await login({ username: email, password });
-    } catch (error) {
+    } catch (error: any) {
       // Login failed - shake both inputs
       setEmailError(true);
       setPasswordError(true);
+      setErrorMessage(error.message || 'Login failed. Please check your credentials.');
       shakeInput(shakeAnim1);
       shakeInput(shakeAnim2);
     }
@@ -213,6 +216,15 @@ export default function LoginScreen() {
           </View>
         </Animated.View>
       </SlideInView>
+
+      {/* Error Message */}
+      {errorMessage ? (
+        <SlideInView delay={100} from="top" distance={10} style={{ width: '100%', maxWidth: 400, marginBottom: 10 }}>
+          <Text style={{ color: '#ef4444', textAlign: 'center', fontSize: 14, fontWeight: '500' }}>
+            {errorMessage}
+          </Text>
+        </SlideInView>
+      ) : null}
 
       {/* Login Button */}
       <SlideInView delay={200} from="bottom" distance={20} style={{ width: '100%', maxWidth: 400 }}>

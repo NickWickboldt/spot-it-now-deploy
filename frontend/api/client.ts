@@ -4,8 +4,8 @@ import { Platform } from 'react-native';
 
 // Dynamically determine backend base URL so same code works on web, iOS, Android, and Expo Go.
 // For iOS Simulator/Android Emulator, we need to use the dev machine's local IP
-// HARDCODED IP FOR EAS UPDATE TESTING
-export let BASE_URL = 'http://192.168.2.187:8000/api/v1';
+// PRODUCTION RENDER URL
+export let BASE_URL = 'https://spotitnow-backend.onrender.com/api/v1';
 
 const computeBaseUrl = () => {
   console.log('[CLIENT] Platform:', Platform.OS);
@@ -52,7 +52,7 @@ const computeBaseUrl = () => {
   return 'http://localhost:8000/api/v1';
 };
 
-BASE_URL = computeBaseUrl();
+// BASE_URL = computeBaseUrl();
 console.log('[CLIENT] Final BASE_URL:', BASE_URL);
 
 // In-memory auth token used by fetch utilities. Call `setAuthToken` after login/logout.
