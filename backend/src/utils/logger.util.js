@@ -21,10 +21,8 @@ const printLog = (level, message, meta) => {
 };
 
 const createLogEntry = (level, source, message, meta, userId = null) => {
-  // During development, print the log to the console
-  if (process.env.NODE_ENV !== 'production') {
-    printLog(level, message, meta);
-  }
+  // ALWAYS print to console so we can see logs in Render dashboard
+  printLog(level, message, meta);
 
   // Send the log to the database in the background ("fire and forget")
   logService.createLog({
