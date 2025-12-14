@@ -46,7 +46,8 @@
     "react-native-vector-icons": "^10.3.0",
     "react-native-web": "^0.21.0",
     "react-navigation": "^5.0.0",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "expo-updates": "~29.0.15"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",

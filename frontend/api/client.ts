@@ -4,7 +4,8 @@ import { Platform } from 'react-native';
 
 // Dynamically determine backend base URL so same code works on web, iOS, Android, and Expo Go.
 // For iOS Simulator/Android Emulator, we need to use the dev machine's local IP
-export let BASE_URL = 'http://localhost:8000/api/v1';
+// HARDCODED IP FOR EAS UPDATE TESTING
+export let BASE_URL = 'http://192.168.2.187:8000/api/v1';
 
 const computeBaseUrl = () => {
   console.log('[CLIENT] Platform:', Platform.OS);

@@ -1,7 +1,7 @@
 export default {
   "expo": {
     "name": "SpotItNow",
-    "slug": "SpotItNow",
+    "slug": "spotitnow",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
