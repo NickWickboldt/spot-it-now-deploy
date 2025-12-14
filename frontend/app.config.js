@@ -8,6 +8,17 @@ export default {
     "scheme": "spotitnow",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "runtimeVersion": {
+      "policy": "sdkVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/58c34e16-2526-4595-9302-c5bcfc6b9844"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "58c34e16-2526-4595-9302-c5bcfc6b9844"
+      }
+    },
     "ios": {
       "supportsTablet": true,
       "config": {

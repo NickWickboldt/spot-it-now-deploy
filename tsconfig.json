@@ -4,13 +4,14 @@
     "strict": true,
     "paths": {
       "@/*": [
-        "./*"
+        "./frontend/*"
       ]
-    }
+    },
+    "baseUrl": "."
   },
   "include": [
-    "**/*.ts",
-    "**/*.tsx",
+    "frontend/**/*.ts",
+    "frontend/**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
   ]

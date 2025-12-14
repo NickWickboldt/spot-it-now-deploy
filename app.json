@@ -1,0 +1,16 @@
+{
+  "extends": "./frontend/app.config.js",
+  "extra": {
+    "eas": {
+      "projectId": "58c34e16-2526-4595-9302-c5bcfc6b9844"
+    }
+  },
+  "runtimeVersion": {
+    "policy": "sdkVersion"
+  },
+  "updates": {
+    "url": "https://u.expo.dev/58c34e16-2526-4595-9302-c5bcfc6b9844"
+  },
+  "android": {},
+  "ios": {}
+}
