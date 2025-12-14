@@ -13,7 +13,9 @@ const connectDB = async () => {
     // Attempt to connect to the MongoDB cluster.
     // The connection string should be stored in your .env file for security.
     // Example: MONGODB_URI="mongodb+srv://<user>:<password>@cluster.mongodb.net/<dbname>?retryWrites=true&w=majority"
-    const connectionInstance = await mongoose.connect(`${process.env.MONGODB_URI}/${process.env.DB_NAME}`);
+    const connectionInstance = await mongoose.connect(process.env.MONGODB_URI, {
+      dbName: process.env.DB_NAME
+    });
 
     // Log a success message with the host name if the connection is successful.
     log.info('backend-db', 'MongoDB connected', { host: connectionInstance.connection.host });
