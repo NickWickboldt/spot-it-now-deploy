@@ -5,9 +5,9 @@ import { log } from '../utils/logger.util.js';
 const RESOURCE_TYPES = new Set(['image', 'video']);
 
 const isCloudinaryConfigured = () => Boolean(
-  process.env.CLOUDINARY_CLOUD_NAME &&
-  process.env.CLOUDINARY_API_KEY &&
-  process.env.CLOUDINARY_API_SECRET
+  process.env.CLOUDINARY_CLOUD_NAME?.trim() &&
+  process.env.CLOUDINARY_API_KEY?.trim() &&
+  process.env.CLOUDINARY_API_SECRET?.trim()
 );
 
 /**
@@ -40,9 +40,9 @@ const getUploadSignature = ({ resourceType, folder, publicId }) => {
 
   const isImage = resourceType === 'image';
   // Support both VIDEO and VID env var names for backwards compatibility
-  const uploadPreset = isImage
+  const uploadPreset = (isImage
     ? process.env.CLOUDINARY_IMG_PRESET
-    : (process.env.CLOUDINARY_VIDEO_PRESET || process.env.CLOUDINARY_VID_PRESET);
+    : (process.env.CLOUDINARY_VIDEO_PRESET || process.env.CLOUDINARY_VID_PRESET))?.trim();
 
   if (!uploadPreset) {
     throw new ApiError(
@@ -52,6 +52,10 @@ const getUploadSignature = ({ resourceType, folder, publicId }) => {
   }
 
   const timestamp = Math.floor(Date.now() / 1000);
+  
+  // Cloudinary signature requires parameters to be in alphabetical order
+  // The SDK's api_sign_request handles sorting, but we must ensure we only include
+  // parameters that will actually be sent by the frontend.
   const toSign = {
     timestamp,
     upload_preset: uploadPreset,
@@ -59,17 +63,26 @@ const getUploadSignature = ({ resourceType, folder, publicId }) => {
   if (folder) toSign.folder = folder;
   if (publicId) toSign.public_id = publicId;
 
-  // Use SDK to sign
+  // Use SDK to sign with the trimmed secret
+  const apiSecret = process.env.CLOUDINARY_API_SECRET.trim();
   const signature = cloudinary.utils.api_sign_request(
     toSign,
-    process.env.CLOUDINARY_API_SECRET
+    apiSecret
   );
 
-  log.debug('upload-service', 'Generated Cloudinary signature', { resourceType, folder: folder || null, hasPublicId: !!publicId });
+  log.debug('upload-service', 'Generated Cloudinary signature', { 
+    resourceType, 
+    folder: folder || null, 
+    hasPublicId: !!publicId,
+    timestamp,
+    uploadPreset,
+    // Log the string that would be signed for comparison with Cloudinary's error
+    stringToSign: Object.keys(toSign).sort().map(k => `${k}=${toSign[k]}`).join('&')
+  });
 
   return {
-    cloudName: process.env.CLOUDINARY_CLOUD_NAME,
-    apiKey: process.env.CLOUDINARY_API_KEY,
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME.trim(),
+    apiKey: process.env.CLOUDINARY_API_KEY.trim(),
     timestamp,
     signature,
     upload_preset: uploadPreset,
