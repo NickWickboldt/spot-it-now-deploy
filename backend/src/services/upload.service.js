@@ -53,9 +53,9 @@ const getUploadSignature = ({ resourceType, folder, publicId }) => {
 
   const timestamp = Math.floor(Date.now() / 1000);
   
-  // Cloudinary signature requires parameters to be in alphabetical order
-  // The SDK's api_sign_request handles sorting, but we must ensure we only include
-  // parameters that will actually be sent by the frontend.
+  // Check if we should use unsigned uploads (useful for debugging or if signatures keep failing)
+  const useUnsigned = process.env.CLOUDINARY_USE_UNSIGNED === 'true';
+
   const toSign = {
     timestamp,
     upload_preset: uploadPreset,
@@ -63,13 +63,15 @@ const getUploadSignature = ({ resourceType, folder, publicId }) => {
   if (folder) toSign.folder = folder;
   if (publicId) toSign.public_id = publicId;
 
-  // Use SDK to sign with the trimmed secret
-  const apiSecret = process.env.CLOUDINARY_API_SECRET.trim();
-  const apiKey = process.env.CLOUDINARY_API_KEY.trim();
-  const signature = cloudinary.utils.api_sign_request(
-    toSign,
-    apiSecret
-  );
+  let signature = null;
+  if (!useUnsigned) {
+    // Use SDK to sign with the trimmed secret
+    const apiSecret = process.env.CLOUDINARY_API_SECRET.trim();
+    signature = cloudinary.utils.api_sign_request(
+      toSign,
+      apiSecret
+    );
+  }
 
   const stringToSign = Object.keys(toSign).sort().map(k => `${k}=${toSign[k]}`).join('&');
   const serverTime = new Date().toISOString();
@@ -82,6 +84,7 @@ const getUploadSignature = ({ resourceType, folder, publicId }) => {
     serverTime,
     uploadPreset,
     stringToSign,
+    useUnsigned,
     // Log hints to verify environment variables in Render
     apiKeyHint: `${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}`,
     secretHint: `${apiSecret.substring(0, 2)}...${apiSecret.substring(apiSecret.length - 2)}`

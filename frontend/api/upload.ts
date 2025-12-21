@@ -24,11 +24,12 @@ export async function apiSignUpload(token: string, resourceType: ResourceType, f
 
 function guessMimeType(uri: string, resourceType: ResourceType): string {
   if (resourceType === 'video') return 'video/mp4';
-  const lower = uri.toLowerCase();
-  if (lower.endsWith('.png')) return 'image/png';
-  if (lower.endsWith('.webp')) return 'image/webp';
-  if (lower.endsWith('.heic') || lower.endsWith('.heif')) return 'image/heic';
-  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  // Strip query params if any
+  const cleanUri = uri.split('?')[0].toLowerCase();
+  if (cleanUri.endsWith('.png')) return 'image/png';
+  if (cleanUri.endsWith('.webp')) return 'image/webp';
+  if (cleanUri.endsWith('.heic') || cleanUri.endsWith('.heif')) return 'image/heic';
+  if (cleanUri.endsWith('.jpg') || cleanUri.endsWith('.jpeg')) return 'image/jpeg';
   return 'application/octet-stream';
 }
 
@@ -40,26 +41,46 @@ export async function uploadToCloudinarySigned(
   publicId?: string
 ): Promise<{ secure_url: string; public_id: string }> {
   const sign = await apiSignUpload(token, resourceType, folder, publicId);
+  
+  if (!sign || !sign.data) {
+    throw new Error('Failed to get upload signature from server');
+  }
+
   const { cloudName, apiKey, timestamp, signature, upload_preset, folder: signedFolder, public_id } = sign.data;
 
   const formData: any = new FormData();
+  
+  // If we have a signature, it's a signed upload
+  if (signature) {
+    formData.append('api_key', apiKey);
+    formData.append('timestamp', String(timestamp));
+    formData.append('signature', signature);
+  }
+  
+  // These are required for both signed and unsigned (if the preset is unsigned)
+  formData.append('upload_preset', upload_preset);
+  if (signedFolder) formData.append('folder', signedFolder);
+  if (public_id) formData.append('public_id', public_id);
+  
   formData.append('file', {
     uri: fileUri,
     name: public_id || `upload.${resourceType === 'image' ? 'jpg' : 'mp4'}`,
     type: guessMimeType(fileUri, resourceType),
   } as any);
-  formData.append('api_key', apiKey);
-  formData.append('timestamp', String(timestamp));
-  formData.append('signature', signature);
-  formData.append('upload_preset', upload_preset);
-  if (signedFolder) formData.append('folder', signedFolder);
-  if (public_id) formData.append('public_id', public_id);
 
   const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`;
-  const resp = await fetch(uploadUrl, {
-    method: 'POST',
-    body: formData,
-  });
+  
+  let resp;
+  try {
+    resp = await fetch(uploadUrl, {
+      method: 'POST',
+      body: formData,
+    });
+  } catch (fetchError: any) {
+    console.error('[CLOUDINARY FETCH ERROR]', fetchError);
+    throw new Error(`Network error during Cloudinary upload: ${fetchError.message}`);
+  }
+
   if (!resp.ok) {
     const text = await resp.text();
     console.error('[CLOUDINARY ERROR]', {
