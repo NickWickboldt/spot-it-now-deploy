@@ -2,9 +2,13 @@ import { cloudinary, configureCloudinary } from '../config/cloudinary.config.js'
 import { ApiError } from '../utils/ApiError.util.js';
 import { log } from '../utils/logger.util.js';
 
-configureCloudinary();
-
 const RESOURCE_TYPES = new Set(['image', 'video']);
+
+const isCloudinaryConfigured = () => Boolean(
+  process.env.CLOUDINARY_CLOUD_NAME &&
+  process.env.CLOUDINARY_API_KEY &&
+  process.env.CLOUDINARY_API_SECRET
+);
 
 /**
  * Creates a signed payload for direct uploads to Cloudinary from the client.
@@ -23,6 +27,13 @@ const RESOURCE_TYPES = new Set(['image', 'video']);
  * }}
  */
 const getUploadSignature = ({ resourceType, folder, publicId }) => {
+  if (!isCloudinaryConfigured()) {
+    log.error('upload-service', 'Cloudinary is not fully configured. Missing environment variables.');
+    throw new ApiError(500, 'Cloudinary configuration is missing on the server.');
+  }
+
+  configureCloudinary();
+
   if (!RESOURCE_TYPES.has(resourceType)) {
     throw new ApiError(400, 'Invalid resourceType. Expected image or video.');
   }

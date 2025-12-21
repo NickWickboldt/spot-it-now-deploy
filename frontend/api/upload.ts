@@ -62,7 +62,26 @@ export async function uploadToCloudinarySigned(
   });
   if (!resp.ok) {
     const text = await resp.text();
-    throw new Error(`Cloudinary upload failed (${resp.status}): ${text}`);
+    console.error('[CLOUDINARY ERROR]', {
+      status: resp.status,
+      body: text,
+      cloudName,
+      resourceType
+    });
+    
+    let errorMessage = `Cloudinary upload failed (${resp.status})`;
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed.error && parsed.error.message) {
+        errorMessage += `: ${parsed.error.message}`;
+      } else {
+        errorMessage += `: ${text}`;
+      }
+    } catch (e) {
+      errorMessage += `: ${text}`;
+    }
+    
+    throw new Error(errorMessage);
   }
   const json = await resp.json();
   return { secure_url: json.secure_url, public_id: json.public_id };
