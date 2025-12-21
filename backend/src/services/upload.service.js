@@ -65,27 +65,31 @@ const getUploadSignature = ({ resourceType, folder, publicId }) => {
 
   // Use SDK to sign with the trimmed secret
   const apiSecret = process.env.CLOUDINARY_API_SECRET.trim();
+  const apiKey = process.env.CLOUDINARY_API_KEY.trim();
   const signature = cloudinary.utils.api_sign_request(
     toSign,
     apiSecret
   );
 
   const stringToSign = Object.keys(toSign).sort().map(k => `${k}=${toSign[k]}`).join('&');
+  const serverTime = new Date().toISOString();
 
   log.debug('upload-service', 'Generated Cloudinary signature', { 
     resourceType, 
     folder: folder || null, 
     hasPublicId: !!publicId,
     timestamp,
+    serverTime,
     uploadPreset,
     stringToSign,
-    // Log first/last chars of secret to help user verify it's correct in Render
+    // Log hints to verify environment variables in Render
+    apiKeyHint: `${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}`,
     secretHint: `${apiSecret.substring(0, 2)}...${apiSecret.substring(apiSecret.length - 2)}`
   });
 
   return {
     cloudName: process.env.CLOUDINARY_CLOUD_NAME.trim(),
-    apiKey: process.env.CLOUDINARY_API_KEY.trim(),
+    apiKey,
     timestamp,
     signature,
     upload_preset: uploadPreset,
