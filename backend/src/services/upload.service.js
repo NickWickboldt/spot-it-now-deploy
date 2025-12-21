@@ -55,6 +55,8 @@ const getUploadSignature = ({ resourceType, folder, publicId }) => {
   
   // Check if we should use unsigned uploads (useful for debugging or if signatures keep failing)
   const useUnsigned = process.env.CLOUDINARY_USE_UNSIGNED === 'true';
+  const apiSecret = (process.env.CLOUDINARY_API_SECRET || '').trim();
+  const apiKey = (process.env.CLOUDINARY_API_KEY || '').trim();
 
   const toSign = {
     timestamp,
@@ -64,9 +66,8 @@ const getUploadSignature = ({ resourceType, folder, publicId }) => {
   if (publicId) toSign.public_id = publicId;
 
   let signature = null;
-  if (!useUnsigned) {
+  if (!useUnsigned && apiSecret) {
     // Use SDK to sign with the trimmed secret
-    const apiSecret = process.env.CLOUDINARY_API_SECRET.trim();
     signature = cloudinary.utils.api_sign_request(
       toSign,
       apiSecret
@@ -86,12 +87,12 @@ const getUploadSignature = ({ resourceType, folder, publicId }) => {
     stringToSign,
     useUnsigned,
     // Log hints to verify environment variables in Render
-    apiKeyHint: `${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}`,
-    secretHint: `${apiSecret.substring(0, 2)}...${apiSecret.substring(apiSecret.length - 2)}`
+    apiKeyHint: apiKey ? `${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}` : 'MISSING',
+    secretHint: apiSecret ? `${apiSecret.substring(0, 2)}...${apiSecret.substring(apiSecret.length - 2)}` : 'MISSING'
   });
 
   return {
-    cloudName: process.env.CLOUDINARY_CLOUD_NAME.trim(),
+    cloudName: (process.env.CLOUDINARY_CLOUD_NAME || '').trim(),
     apiKey,
     timestamp,
     signature,

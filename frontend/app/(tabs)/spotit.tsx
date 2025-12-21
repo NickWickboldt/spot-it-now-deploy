@@ -947,9 +947,10 @@ const handleOverride = useCallback(async (uri?: string) => {
   setFrameUri(null);
     setAnalysisResult(null);
     setImageVerification(null);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error posting sighting:", error);
-    Alert.alert("Error", "Failed to post sighting");
+    const errorMessage = error?.message || "Failed to post sighting";
+    Alert.alert("Error", errorMessage);
   } finally {
     setIsSubmittingSighting(false);
   }
