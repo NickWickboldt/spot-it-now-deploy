@@ -70,14 +70,17 @@ const getUploadSignature = ({ resourceType, folder, publicId }) => {
     apiSecret
   );
 
+  const stringToSign = Object.keys(toSign).sort().map(k => `${k}=${toSign[k]}`).join('&');
+
   log.debug('upload-service', 'Generated Cloudinary signature', { 
     resourceType, 
     folder: folder || null, 
     hasPublicId: !!publicId,
     timestamp,
     uploadPreset,
-    // Log the string that would be signed for comparison with Cloudinary's error
-    stringToSign: Object.keys(toSign).sort().map(k => `${k}=${toSign[k]}`).join('&')
+    stringToSign,
+    // Log first/last chars of secret to help user verify it's correct in Render
+    secretHint: `${apiSecret.substring(0, 2)}...${apiSecret.substring(apiSecret.length - 2)}`
   });
 
   return {
