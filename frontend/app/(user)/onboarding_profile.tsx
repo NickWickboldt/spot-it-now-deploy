@@ -23,18 +23,23 @@ export default function OnboardingProfileScreen() {
       setIsUploadingImage(true);
       setError('');
       try {
+        console.log('[ONBOARDING] Uploading image to Cloudinary...');
         const uploadResponse = await uploadToCloudinarySigned(uri, token, 'image', 'profile_pictures');
+        console.log('[ONBOARDING] Upload response:', uploadResponse);
         if (uploadResponse?.secure_url) {
+          console.log('[ONBOARDING] Setting profile picture URL:', uploadResponse.secure_url);
           setProfilePictureUrl(uploadResponse.secure_url);
         } else {
           setError('Failed to upload image. Please try again.');
         }
       } catch (uploadError: any) {
+        console.error('[ONBOARDING] Upload error:', uploadError);
         setError(uploadError?.message || 'Could not upload image');
       } finally {
         setIsUploadingImage(false);
       }
     } else {
+      console.log('[ONBOARDING] No token available, using local URI');
       // Fallback if no token (shouldn't happen in normal flow)
       setProfilePictureUrl(uri);
     }
@@ -54,6 +59,7 @@ export default function OnboardingProfileScreen() {
     });
 
     if (!result.canceled && result.assets[0]) {
+      console.log('[ONBOARDING] Camera captured image:', result.assets[0].uri);
       await uploadAndSetImage(result.assets[0].uri);
     }
   };
@@ -108,12 +114,20 @@ export default function OnboardingProfileScreen() {
   };
 
   const handleNext = () => {
+    // Prevent navigation while uploading
+    if (isUploadingImage) {
+      Alert.alert('Please Wait', 'Your profile picture is still uploading...');
+      return;
+    }
+    
     setError('');
     
     // Dismiss keyboard
     Keyboard.dismiss();
     
-    console.log('Profile setup complete, navigating to animal selection');
+    console.log('[ONBOARDING] Profile setup complete, navigating to animal selection');
+    console.log('[ONBOARDING] Passing data - bio:', bio, 'profilePictureUrl:', profilePictureUrl);
+    console.log('[ONBOARDING] profilePictureUrl length:', profilePictureUrl?.length, 'starts with http:', profilePictureUrl?.startsWith('http'));
     
     // Navigate to animal preferences screen with onboarding data
     setTimeout(() => {

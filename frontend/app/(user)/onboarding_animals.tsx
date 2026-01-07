@@ -2,16 +2,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  Text,
-  TextInput,
-  View,
+    ActivityIndicator,
+    KeyboardAvoidingView,
+    Platform,
+    Pressable,
+    Text,
+    TextInput,
+    View,
 } from 'react-native';
 import { apiGetAllAnimals } from '../../api/animal';
-import { apiCompleteOnboarding } from '../../api/auth';
 import { Colors } from '../../constants/Colors';
 import { LoginScreenStyles } from '../../constants/LoginStyles';
 import { useAuth } from '../../context/AuthContext';
@@ -26,7 +25,7 @@ interface Animal {
 
 export default function OnboardingAnimalsScreen() {
   const router = useRouter();
-  const { user, token } = useAuth();
+  const { user, token, completeOnboarding } = useAuth();
   const params = useLocalSearchParams();
   const [animals, setAnimals] = useState<Animal[]>([]);
   const [filteredAnimals, setFilteredAnimals] = useState<Animal[]>([]);
@@ -42,6 +41,8 @@ export default function OnboardingAnimalsScreen() {
   // Get onboarding data from navigation params
   const bioFromParams = Array.isArray(params.bio) ? params.bio[0] : (params.bio || '');
   const pictureFromParams = Array.isArray(params.profilePictureUrl) ? params.profilePictureUrl[0] : (params.profilePictureUrl || '');
+
+  console.log('[ONBOARDING_ANIMALS] Received params:', { bio: bioFromParams, profilePictureUrl: pictureFromParams });
 
   // Validate user and token on mount
   useEffect(() => {
@@ -142,6 +143,15 @@ export default function OnboardingAnimalsScreen() {
       const picToSend = pictureFromParams || user.profilePictureUrl || '';
       const usernameToSend = user.username;
 
+      console.log('[ONBOARDING_ANIMALS] Data sources:', {
+        bioFromParams,
+        pictureFromParams,
+        'user.bio': user.bio,
+        'user.profilePictureUrl': user.profilePictureUrl,
+        'Final bioToSend': bioToSend,
+        'Final picToSend': picToSend,
+      });
+
       console.log('Submitting onboarding with:', {
         userId: user._id,
         username: usernameToSend,
@@ -153,23 +163,22 @@ export default function OnboardingAnimalsScreen() {
 
       const animalPreferences = seeAllMode ? [] : selectedAnimals;
 
-      console.log('[ONBOARDING_ANIMALS] About to call API with token:', {
+      console.log('[ONBOARDING_ANIMALS] About to call completeOnboarding with:', {
         tokenPrefix: token?.substring(0, 20),
         tokenLength: token?.length,
         userId: user._id,
         username: user.username
       });
 
-      const result = await apiCompleteOnboarding(
-        {
-          username: usernameToSend,
-          bio: bioToSend,
-          profilePictureUrl: picToSend,
-          animalPreferences,
-        },
-        token
-      );
+      // Use completeOnboarding from AuthContext to update user state
+      await completeOnboarding({
+        username: usernameToSend,
+        bio: bioToSend,
+        profilePictureUrl: picToSend,
+        animalPreferences,
+      });
 
+      console.log('[ONBOARDING_ANIMALS] Onboarding complete, user state updated');
       console.log('Onboarding completed successfully');
       // Navigate to feed
       router.replace('/(tabs)/feed');
