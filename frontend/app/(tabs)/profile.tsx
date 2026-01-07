@@ -5,6 +5,7 @@ import { ActivityIndicator, Alert, Animated, Dimensions, FlatList, Image, Modal,
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { apiGetMyBadgeProgress, Badge, getBadgeCategoryColor, getBadgeIcon } from '../../api/badge';
 import { getLevelColor, getMyLevelInfo, LevelProgress } from '../../api/experience';
+import { apiGetFollowCounts } from '../../api/follow';
 import { ActivityItem, apiGetUserActivityFeed } from '../../api/like';
 import { apiGetMySightings } from '../../api/sighting';
 import { apiDeleteUserAccount, apiUpdateUserDetails } from '../../api/user';
@@ -110,6 +111,10 @@ export default function ProfileScreen(): React.JSX.Element | null {
   const [sightings, setSightings] = useState<Sighting[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   
+  // Follower counts
+  const [followersCount, setFollowersCount] = useState<number>(0);
+  const [followingCount, setFollowingCount] = useState<number>(0);
+  
   // Profile/Activity tab state
   const [profileTab, setProfileTab] = useState<'profile' | 'activity'>('profile');
   const [activityFeed, setActivityFeed] = useState<ActivityItem[]>([]);
@@ -129,11 +134,23 @@ export default function ProfileScreen(): React.JSX.Element | null {
   const loadMySightings = useCallback(async () => {
     if (!user?._id || !token) { setIsLoading(false); return; }
     try {
-      const [sightingsResponse, discoveriesResponse, levelResponse] = await Promise.all([
+      const [sightingsResponse, discoveriesResponse, levelResponse, followCountsResponse] = await Promise.all([
         apiGetMySightings(token),
         apiGetUserDiscoveries(token).catch(() => ({ data: null })),
-        getMyLevelInfo(token).catch(() => null)
+        getMyLevelInfo(token).catch(() => null),
+        apiGetFollowCounts(user._id).catch((err) => {
+          console.log('[Profile] Follow counts error:', err);
+          return { data: null };
+        })
       ]);
+      
+      // Set follower counts
+      console.log('[Profile] Follow counts response:', followCountsResponse);
+      if (followCountsResponse?.data) {
+        console.log('[Profile] Setting followers:', followCountsResponse.data.followersCount, 'following:', followCountsResponse.data.followingCount);
+        setFollowersCount(Number(followCountsResponse.data.followersCount || 0));
+        setFollowingCount(Number(followCountsResponse.data.followingCount || 0));
+      }
       
       if (sightingsResponse && sightingsResponse.data) {
         const raw = Array.isArray(sightingsResponse.data) ? sightingsResponse.data : [];
@@ -182,7 +199,12 @@ export default function ProfileScreen(): React.JSX.Element | null {
   }, [token]);
 
   useEffect(() => { loadMySightings(); loadBadges(); }, [loadMySightings, loadBadges]);
-  useFocusEffect(useCallback(() => { loadMySightings(); loadBadges(); return () => {}; }, [loadMySightings, loadBadges]));
+  useFocusEffect(useCallback(() => { 
+    console.log('[Profile] Tab focused - reloading data');
+    loadMySightings(); 
+    loadBadges(); 
+    return () => {}; 
+  }, [loadMySightings, loadBadges]));
 
   // Load activity feed when tab switches to activity
   const loadActivityFeed = useCallback(async (page = 1, append = false) => {
@@ -590,6 +612,21 @@ export default function ProfileScreen(): React.JSX.Element | null {
                   style={styles.statChevron}
                 />
               </Pressable>
+            </View>
+
+            {/* Followers/Following Stats */}
+            <View style={styles.followStatsRow}>
+              <View style={styles.followStatItem}>
+                <Icon name="users" size={18} color="#9C27B0" style={{ marginBottom: 6 }} />
+                <Text style={styles.followStatNumber}>{followersCount}</Text>
+                <Text style={styles.followStatLabel}>Followers</Text>
+              </View>
+              <View style={styles.followStatDivider} />
+              <View style={styles.followStatItem}>
+                <Icon name="heart" size={18} color="#FF9800" style={{ marginBottom: 6 }} />
+                <Text style={styles.followStatNumber}>{followingCount}</Text>
+                <Text style={styles.followStatLabel}>Following</Text>
+              </View>
             </View>
 
             {/* Expandable Stats Detail Panel */}
@@ -1182,6 +1219,41 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 8,
     elevation: 3,
+  },
+  followStatsRow: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  followStatItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  followStatNumber: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 2,
+  },
+  followStatLabel: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '500',
+  },
+  followStatDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: '#e0e0e0',
   },
   panelTitle: {
     fontSize: 16,

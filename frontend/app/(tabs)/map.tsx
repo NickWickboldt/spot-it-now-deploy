@@ -1,23 +1,27 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
+import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Animated,
-  Dimensions,
-  Image,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
+    Animated,
+    Dimensions,
+    Image,
+    Modal,
+    PanResponder,
+    Platform,
+    Pressable,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import MapView, { Callout, Circle, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import Icon from 'react-native-vector-icons/FontAwesome';
+import { apiToggleFollow } from '../../api/follow';
 import { apiGetSightingsNear } from '../../api/sighting';
+import { useAuth } from '../../context/AuthContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -398,9 +402,16 @@ const DISTANCE_OPTIONS = [
   { meters: 4828, label: '3 mi', icon: 'circle' },
   { meters: 8047, label: '5 mi', icon: 'bullseye' },
   { meters: 16093, label: '10 mi', icon: 'globe' },
+  { meters: 40234, label: '25 mi', icon: 'map' },
+  { meters: 80467, label: '50 mi', icon: 'map-o' },
+  { meters: 160934, label: '100 mi', icon: 'compass' },
+  { meters: 0, label: 'Anywhere', icon: 'globe' }, // 0 = unlimited
 ];
 
 export default function WildlifeMapScreen() {
+  const router = useRouter();
+  const { token, user: currentUser } = useAuth();
+  
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [sightings, setSightings] = useState<any[]>([]);
@@ -411,14 +422,51 @@ export default function WildlifeMapScreen() {
   const [showSightingsList, setShowSightingsList] = useState(false);
   const [showClusterModal, setShowClusterModal] = useState(false);
   const [selectedCluster, setSelectedCluster] = useState<any[] | null>(null);
+  const [mapType, setMapType] = useState<'satellite' | 'standard'>('satellite'); // Default to satellite view
+  const [followingUsers, setFollowingUsers] = useState<Set<string>>(new Set());
 
   const mapRef = useRef<MapView>(null);
   const slideAnim = useRef(new Animated.Value(0)).current;
+  const panY = useRef(new Animated.Value(0)).current;
   const radiusSlideAnim = useRef(new Animated.Value(0)).current;
   const listSlideAnim = useRef(new Animated.Value(0)).current;
   const clusterSlideAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const radarAnim = useRef(new Animated.Value(0)).current;
+
+  // Pan responder for swipe-to-dismiss bottom sheet
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return gestureState.dy > 5;
+      },
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dy > 0) {
+          panY.setValue(gestureState.dy);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dy > 50 || gestureState.vy > 0.5) {
+          // Dismiss the bottom sheet
+          Animated.timing(panY, {
+            toValue: 300,
+            duration: 200,
+            useNativeDriver: true,
+          }).start(() => {
+            setSelectedSighting(null);
+            panY.setValue(0);
+          });
+        } else {
+          // Snap back
+          Animated.spring(panY, {
+            toValue: 0,
+            useNativeDriver: true,
+          }).start();
+        }
+      },
+    })
+  ).current;
 
   // Cluster sightings that are close together
   const { clusters, singles } = useMemo(() => clusterSightings(sightings), [sightings]);
@@ -464,18 +512,24 @@ export default function WildlifeMapScreen() {
       const currentLocation = await Location.getCurrentPositionAsync({});
       setLocation(currentLocation);
 
+      // Use a very large distance for "Anywhere" option (0 = unlimited)
+      const searchDistance = distance === 0 ? 999999999 : distance;
+      
       const resp = await apiGetSightingsNear(
         currentLocation.coords.longitude,
         currentLocation.coords.latitude,
-        distance
+        searchDistance
       );
 
       const mapped = (resp.data || []).map((sighting: any, index: number) => ({
         id: sighting._id || index,
+        sightingId: sighting._id, // For navigation to detail page
         name: sighting.animal?.commonName || sighting.aiIdentification || 'Unknown Wildlife',
         caption: sighting.caption || '',
         mediaUrls: sighting.mediaUrls || [],
-        userName: sighting.userName || 'Anonymous',
+        userName: sighting.userName || sighting.user?.username || 'Anonymous',
+        userId: sighting.userId || sighting.user?._id || null,
+        userProfilePictureUrl: sighting.userProfilePictureUrl || sighting.user?.profilePictureUrl || null,
         iconPath: sighting.animal?.iconPath,
         coordinate: {
           latitude: Number(sighting.location.coordinates[1]),
@@ -500,6 +554,7 @@ export default function WildlifeMapScreen() {
   // Animate bottom sheet when sighting selected
   useEffect(() => {
     if (selectedSighting) {
+      panY.setValue(0); // Reset pan position
       Animated.spring(slideAnim, {
         toValue: 1,
         tension: 65,
@@ -731,7 +786,8 @@ export default function WildlifeMapScreen() {
           ref={mapRef}
           provider={PROVIDER_GOOGLE}
           style={styles.map}
-          customMapStyle={pokemonGoMapStyle}
+          mapType={mapType === 'satellite' ? 'hybrid' : 'standard'}
+          customMapStyle={mapType === 'standard' ? pokemonGoMapStyle : undefined}
           initialRegion={{
             latitude: location.coords.latitude,
             longitude: location.coords.longitude,
@@ -745,17 +801,19 @@ export default function WildlifeMapScreen() {
           pitchEnabled={true}
           onPress={() => setSelectedSighting(null)}
         >
-          {/* Search radius circle */}
-          <Circle
-            center={{
-              latitude: location.coords.latitude,
-              longitude: location.coords.longitude,
-            }}
-            radius={distance}
-            strokeColor="rgba(76, 175, 80, 0.6)"
-            fillColor="rgba(76, 175, 80, 0.08)"
-            strokeWidth={3}
-          />
+          {/* Search radius circle - hide when unlimited */}
+          {distance > 0 && (
+            <Circle
+              center={{
+                latitude: location.coords.latitude,
+                longitude: location.coords.longitude,
+              }}
+              radius={distance}
+              strokeColor="rgba(76, 175, 80, 0.6)"
+              fillColor="rgba(76, 175, 80, 0.08)"
+              strokeWidth={3}
+            />
+          )}
 
           {/* Custom user location marker */}
           <Marker
@@ -870,32 +928,136 @@ export default function WildlifeMapScreen() {
             <Icon name="sliders" size={24} color="#fff" />
           </LinearGradient>
         </Pressable>
+
+        {/* Map Type Toggle Button */}
+        <Pressable 
+          style={styles.fabButton} 
+          onPress={() => setMapType(mapType === 'satellite' ? 'standard' : 'satellite')}
+        >
+          <LinearGradient colors={['#2196F3', '#1976D2']} style={styles.fabGradient}>
+            <Icon name={mapType === 'satellite' ? 'map' : 'globe'} size={24} color="#fff" />
+          </LinearGradient>
+        </Pressable>
       </View>
 
-      {/* Selected sighting bottom card */}
+      {/* Selected sighting bottom card with swipe-to-dismiss */}
       {selectedSighting && (
         <Animated.View
+          {...panResponder.panHandlers}
           style={[
             styles.bottomSheet,
             {
               transform: [
                 {
-                  translateY: slideAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [200, 0],
-                  }),
+                  translateY: Animated.add(
+                    slideAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [200, 0],
+                    }),
+                    panY
+                  ),
                 },
               ],
             },
           ]}
         >
+          {/* Drag handle indicator */}
           <View style={styles.bottomSheetHandle} />
-          <SightingCard
-            sighting={selectedSighting}
-            isActive={true}
-            index={0}
-            onPress={() => {}}
-          />
+          <Text style={styles.swipeHint}>Swipe down to close</Text>
+          
+          {/* Sighting Info Card */}
+          <Pressable
+            onPress={() => {
+              if (selectedSighting.sightingId) {
+                router.push({
+                  pathname: '/(user)/sighting_detail',
+                  params: { sightingId: selectedSighting.sightingId }
+                } as any);
+              }
+            }}
+          >
+            <SightingCard
+              sighting={selectedSighting}
+              isActive={true}
+              index={0}
+              onPress={() => {}}
+            />
+          </Pressable>
+          
+          {/* Action Buttons */}
+          <View style={styles.bottomSheetActions}>
+            {/* View Sighting Button */}
+            <Pressable
+              style={styles.actionButton}
+              onPress={() => {
+                if (selectedSighting.sightingId) {
+                  router.push({
+                    pathname: '/(user)/sighting_detail',
+                    params: { sightingId: selectedSighting.sightingId }
+                  } as any);
+                }
+              }}
+            >
+              <LinearGradient colors={['#5a9a55', '#40743d']} style={styles.actionButtonGradient}>
+                <Icon name="eye" size={16} color="#fff" />
+                <Text style={styles.actionButtonText}>View Post</Text>
+              </LinearGradient>
+            </Pressable>
+            
+            {/* View Profile Button */}
+            {selectedSighting.userId && (
+              <Pressable
+                style={styles.actionButton}
+                onPress={() => {
+                  router.push({
+                    pathname: '/(user)/user_profile',
+                    params: { userId: selectedSighting.userId }
+                  } as any);
+                }}
+              >
+                <LinearGradient colors={['#2196F3', '#1976D2']} style={styles.actionButtonGradient}>
+                  <Icon name="user" size={16} color="#fff" />
+                  <Text style={styles.actionButtonText}>Profile</Text>
+                </LinearGradient>
+              </Pressable>
+            )}
+            
+            {/* Follow Button */}
+            {selectedSighting.userId && currentUser && selectedSighting.userId !== currentUser._id && (
+              <Pressable
+                style={styles.actionButton}
+                onPress={async () => {
+                  if (!token || !selectedSighting.userId) return;
+                  try {
+                    console.log('[MAP] Following user:', selectedSighting.userId);
+                    const result = await apiToggleFollow(token, selectedSighting.userId);
+                    console.log('[MAP] Follow result:', result);
+                    setFollowingUsers(prev => {
+                      const newSet = new Set(prev);
+                      if (newSet.has(selectedSighting.userId)) {
+                        newSet.delete(selectedSighting.userId);
+                      } else {
+                        newSet.add(selectedSighting.userId);
+                      }
+                      return newSet;
+                    });
+                  } catch (error) {
+                    console.error('Failed to toggle follow:', error);
+                  }
+                }}
+              >
+                <LinearGradient 
+                  colors={followingUsers.has(selectedSighting.userId) ? ['#FF5722', '#E64A19'] : ['#9C27B0', '#7B1FA2']} 
+                  style={styles.actionButtonGradient}
+                >
+                  <Icon name={followingUsers.has(selectedSighting.userId) ? 'user-times' : 'user-plus'} size={16} color="#fff" />
+                  <Text style={styles.actionButtonText}>
+                    {followingUsers.has(selectedSighting.userId) ? 'Unfollow' : 'Follow'}
+                  </Text>
+                </LinearGradient>
+              </Pressable>
+            )}
+          </View>
         </Animated.View>
       )}
 
@@ -1516,7 +1678,37 @@ const styles = StyleSheet.create({
     backgroundColor: '#e0e0e0',
     borderRadius: 3,
     alignSelf: 'center',
-    marginBottom: 12,
+    marginBottom: 4,
+  },
+  swipeHint: {
+    fontSize: 11,
+    color: '#999',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  bottomSheetActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 12,
+    gap: 8,
+  },
+  actionButton: {
+    flex: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  actionButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    gap: 6,
+  },
+  actionButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
   },
   
   // Sighting card

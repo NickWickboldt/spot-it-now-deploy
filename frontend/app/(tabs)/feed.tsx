@@ -392,9 +392,11 @@ export default function FeedScreen() {
       if (activeTab === 'Following') {
         // Require a valid auth token for following feed
         if (!token || token === 'local-admin-fake-token') {
+          console.log('[FEED] Following tab: No valid token, returning empty');
           return { data: { items: [], total: 0 } } as any;
         }
         // Use personalized following feed with algorithm
+        console.log('[FEED] Following tab: Fetching personalized following feed');
         return apiGetPersonalizedFollowingFeed(token, p, pageSize);
       }
       // Use personalized feed for Discover tab if user is logged in
@@ -408,6 +410,12 @@ export default function FeedScreen() {
       .then(async (resp) => {
         const payload = resp.data || {};
         const items = payload.items || [];
+        
+        // Debug: Log response for Following tab
+        if (activeTab === 'Following') {
+          console.log('[FEED] Following response:', JSON.stringify(payload, null, 2).substring(0, 500));
+          console.log('[FEED] Following items count:', items.length);
+        }
         
         // Debug: Log first item to see if algorithmScore is present
         if (items.length > 0 && (activeTab === 'Discover' || activeTab === 'Following')) {
@@ -1448,6 +1456,20 @@ export default function FeedScreen() {
           (activeTab === 'Following' && (!token || token === 'local-admin-fake-token') && sightings.length === 0) ? (
             <View style={{ flex: 1, alignItems: 'center', paddingTop: 32 }}>
               <Text style={{ color: '#aaa' }}>Log in to see posts from people you follow.</Text>
+            </View>
+          ) : (activeTab === 'Following' && token && sightings.length === 0) ? (
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }}>
+              <Icon name="users" size={60} color="#555" style={{ marginBottom: 16 }} />
+              <Text style={{ color: '#fff', fontSize: 18, fontWeight: '600', marginBottom: 8, textAlign: 'center' }}>No posts yet</Text>
+              <Text style={{ color: '#aaa', textAlign: 'center', lineHeight: 22 }}>
+                Follow some wildlife spotters to see their posts here!
+              </Text>
+              <TouchableOpacity 
+                onPress={() => router.push('/(tabs)/animal_index')} 
+                style={{ marginTop: 20, paddingHorizontal: 24, paddingVertical: 12, backgroundColor: Colors.light.primaryGreen, borderRadius: 8 }}
+              >
+                <Text style={{ color: '#000', fontWeight: '700' }}>Discover Spotters</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <FlatList
