@@ -3,7 +3,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, Image, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import Icon5 from 'react-native-vector-icons/FontAwesome5';
 import { uploadToCloudinarySigned } from '../../api/upload';
@@ -279,6 +279,10 @@ export default function EditProfileScreen(): React.JSX.Element {
   };
 
   return (
+    <KeyboardAvoidingView 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1 }}
+    >
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
       
@@ -470,6 +474,7 @@ export default function EditProfileScreen(): React.JSX.Element {
       </ScrollView>
       </View>
     </View>
+    </KeyboardAvoidingView>
   );
 }
 

@@ -146,11 +146,56 @@ export default function NotificationsScreen() {
     }
   };
 
+  const handleNotificationPress = async (item: DbNotification) => {
+    // Mark as read first
+    await handleMarkAsRead(item._id);
+  };
+
+  // Navigate to user profile when username is tapped
+  const handleUsernamePress = (item: DbNotification) => {
+    if (item.relatedUser) {
+      router.push(`/(user)/user_profile?userId=${item.relatedUser}`);
+    }
+  };
+
+  // Extract username from subtitle (e.g., "gannonjk liked your post" -> "gannonjk")
+  const extractUsername = (subtitle: string | undefined): string | null => {
+    if (!subtitle) return null;
+    // Username is the first word before " liked", " commented", " followed", etc.
+    const match = subtitle.match(/^([^\s]+)/);
+    return match ? match[1] : null;
+  };
+
+  // Render subtitle with tappable username for like/comment/follow notifications
+  const renderSubtitle = (item: DbNotification) => {
+    if (!item.subtitle) return null;
+    
+    const username = extractUsername(item.subtitle);
+    const isUserActionNotification = ['sighting_liked', 'new_like', 'new_comment', 'new_follower'].includes(item.type);
+    
+    if (username && isUserActionNotification && item.relatedUser) {
+      const restOfSubtitle = item.subtitle.substring(username.length);
+      return (
+        <Text style={styles.notificationSubtitle}>
+          <Text 
+            style={styles.tappableUsername} 
+            onPress={() => handleUsernamePress(item)}
+          >
+            {username}
+          </Text>
+          {restOfSubtitle}
+        </Text>
+      );
+    }
+    
+    return <Text style={styles.notificationSubtitle}>{item.subtitle}</Text>;
+  };
+
   const renderNotification = ({ item }: { item: DbNotification }) => (
     <View style={styles.notificationWrapper}>
       <Pressable
         style={[styles.notificationItem, !item.isRead && styles.unreadNotification]}
-        onPress={() => handleMarkAsRead(item._id)}
+        onPress={() => handleNotificationPress(item)}
       >
         <View style={styles.iconContainer}>
           <LinearGradient
@@ -171,9 +216,7 @@ export default function NotificationsScreen() {
           <Text style={[styles.notificationTitle, !item.isRead && styles.unreadTitle]}>
             {item.title}
           </Text>
-          {item.subtitle && (
-            <Text style={styles.notificationSubtitle}>{item.subtitle}</Text>
-          )}
+          {renderSubtitle(item)}
           <Text style={styles.notificationMessage} numberOfLines={2}>
             {item.message}
           </Text>
@@ -489,6 +532,12 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#4b5563',
     marginBottom: 4,
+  },
+  tappableUsername: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.light.primaryGreen,
+    textDecorationLine: 'underline',
   },
   notificationMessage: {
     fontSize: 14,

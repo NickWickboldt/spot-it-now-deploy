@@ -3,6 +3,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Image, Keyboard, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
+import { uploadToCloudinarySigned } from '../../api/upload';
 import { Colors } from '../../constants/Colors';
 import { LoginScreenStyles } from '../../constants/LoginStyles';
 import { useAuth } from '../../context/AuthContext';
@@ -13,19 +14,50 @@ export default function OnboardingProfileScreen() {
   const [bio, setBio] = useState(user?.bio || '');
   const [profilePictureUrl, setProfilePictureUrl] = useState(user?.profilePictureUrl || '');
   const [isLoading, setIsLoading] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [error, setError] = useState('');
 
   const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permissionResult.granted) {
+        setError('Please allow access to your photo library');
+        return;
+      }
 
-    if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      setProfilePictureUrl(asset.uri);
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        
+        // Upload to Cloudinary immediately for persistence
+        if (token) {
+          setIsUploadingImage(true);
+          setError('');
+          try {
+            const uploadResponse = await uploadToCloudinarySigned(asset.uri, token, 'image', 'profile_pictures');
+            if (uploadResponse?.secure_url) {
+              setProfilePictureUrl(uploadResponse.secure_url);
+            } else {
+              setError('Failed to upload image. Please try again.');
+            }
+          } catch (uploadError: any) {
+            setError(uploadError?.message || 'Could not upload image');
+          } finally {
+            setIsUploadingImage(false);
+          }
+        } else {
+          // Fallback if no token (shouldn't happen in normal flow)
+          setProfilePictureUrl(asset.uri);
+        }
+      }
+    } catch (error: any) {
+      setError(error?.message || 'Could not select image');
     }
   };
 
@@ -70,8 +102,23 @@ export default function OnboardingProfileScreen() {
 
         {/* Profile Picture Section */}
         <View style={{ width: '100%', maxWidth: 400, marginBottom: 30, alignItems: 'center' }}>
-          <Pressable onPress={pickImage} style={{ marginBottom: 12 }}>
-            {profilePictureUrl ? (
+          <Pressable onPress={pickImage} disabled={isUploadingImage} style={{ marginBottom: 12 }}>
+            {isUploadingImage ? (
+              <View
+                style={{
+                  width: 120,
+                  height: 120,
+                  borderRadius: 60,
+                  backgroundColor: Colors.light.cardBackground,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  borderWidth: 2,
+                  borderColor: Colors.light.secondaryGreen,
+                }}
+              >
+                <ActivityIndicator size="large" color={Colors.light.primaryGreen} />
+              </View>
+            ) : profilePictureUrl ? (
               <Image
                 source={{ uri: profilePictureUrl }}
                 style={{
@@ -99,9 +146,9 @@ export default function OnboardingProfileScreen() {
               </View>
             )}
           </Pressable>
-          <Pressable onPress={pickImage}>
+          <Pressable onPress={pickImage} disabled={isUploadingImage}>
             <Text style={{ color: Colors.light.primaryGreen, fontSize: 14, fontWeight: '600' }}>
-              {profilePictureUrl ? 'Change Photo' : 'Add Photo'}
+              {isUploadingImage ? 'Uploading...' : profilePictureUrl ? 'Change Photo' : 'Add Photo'}
             </Text>
           </Pressable>
         </View>

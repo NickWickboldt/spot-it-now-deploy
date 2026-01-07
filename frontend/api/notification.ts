@@ -11,6 +11,8 @@ export interface DbNotification {
   subtitle?: string;
   message: string;
   mediaUrls?: string[];
+  relatedUser?: string | null;
+  relatedSighting?: string | null;
   location?: {
     type: 'Point';
     coordinates: [number, number]; // [longitude, latitude]

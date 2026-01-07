@@ -7,6 +7,7 @@ import { ScrollView } from 'react-native-gesture-handler';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { apiGetPersonalizedFeed, apiGetPersonalizedFollowingFeed, apiGetPersonalizedLocalFeed, apiTrackSightingComment, apiTrackSightingLike, apiTrackSightingView } from '../../api/algorithm';
 import { apiCreateComment, apiDeleteComment, apiGetCommentsForSighting, apiUpdateComment } from '../../api/comment';
+import { apiToggleFollow } from '../../api/follow';
 import { apiGetLikedSightingsByUser, apiToggleSightingLike } from '../../api/like';
 import { apiGetMyNotifications } from '../../api/notification';
 import { CommunityVoteType, apiAdminDeleteSighting, apiGetCommunitySighting, apiGetRecentSightings, apiGetSightingsNear, apiSubmitCommunityVote } from '../../api/sighting';
@@ -64,7 +65,7 @@ const ComingSoonScreen = () => (
   </View>
 );
 
-const TABS = ['Community', 'Following', 'Local', 'Discover'] as const;
+const TABS = ['Discover', 'Community', 'Following', 'Local'] as const;
 type TabKey = typeof TABS[number];
 
 export default function FeedScreen() {
@@ -100,6 +101,10 @@ export default function FeedScreen() {
   // Track which posts are currently visible to control video autoplay
   const [visibleMap, setVisibleMap] = useState<Record<string, boolean>>({});
   const viewabilityConfig = useRef({ viewAreaCoveragePercentThreshold: 60 }).current;
+  
+  // FlatList ref for scroll-to-top functionality
+  const flatListRef = useRef<FlatList>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
   
   // Track view time for algorithm learning
   const viewStartTimes = useRef<Record<string, number>>({});
@@ -146,10 +151,43 @@ export default function FeedScreen() {
   const [communityLoading, setCommunityLoading] = useState(false);
   const [communityProcessing, setCommunityProcessing] = useState(false);
   const [communityMessage, setCommunityMessage] = useState<string | null>(null);
+  const [communityFollowedUsers, setCommunityFollowedUsers] = useState<Set<string>>(new Set());
   const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [lastNotificationIds, setLastNotificationIds] = useState<Set<string>>(new Set());
   const notificationPollingInterval = useRef<NodeJS.Timeout | null>(null);
+
+  // Handle follow/unfollow for community page
+  const handleCommunityFollow = async (userId: string) => {
+    if (!token || !userId) return;
+    try {
+      await apiToggleFollow(token, userId);
+      setCommunityFollowedUsers(prev => {
+        const newSet = new Set(prev);
+        if (newSet.has(userId)) {
+          newSet.delete(userId);
+        } else {
+          newSet.add(userId);
+        }
+        return newSet;
+      });
+    } catch (error) {
+      console.error('Failed to follow/unfollow:', error);
+    }
+  };
+
+  // Scroll-to-top functionality
+  const handleScroll = useCallback((event: any) => {
+    const offsetY = event.nativeEvent.contentOffset.y;
+    // Show scroll-to-top button after scrolling down more than 2 posts
+    setShowScrollTop(offsetY > 600);
+  }, []);
+
+  const scrollToTop = useCallback(() => {
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    // Also refresh the feed when scrolling to top
+    loadPage(1);
+  }, []);
 
   const getScale = (id: string) => {
     if (!scaleMapRef.current[id]) {
@@ -1026,7 +1064,22 @@ export default function FeedScreen() {
           </TouchableOpacity>
           <View style={FeedScreenStyles.userInfo}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={FeedScreenStyles.username}>{item?.user?.username || item.userName || 'Unknown'}</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  const userId = item?.user?._id || item?.user;
+                  const username = item?.user?.username || item?.userName || '';
+                  const profilePictureUrl = item?.user?.profilePictureUrl || item?.userProfilePictureUrl || '';
+                  if (userId) {
+                    router.push({
+                      pathname: '/(user)/user_profile',
+                      params: { userId: String(userId), username: String(username), profilePictureUrl: String(profilePictureUrl) }
+                    });
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={FeedScreenStyles.username}>{item?.user?.username || item.userName || 'Unknown'}</Text>
+              </TouchableOpacity>
               {/* Algorithm Score Badge (Development Only) */}
               {item.algorithmScore !== undefined && (
                 <View style={{
@@ -1053,6 +1106,26 @@ export default function FeedScreen() {
             </View>
           </View>
         </View>
+        {/* Follow button - only show if not viewing own post */}
+        {(() => {
+          const postUserId = item?.user?._id || item?.user;
+          const isOwnPost = postUserId && user?._id && String(postUserId) === String(user._id);
+          const isFollowed = communityFollowedUsers.has(String(postUserId));
+          if (!isOwnPost && postUserId) {
+            return (
+              <TouchableOpacity
+                style={[communityStyles.followButton, isFollowed && communityStyles.followingButton]}
+                onPress={() => handleCommunityFollow(String(postUserId))}
+              >
+                <Icon name={isFollowed ? 'check' : 'user-plus'} size={12} color={isFollowed ? '#fff' : Colors.light.primaryGreen} />
+                <Text style={[communityStyles.followButtonText, isFollowed && communityStyles.followingButtonText]}>
+                  {isFollowed ? 'Following' : 'Follow'}
+                </Text>
+              </TouchableOpacity>
+            );
+          }
+          return null;
+        })()}
         <TouchableOpacity
           onPress={() => handleMenuOpen(item)}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -1251,12 +1324,47 @@ export default function FeedScreen() {
                         </LinearGradient>
                       </TouchableOpacity>
                       <View style={FeedScreenStyles.userInfo}>
-                        <Text style={FeedScreenStyles.username}>{communityCandidate?.user?.username || communityCandidate?.userName || 'Unknown'}</Text>
+                        <TouchableOpacity
+                          onPress={() => {
+                            const userId = communityCandidate?.user?._id || communityCandidate?.user;
+                            const username = communityCandidate?.user?.username || communityCandidate?.userName || '';
+                            const profilePictureUrl = communityCandidate?.user?.profilePictureUrl || communityCandidate?.userProfilePictureUrl || '';
+                            if (userId) {
+                              router.push({
+                                pathname: '/(user)/user_profile',
+                                params: { userId: String(userId), username: String(username), profilePictureUrl: String(profilePictureUrl) }
+                              });
+                            }
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={FeedScreenStyles.username}>{communityCandidate?.user?.username || communityCandidate?.userName || 'Unknown'}</Text>
+                        </TouchableOpacity>
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                           <Text style={FeedScreenStyles.time}>{getRelativeTime(communityCandidate.createdAt)}</Text>
                         </View>
                       </View>
                     </View>
+                    {/* Follow button - only show if not viewing own post */}
+                    {(() => {
+                      const postUserId = communityCandidate?.user?._id || communityCandidate?.user;
+                      const isOwnPost = postUserId && user?._id && String(postUserId) === String(user._id);
+                      const isFollowed = communityFollowedUsers.has(String(postUserId));
+                      if (!isOwnPost && postUserId) {
+                        return (
+                          <TouchableOpacity
+                            style={[communityStyles.followButton, isFollowed && communityStyles.followingButton]}
+                            onPress={() => handleCommunityFollow(String(postUserId))}
+                          >
+                            <Icon name={isFollowed ? 'check' : 'user-plus'} size={12} color={isFollowed ? '#fff' : Colors.light.primaryGreen} />
+                            <Text style={[communityStyles.followButtonText, isFollowed && communityStyles.followingButtonText]}>
+                              {isFollowed ? 'Following' : 'Follow'}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      }
+                      return null;
+                    })()}
                   </View>
                   {renderImages(communityCandidate.mediaUrls, communityCandidate._id, true, undefined)}
                   <View style={FeedScreenStyles.cardContent}>
@@ -1343,6 +1451,7 @@ export default function FeedScreen() {
             </View>
           ) : (
             <FlatList
+              ref={flatListRef}
               data={sightings}
               keyExtractor={item => item._id}
               renderItem={renderItem}
@@ -1350,6 +1459,8 @@ export default function FeedScreen() {
               onEndReachedThreshold={0.5}
               onViewableItemsChanged={onViewableItemsChanged.current} 
               viewabilityConfig={viewabilityConfig}
+              onScroll={handleScroll}
+              scrollEventThrottle={100}
               pagingEnabled
               snapToInterval={postHeight}
               snapToAlignment="start"
@@ -1380,11 +1491,14 @@ export default function FeedScreen() {
             </View>
           ) : (
             <FlatList
+              ref={flatListRef}
               data={sightings}
               keyExtractor={item => item._id}
               renderItem={renderItem}
               onViewableItemsChanged={onViewableItemsChanged.current}
               viewabilityConfig={viewabilityConfig}
+              onScroll={handleScroll}
+              scrollEventThrottle={100}
               pagingEnabled
               snapToInterval={postHeight}
               snapToAlignment="start"
@@ -1460,7 +1574,11 @@ export default function FeedScreen() {
             activeOpacity={1}
             onPress={closeCommentsModal}
           />
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'flex-end' }}>
+          <KeyboardAvoidingView 
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+            style={{ justifyContent: 'flex-end', flex: 1 }}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
+          >
             <Animated.View
               style={[
                 commentsModalStyles.modalContainer,
@@ -1588,6 +1706,17 @@ export default function FeedScreen() {
         </View>
       </Modal>
 
+      {/* Floating Scroll-to-Top Button */}
+      {showScrollTop && activeTab !== 'Community' && (
+        <TouchableOpacity
+          style={scrollToTopStyles.button}
+          onPress={scrollToTop}
+          activeOpacity={0.8}
+        >
+          <Icon name="arrow-up" size={20} color="#fff" />
+        </TouchableOpacity>
+      )}
+
     </View>
   );
 }
@@ -1681,13 +1810,13 @@ const communityStyles = StyleSheet.create({
   },
   buttonRow: {
     flexDirection: 'row',
-    marginTop: 24,
+    marginTop: 8,
     gap: 16,
     paddingHorizontal: 4,
   },
   voteButton: {
     flex: 1,
-    paddingVertical: 16,
+    paddingVertical: 12,
     borderRadius: 999,
     alignItems: 'center',
     flexDirection: 'row',
@@ -1715,10 +1844,34 @@ const communityStyles = StyleSheet.create({
   },
   instructions: {
     marginTop: 18,
+    marginBottom: 100,
     color: '#9aa0a6',
     fontSize: 12,
     textAlign: 'center',
     lineHeight: 18,
+  },
+  followButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.light.primaryGreen,
+    backgroundColor: 'transparent',
+    gap: 4,
+  },
+  followButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.light.primaryGreen,
+  },
+  followingButton: {
+    backgroundColor: Colors.light.primaryGreen,
+    borderColor: Colors.light.primaryGreen,
+  },
+  followingButtonText: {
+    color: '#fff',
   },
 });
 
@@ -1758,19 +1911,20 @@ const tabStyles = StyleSheet.create({
   },
   tabRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 8,
+    gap: 4,
   },
   tabButton: {
     position: 'relative',
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
   tabButtonText: {
-    fontSize: 15,
+    fontSize: 14,
     color: 'rgba(255,255,255,0.7)',
     fontWeight: '600',
   },
@@ -1865,6 +2019,26 @@ const verificationStyles = StyleSheet.create({
   },
 });
 
+const scrollToTopStyles = StyleSheet.create({
+  button: {
+    position: 'absolute',
+    right: 20,
+    bottom: 100,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: Colors.light.primaryGreen,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+    zIndex: 1000,
+  },
+});
+
 const commentsModalStyles = StyleSheet.create({
   overlay: {
     flex: 1,
@@ -1907,7 +2081,8 @@ const commentsModalStyles = StyleSheet.create({
     padding: 4,
   },
   commentsContainer: {
-    maxHeight: 400,
+    flexGrow: 1,
+    flexShrink: 1,
     paddingHorizontal: 16,
   },
   loadingText: {

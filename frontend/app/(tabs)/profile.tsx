@@ -530,8 +530,10 @@ export default function ProfileScreen(): React.JSX.Element | null {
             style={styles.shareIconButton}
             onPress={async () => {
               try {
+                const profileUrl = `https://spotitnow.app/user/${user._id}`;
                 await Share.share({
-                  message: `Check out ${user.username}'s wildlife profile on SpotItNow! 🦊\n\nThey've spotted ${sightings.length} animals and counting!`,
+                  message: `Check out ${user.username}'s wildlife profile on SpotItNow! 🦊\n\nThey've spotted ${sightings.length} animals and counting!\n\n${profileUrl}`,
+                  url: profileUrl,
                 });
               } catch (error) {
                 console.error('Error sharing profile:', error);

@@ -56,6 +56,8 @@ const toggleLike = async (sightingId, userId) => {
             title: 'New Like',
             subtitle: `${likerUsername} liked your post`,
             message: `${likerUsername} liked your sighting: "${sighting.caption?.substring(0, 50) || 'your post'}"`,
+            relatedUser: userId,
+            relatedSighting: sightingId,
           });
         } catch (error) {
           // Log error but don't fail the like operation

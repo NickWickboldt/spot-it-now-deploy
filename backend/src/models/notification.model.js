@@ -37,6 +37,18 @@ const notificationSchema = new Schema(
         type: String,
       },
     ],
+    // Optional: Reference to the user who triggered this notification (e.g., the liker, commenter, follower)
+    relatedUser: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    // Optional: Reference to the sighting this notification is about
+    relatedSighting: {
+      type: Schema.Types.ObjectId,
+      ref: 'Sighting',
+      default: null,
+    },
     // Optional: For location-based notifications.
     location: {
       type: {

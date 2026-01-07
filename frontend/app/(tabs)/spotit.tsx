@@ -7,7 +7,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { useFocusEffect, useNavigation } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from "react"; // 1. Import useCallback
-import { ActivityIndicator, Alert, Animated, Image, Modal, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Animated, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { PinchGestureHandler, State } from 'react-native-gesture-handler';
 import { XPResult } from '../../api/experience';
 import { apiCreateSighting } from '../../api/sighting';
@@ -200,22 +200,21 @@ export default function SpotItScreen() {
     }
   };
 
-  const onPinchHandlerStateChange = (event) => {
-  if (event.nativeEvent.oldState === State.ACTIVE) {
+  // Real-time zoom update during pinch gesture
+  const onPinchGestureEvent = (event) => {
     const { scale } = event.nativeEvent;
-    
-    console.log(`Gesture Ended! Scale: ${scale.toFixed(2)}, Last Zoom: ${baseZoom.current.toFixed(2)}`);
-    const SENSITIVITY = 5;
+    const SENSITIVITY = 4;
     const newZoom = baseZoom.current + (scale - 1) / SENSITIVITY;
-
     const clampedZoom = Math.max(0, Math.min(newZoom, 1));
-    
-    console.log(`New Clamped Zoom: ${clampedZoom.toFixed(2)}`);
-
     setZoom(clampedZoom);
-    baseZoom.current = clampedZoom;
-  }
-};
+  };
+
+  const onPinchHandlerStateChange = (event) => {
+    if (event.nativeEvent.oldState === State.ACTIVE) {
+      // Save the final zoom level as the new base
+      baseZoom.current = zoom;
+    }
+  };
 
 
 
@@ -1032,7 +1031,10 @@ const handleOverride = useCallback(async (uri?: string) => {
   }
 
 return (
-  <PinchGestureHandler onHandlerStateChange={onPinchHandlerStateChange}>
+  <PinchGestureHandler 
+    onGestureEvent={onPinchGestureEvent}
+    onHandlerStateChange={onPinchHandlerStateChange}
+  >
     <View style={styles.container}>
   <CameraView
         style={styles.camera}
@@ -1055,6 +1057,10 @@ return (
           animationType="slide"
           onRequestClose={() => setShowSightingForm(false)}
         >
+          <KeyboardAvoidingView 
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ flex: 1 }}
+          >
           <View style={styles.formWrapper}>
             {/* Header */}
             <View style={styles.formHeader}>
@@ -1120,6 +1126,7 @@ return (
               </TouchableOpacity>
             </View>
           </View>
+          </KeyboardAvoidingView>
         </Modal>
       {/* Show a loading spinner while processing */}
       {isProcessing && (
