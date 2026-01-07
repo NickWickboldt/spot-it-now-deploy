@@ -791,7 +791,7 @@ const findSightingsNear = async (longitude, latitude, maxDistanceInMeters = 1000
       },
     },
   })
-    .populate('user', 'username profilePictureUrl')
+    .populate('user', '_id username profilePictureUrl')
     .populate('animal', 'commonName iconPath')
     .lean();
   
@@ -800,7 +800,9 @@ const findSightingsNear = async (longitude, latitude, maxDistanceInMeters = 1000
     return {
       ...doc,
       animal: canonicalAnimal,
+      userId: doc.user?._id?.toString() || null,
       userName: doc.user?.username || 'Unknown User',
+      userProfilePictureUrl: doc.user?.profilePictureUrl || null,
     };
   });
 };

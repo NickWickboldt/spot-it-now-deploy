@@ -3,7 +3,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActionSheetIOS, ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import Icon5 from 'react-native-vector-icons/FontAwesome5';
 import { uploadToCloudinarySigned } from '../../api/upload';
@@ -128,37 +128,89 @@ export default function EditProfileScreen(): React.JSX.Element {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const hasLocationQuery = locationQuery.trim().length > 0;
 
-  const handlePickImage = async () => {
+  const uploadAndSetImage = async (uri: string) => {
+    setIsUploadingImage(true);
+    // Set local preview immediately for instant feedback
+    setForm(prev => ({ ...prev, profilePictureUrl: uri }));
     try {
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permissionResult.granted) {
-        notification.warning('Permission Required', 'Please allow access to your photo library');
-        return;
+      const uploadResponse = await uploadToCloudinarySigned(uri, token, 'image', 'profile_pictures');
+      if (uploadResponse?.secure_url) {
+        setForm(prev => ({ ...prev, profilePictureUrl: uploadResponse.secure_url }));
+        notification.success('Photo Updated', 'Your profile photo has been changed');
       }
+    } catch (uploadError: any) {
+      // Revert to previous image on failure
+      setForm(prev => ({ ...prev, profilePictureUrl: user?.profilePictureUrl || '' }));
+      notification.error('Upload Failed', uploadError?.message || 'Could not upload image');
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
 
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
+  const launchCamera = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Required', 'Camera access is needed to take a photo.');
+      return;
+    }
 
-      if (!result.canceled && result.assets[0]) {
-        setIsUploadingImage(true);
-        try {
-          const uploadResponse = await uploadToCloudinarySigned(result.assets[0].uri, token, 'image', 'profile_pictures');
-          if (uploadResponse?.secure_url) {
-            setForm(prev => ({ ...prev, profilePictureUrl: uploadResponse.secure_url }));
-            notification.success('Photo Updated', 'Your profile photo has been changed');
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      await uploadAndSetImage(result.assets[0].uri);
+    }
+  };
+
+  const launchLibrary = async () => {
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permissionResult.granted) {
+      notification.warning('Permission Required', 'Please allow access to your photo library');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      await uploadAndSetImage(result.assets[0].uri);
+    }
+  };
+
+  const handlePickImage = async () => {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Cancel', 'Take Photo', 'Choose from Library'],
+          cancelButtonIndex: 0,
+        },
+        async (buttonIndex) => {
+          if (buttonIndex === 1) {
+            await launchCamera();
+          } else if (buttonIndex === 2) {
+            await launchLibrary();
           }
-        } catch (uploadError: any) {
-          notification.error('Upload Failed', uploadError?.message || 'Could not upload image');
-        } finally {
-          setIsUploadingImage(false);
         }
-      }
-    } catch (error: any) {
-      notification.error('Error', error?.message || 'Could not select image');
+      );
+    } else {
+      // Android: Show Alert with options
+      Alert.alert(
+        'Change Profile Photo',
+        'Choose an option',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Take Photo', onPress: launchCamera },
+          { text: 'Choose from Library', onPress: launchLibrary },
+        ],
+        { cancelable: true }
+      );
     }
   };
 

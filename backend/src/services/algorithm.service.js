@@ -367,7 +367,12 @@ const getPersonalizedFollowingFeed = async (userId, page = 1, pageSize = 10) => 
   const followingDocs = await Follow.find({ follower: userId }).select('following').lean();
   const followedUserIds = followingDocs.map(f => f.following.toString());
   
+  console.log('[FOLLOWING FEED] User:', userId);
+  console.log('[FOLLOWING FEED] Following count:', followedUserIds.length);
+  console.log('[FOLLOWING FEED] Following IDs:', followedUserIds);
+  
   if (followedUserIds.length === 0) {
+    console.log('[FOLLOWING FEED] No followed users, returning empty');
     return {
       items: [],
       page,

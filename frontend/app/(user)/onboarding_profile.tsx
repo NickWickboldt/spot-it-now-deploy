@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Image, Keyboard, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
+import { ActionSheetIOS, ActivityIndicator, Alert, Image, Keyboard, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { uploadToCloudinarySigned } from '../../api/upload';
 import { Colors } from '../../constants/Colors';
 import { LoginScreenStyles } from '../../constants/LoginStyles';
@@ -17,47 +17,93 @@ export default function OnboardingProfileScreen() {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [error, setError] = useState('');
 
-  const pickImage = async () => {
-    try {
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permissionResult.granted) {
-        setError('Please allow access to your photo library');
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        const asset = result.assets[0];
-        
-        // Upload to Cloudinary immediately for persistence
-        if (token) {
-          setIsUploadingImage(true);
-          setError('');
-          try {
-            const uploadResponse = await uploadToCloudinarySigned(asset.uri, token, 'image', 'profile_pictures');
-            if (uploadResponse?.secure_url) {
-              setProfilePictureUrl(uploadResponse.secure_url);
-            } else {
-              setError('Failed to upload image. Please try again.');
-            }
-          } catch (uploadError: any) {
-            setError(uploadError?.message || 'Could not upload image');
-          } finally {
-            setIsUploadingImage(false);
-          }
+  const uploadAndSetImage = async (uri: string) => {
+    // Upload to Cloudinary immediately for persistence
+    if (token) {
+      setIsUploadingImage(true);
+      setError('');
+      try {
+        const uploadResponse = await uploadToCloudinarySigned(uri, token, 'image', 'profile_pictures');
+        if (uploadResponse?.secure_url) {
+          setProfilePictureUrl(uploadResponse.secure_url);
         } else {
-          // Fallback if no token (shouldn't happen in normal flow)
-          setProfilePictureUrl(asset.uri);
+          setError('Failed to upload image. Please try again.');
         }
+      } catch (uploadError: any) {
+        setError(uploadError?.message || 'Could not upload image');
+      } finally {
+        setIsUploadingImage(false);
       }
-    } catch (error: any) {
-      setError(error?.message || 'Could not select image');
+    } else {
+      // Fallback if no token (shouldn't happen in normal flow)
+      setProfilePictureUrl(uri);
+    }
+  };
+
+  const launchCamera = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Required', 'Camera access is needed to take a photo.');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      await uploadAndSetImage(result.assets[0].uri);
+    }
+  };
+
+  const launchLibrary = async () => {
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permissionResult.granted) {
+      setError('Please allow access to your photo library');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      await uploadAndSetImage(result.assets[0].uri);
+    }
+  };
+
+  const pickImage = async () => {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Cancel', 'Take Photo', 'Choose from Library'],
+          cancelButtonIndex: 0,
+        },
+        async (buttonIndex) => {
+          if (buttonIndex === 1) {
+            await launchCamera();
+          } else if (buttonIndex === 2) {
+            await launchLibrary();
+          }
+        }
+      );
+    } else {
+      // Android: Show Alert with options
+      Alert.alert(
+        'Add Profile Photo',
+        'Choose an option',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Take Photo', onPress: launchCamera },
+          { text: 'Choose from Library', onPress: launchLibrary },
+        ],
+        { cancelable: true }
+      );
     }
   };
 
