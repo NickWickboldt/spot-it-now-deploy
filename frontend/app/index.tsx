@@ -125,7 +125,7 @@ export default function LoginScreen() {
     
     setErrorMessage(''); // Clear previous errors
     try {
-      await login({ username: email, password });
+      await login({ email, password });
     } catch (error: any) {
       // Login failed - shake both inputs
       setEmailError(true);

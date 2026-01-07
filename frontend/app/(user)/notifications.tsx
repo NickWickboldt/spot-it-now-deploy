@@ -139,6 +139,8 @@ export default function NotificationsScreen() {
       case 'new_like':
       case 'sighting_liked':
         return 'heart';
+      case 'new_message':
+        return 'envelope';
       case 'admin_message':
         return 'bullhorn';
       default:
@@ -149,6 +151,18 @@ export default function NotificationsScreen() {
   const handleNotificationPress = async (item: DbNotification) => {
     // Mark as read first
     await handleMarkAsRead(item._id);
+    
+    // Navigate based on notification type
+    if (item.type === 'new_message' && item.relatedUser) {
+      // Navigate to messages/conversation
+      router.push('/(tabs)/messages');
+    } else if (item.relatedSighting) {
+      // Navigate to sighting detail
+      router.push(`/(user)/sighting_detail?sightingId=${item.relatedSighting}`);
+    } else if (item.relatedUser) {
+      // Navigate to user profile
+      router.push(`/(user)/user_profile?userId=${item.relatedUser}`);
+    }
   };
 
   // Navigate to user profile when username is tapped
@@ -166,12 +180,12 @@ export default function NotificationsScreen() {
     return match ? match[1] : null;
   };
 
-  // Render subtitle with tappable username for like/comment/follow notifications
+  // Render subtitle with tappable username for like/comment/follow/message notifications
   const renderSubtitle = (item: DbNotification) => {
     if (!item.subtitle) return null;
     
     const username = extractUsername(item.subtitle);
-    const isUserActionNotification = ['sighting_liked', 'new_like', 'new_comment', 'new_follower'].includes(item.type);
+    const isUserActionNotification = ['sighting_liked', 'new_like', 'new_comment', 'new_follower', 'new_message'].includes(item.type);
     
     if (username && isUserActionNotification && item.relatedUser) {
       const restOfSubtitle = item.subtitle.substring(username.length);

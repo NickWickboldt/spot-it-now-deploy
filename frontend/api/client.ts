@@ -2,10 +2,15 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
+// Set to true to use local backend during development
+// Set to false to use production Render backend
+const USE_LOCAL_BACKEND = true;
+
 // Dynamically determine backend base URL so same code works on web, iOS, Android, and Expo Go.
 // For iOS Simulator/Android Emulator, we need to use the dev machine's local IP
 // PRODUCTION RENDER URL
-export let BASE_URL = 'https://spotitnow-backend.onrender.com/api/v1';
+const PRODUCTION_URL = 'https://spotitnow-backend.onrender.com/api/v1';
+export let BASE_URL = PRODUCTION_URL;
 
 const computeBaseUrl = () => {
   console.log('[CLIENT] Platform:', Platform.OS);
@@ -52,8 +57,11 @@ const computeBaseUrl = () => {
   return 'http://localhost:8000/api/v1';
 };
 
-// BASE_URL = computeBaseUrl();
-console.log('[CLIENT] Final BASE_URL:', BASE_URL);
+// Use local backend for development, production URL otherwise
+if (USE_LOCAL_BACKEND) {
+  BASE_URL = computeBaseUrl();
+}
+console.log('[CLIENT] Final BASE_URL:', BASE_URL, '| Local mode:', USE_LOCAL_BACKEND);
 
 // In-memory auth token used by fetch utilities. Call `setAuthToken` after login/logout.
 let AUTH_TOKEN: string | null = null;

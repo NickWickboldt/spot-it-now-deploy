@@ -1,9 +1,10 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Dimensions, FlatList, Image, Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Dimensions, FlatList, Image, Platform, Pressable, Share, StatusBar, StyleSheet, Text, View } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { apiGetFollowCounts, apiGetFollowers, apiToggleFollow } from '../../api/follow';
+import { apiGetOrCreateConversation } from '../../api/message';
 import { apiGetMySightings, apiGetSightingsByUser } from '../../api/sighting';
 import {
     apiGetBioByUserId,
@@ -200,17 +201,42 @@ export default function OtherUserProfile(): React.JSX.Element | null {
           </View>
         </View>
 
-        {/* Follow Button */}
+        {/* Follow and Message Buttons */}
         {currentUser?._id !== targetUserId && (
-          <Pressable 
-            onPress={handleFollowToggle}
-            style={[styles.followButton, isFollowing && styles.followingButton]}
-          >
-            <Icon name={isFollowing ? 'check' : 'user-plus'} size={14} color={isFollowing ? '#40743dff' : '#fff'} />
-            <Text style={[styles.followButtonText, isFollowing && styles.followingButtonText]}>
-              {isFollowing ? 'Following' : 'Follow'}
-            </Text>
-          </Pressable>
+          <View style={styles.actionButtons}>
+            <Pressable 
+              onPress={handleFollowToggle}
+              style={[styles.followButton, isFollowing && styles.followingButton]}
+            >
+              <Icon name={isFollowing ? 'check' : 'user-plus'} size={14} color={isFollowing ? '#40743dff' : '#fff'} />
+              <Text style={[styles.followButtonText, isFollowing && styles.followingButtonText]}>
+                {isFollowing ? 'Following' : 'Follow'}
+              </Text>
+            </Pressable>
+            <Pressable 
+              onPress={async () => {
+                if (!token) return;
+                try {
+                  const conversation = await apiGetOrCreateConversation(token, targetUserId);
+                  router.push({
+                    pathname: '/(user)/conversation',
+                    params: {
+                      conversationId: conversation._id,
+                      recipientId: targetUserId,
+                      recipientName: username,
+                      recipientAvatar: profilePictureUrl || '',
+                    },
+                  });
+                } catch (error) {
+                  console.error('Failed to create conversation:', error);
+                }
+              }}
+              style={styles.messageButton}
+            >
+              <Icon name="comment" size={14} color="#40743dff" />
+              <Text style={styles.messageButtonText}>Message</Text>
+            </Pressable>
+          </View>
         )}
       </LinearGradient>
 
@@ -345,7 +371,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
   },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
   followButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -366,6 +397,23 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   followingButtonText: {
+    color: '#40743dff',
+  },
+  messageButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    paddingVertical: 12,
+    borderRadius: 24,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#fff',
+  },
+  messageButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
     color: '#40743dff',
   },
   loadingContainer: {

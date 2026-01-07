@@ -7,9 +7,11 @@ dotenv.config({
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
+import { createServer } from 'http';
 import connectDB from './config/db.config.js';
-import { requestLogger } from './middlewares/requestLogger.middleware.js';
 import { errorHandler } from './middlewares/error.middleware.js';
+import { requestLogger } from './middlewares/requestLogger.middleware.js';
+import { initializeSocketIO } from './socket/index.js';
 import { log } from './utils/logger.util.js';
 
 // Import the main router from the index file
@@ -20,6 +22,9 @@ import apiRouter from './routes/index.routes.js';
 
 // Initialize the Express app
 const app = express();
+
+// Create HTTP server for Socket.io
+const httpServer = createServer(app);
 
 // --- Middleware Configuration ---
 app.use(cors({
@@ -48,11 +53,14 @@ const PORT = process.env.PORT || 8000;
 
 connectDB()
 .then(() => {
-  app.listen(PORT, () => {
+  // Initialize Socket.io with the HTTP server
+  initializeSocketIO(httpServer);
+  
+  httpServer.listen(PORT, () => {
     log.info('backend-server', `Server listening on port ${PORT}`, { url: `http://localhost:${PORT}/api/v1`, env: process.env.NODE_ENV || 'development' });
   });
 
-  app.on("error", (error) => {
+  httpServer.on("error", (error) => {
     log.error('backend-server', 'App server error', { error: error?.message || error });
     throw error;
   });

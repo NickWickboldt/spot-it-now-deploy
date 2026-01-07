@@ -33,6 +33,7 @@
     "expo-splash-screen": "~31.0.10",
     "expo-status-bar": "~3.0.8",
     "expo-symbols": "~1.0.7",
+    "expo-updates": "~29.0.15",
     "expo-video-thumbnails": "^10.0.7",
     "react": "19.1.0",
     "react-dom": "19.1.0",
@@ -46,8 +47,8 @@
     "react-native-vector-icons": "^10.3.0",
     "react-native-web": "^0.21.0",
     "react-navigation": "^5.0.0",
-    "typescript": "~5.9.2",
-    "expo-updates": "~29.0.15"
+    "socket.io-client": "^4.8.3",
+    "typescript": "~5.9.2"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",

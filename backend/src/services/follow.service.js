@@ -1,6 +1,8 @@
 import { Follow } from '../models/follow.model.js';
 import { User } from '../models/user.model.js';
 import { ApiError } from '../utils/ApiError.util.js';
+import { getRandomSoundVerb } from '../utils/animalSounds.js';
+import { notificationService } from './notification.service.js';
 
 /**
  * Toggles a follow relationship between two users.
@@ -35,6 +37,26 @@ const toggleFollow = async (followerId, followingId) => {
       follower: followerId,
       following: followingId,
     });
+    
+    // Send notification to the user being followed
+    const follower = await User.findById(followerId, 'username');
+    const followerUsername = follower?.username || 'Someone';
+    
+    if (userToFollow.notificationsEnabled !== false) {
+      try {
+        const animalSound = getRandomSoundVerb();
+        await notificationService.sendNotificationToUser(followingId, {
+          type: 'new_follower',
+          title: 'New Follower',
+          subtitle: `${followerUsername} ${animalSound} you with a follow`,
+          message: `${followerUsername} is now following you!`,
+          relatedUser: followerId,
+        });
+      } catch (error) {
+        console.error('Failed to send follow notification:', error);
+      }
+    }
+    
     return { isFollowing: true };
   }
 };
@@ -68,10 +90,25 @@ const getFollowCounts = async (userId) => {
     return { followersCount, followingCount };
 };
 
+/**
+ * Check if a user is following another user
+ * @param {string} followerId - The user who might be following
+ * @param {string} followingId - The user who might be followed
+ * @returns {Promise<boolean>}
+ */
+const checkIsFollowing = async (followerId, followingId) => {
+  const existingFollow = await Follow.findOne({
+    follower: followerId,
+    following: followingId,
+  });
+  return !!existingFollow;
+};
+
 
 export const followService = {
   toggleFollow,
   getFollowers,
   getFollowing,
   getFollowCounts,
+  checkIsFollowing,
 };

@@ -7,6 +7,7 @@ import { apiGetMyBadgeProgress, Badge, getBadgeCategoryColor, getBadgeIcon } fro
 import { getLevelColor, getMyLevelInfo, LevelProgress } from '../../api/experience';
 import { apiGetFollowCounts, apiGetFollowers, apiGetFollowing } from '../../api/follow';
 import { ActivityItem, apiGetUserActivityFeed } from '../../api/like';
+import { apiGetMessagingPrivacy, apiUpdateMessagingPrivacy, MessagingPrivacy } from '../../api/message';
 import { apiGetMySightings } from '../../api/sighting';
 import { apiDeleteUserAccount, apiUpdateUserDetails } from '../../api/user';
 import { apiGetUserDiscoveries } from '../../api/userDiscovery';
@@ -97,6 +98,7 @@ export default function ProfileScreen(): React.JSX.Element | null {
   const [menuVisible, setMenuVisible] = useState<boolean>(false);
   const [notificationModalVisible, setNotificationModalVisible] = useState<boolean>(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(user?.notificationsEnabled ?? true);
+  const [messagingPrivacy, setMessagingPrivacy] = useState<MessagingPrivacy>('everyone');
   const [activeStatTab, setActiveStatTab] = useState<'species' | 'badges' | null>(null);
   const [badgeFilter, setBadgeFilter] = useState<'all' | 'earned'>('all');
   const [selectedBadge, setSelectedBadge] = useState<Badge | null>(null);
@@ -136,6 +138,20 @@ export default function ProfileScreen(): React.JSX.Element | null {
       setNotificationsEnabled(user.notificationsEnabled);
     }
   }, [user?.notificationsEnabled]);
+
+  // Load messaging privacy setting on mount
+  useEffect(() => {
+    const loadMessagingPrivacy = async () => {
+      if (!token) return;
+      try {
+        const privacy = await apiGetMessagingPrivacy(token);
+        setMessagingPrivacy(privacy);
+      } catch (error) {
+        console.error('[Profile] Failed to load messaging privacy:', error);
+      }
+    };
+    loadMessagingPrivacy();
+  }, [token]);
 
   const loadMySightings = useCallback(async () => {
     if (!user?._id || !token) { setIsLoading(false); return; }
@@ -446,6 +462,25 @@ export default function ProfileScreen(): React.JSX.Element | null {
     } catch (error: any) {
       // Revert on error
       setNotificationsEnabled(!value);
+      notification.error('Update Failed', String(error?.message || error));
+    }
+  };
+
+  const handleMessagingPrivacyToggle = async (value: boolean): Promise<void> => {
+    const newSetting: MessagingPrivacy = value ? 'followers' : 'everyone';
+    const oldSetting = messagingPrivacy;
+    try {
+      setMessagingPrivacy(newSetting);
+      await apiUpdateMessagingPrivacy(token!, newSetting);
+      notification.success(
+        'Settings Updated',
+        newSetting === 'followers' 
+          ? 'Only followers can message you directly' 
+          : 'Anyone can message you'
+      );
+    } catch (error: any) {
+      // Revert on error
+      setMessagingPrivacy(oldSetting);
       notification.error('Update Failed', String(error?.message || error));
     }
   };
@@ -911,9 +946,10 @@ export default function ProfileScreen(): React.JSX.Element | null {
             onPress={(e) => e.stopPropagation()}
           >
             <Text style={[profileStyles.sectionTitle, { marginBottom: 20 }]}>
-              Notification Settings
+              Settings
             </Text>
             
+            {/* Push Notifications Toggle */}
             <View style={{ 
               flexDirection: 'row', 
               justifyContent: 'space-between', 
@@ -935,6 +971,33 @@ export default function ProfileScreen(): React.JSX.Element | null {
                 onValueChange={handleNotificationToggle}
                 trackColor={{ false: '#767577', true: '#40743dff' }}
                 thumbColor={notificationsEnabled ? '#fff' : '#f4f3f4'}
+              />
+            </View>
+
+            {/* Messaging Privacy Toggle */}
+            <View style={{ 
+              flexDirection: 'row', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              paddingVertical: 15,
+              borderBottomWidth: 1,
+              borderBottomColor: '#eee'
+            }}>
+              <View style={{ flex: 1, marginRight: 15 }}>
+                <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 5 }}>
+                  Followers Only Messages
+                </Text>
+                <Text style={{ fontSize: 13, color: '#666' }}>
+                  {messagingPrivacy === 'followers' 
+                    ? 'Non-followers can send one message request' 
+                    : 'Anyone can message you directly'}
+                </Text>
+              </View>
+              <Switch
+                value={messagingPrivacy === 'followers'}
+                onValueChange={handleMessagingPrivacyToggle}
+                trackColor={{ false: '#767577', true: '#40743dff' }}
+                thumbColor={messagingPrivacy === 'followers' ? '#fff' : '#f4f3f4'}
               />
             </View>
 

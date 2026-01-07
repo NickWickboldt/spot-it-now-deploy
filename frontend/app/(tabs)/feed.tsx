@@ -14,6 +14,7 @@ import { CommunityVoteType, apiAdminDeleteSighting, apiGetCommunitySighting, api
 import { Colors } from '../../constants/Colors';
 import { FeedScreenStyles } from '../../constants/FeedStyles';
 import { useAuth } from '../../context/AuthContext';
+import { useSocket } from '../../context/SocketContext';
 
 const LOCAL_PAGE_SIZE = 10;
 const getSightingTimestamp = (doc: any) => {
@@ -156,6 +157,15 @@ export default function FeedScreen() {
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [lastNotificationIds, setLastNotificationIds] = useState<Set<string>>(new Set());
   const notificationPollingInterval = useRef<NodeJS.Timeout | null>(null);
+
+  // Get unread message count from socket context
+  let unreadMessageCount = 0;
+  try {
+    const socketContext = useSocket();
+    unreadMessageCount = socketContext?.unreadMessageCount || 0;
+  } catch (e) {
+    // Socket context not available yet
+  }
 
   // Handle follow/unfollow for community page
   const handleCommunityFollow = async (userId: string) => {
@@ -1236,6 +1246,20 @@ export default function FeedScreen() {
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Icon name="search" size={20} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push('/(tabs)/messages')}
+              style={tabStyles.headerIconButton}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Icon name="comments" size={20} color="#fff" />
+              {unreadMessageCount > 0 && (
+                <View style={tabStyles.notificationBadge}>
+                  <Text style={tabStyles.notificationBadgeText}>
+                    {unreadMessageCount > 9 ? '9+' : unreadMessageCount}
+                  </Text>
+                </View>
+              )}
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => router.push('/(user)/notifications')}

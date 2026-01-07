@@ -1,7 +1,6 @@
 {
   "name": "spotitnow",
   "private": true,
-  "main": "App.tsx",
   "scripts": {
     "dev:frontend": "cd frontend && npx expo start -c",
     "dev:backend": "cd backend && node src/server.js",
@@ -9,15 +8,5 @@
   },
   "devDependencies": {
     "concurrently": "^8.0.0"
-  },
-  "dependencies": {
-    "expo": "~54.0.0",
-    "expo-router": "~6.0.4",
-    "expo-av": "^16.0.7",
-    "expo-image-manipulator": "^14.0.7",
-    "expo-video-thumbnails": "^10.0.7",
-    "expo-updates": "~29.0.15",
-    "react": "19.1.0",
-    "react-native": "0.81.4"
   }
 }

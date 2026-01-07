@@ -10,7 +10,7 @@ const TAB_ICONS = [
   { name: 'feed', icon: 'file-text', label: 'Feed' },
   { name: 'map', icon: 'map', label: 'Map' },
   { name: 'spotit', icon: 'camera', label: '', isCenter: true },
-  { name: 'animal_index', icon: 'book', label: 'Index' },
+  { name: 'animal_index', icon: 'paw', label: 'Index' },
   { name: 'profile', icon: 'user', label: 'Profile' },
 ];
 
@@ -19,7 +19,7 @@ const AnimatedTabButton = ({
   tab, 
   focused, 
   onPress, 
-  capState 
+  capState,
 }: { 
   tab: typeof TAB_ICONS[0]; 
   focused: boolean; 
@@ -115,6 +115,7 @@ const AnimatedTabButton = ({
 
 function CustomTabBar({ state, navigation }) {
   const [capState, setCapState] = React.useState<CaptureState>({ isVideoMode: false, isRecording: false });
+  
   React.useEffect(() => {
     const unsub = subscribeCaptureState(setCapState);
     return unsub;
@@ -166,8 +167,10 @@ export default function TabLayout() {
       <Tabs.Screen name="feed" />
       <Tabs.Screen name="map" />
       <Tabs.Screen name="spotit" />
-      <Tabs.Screen name="animal_index"/>
+      <Tabs.Screen name="animal_index" />
       <Tabs.Screen name="profile" />
+      <Tabs.Screen name="messages" options={{ href: null }} />
+      <Tabs.Screen name="challenges" options={{ href: null }} />
     </Tabs>
   );
 }
@@ -220,5 +223,24 @@ const styles = StyleSheet.create({
   tabLabel: {
     fontSize: 12,
     marginTop: 4,
+  },
+  badge: {
+    position: 'absolute',
+    top: 0,
+    right: -4,
+    backgroundColor: '#ef4444',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: Colors.light.softBeige,
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
   },
 });

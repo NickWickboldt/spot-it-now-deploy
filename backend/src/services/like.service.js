@@ -3,6 +3,7 @@ import { Like } from '../models/like.model.js';
 import { Sighting } from '../models/sighting.model.js';
 import { User } from '../models/user.model.js';
 import { ApiError } from '../utils/ApiError.util.js';
+import { getRandomSoundVerb } from '../utils/animalSounds.js';
 import { notificationService } from './notification.service.js';
 
 /**
@@ -51,10 +52,11 @@ const toggleLike = async (sightingId, userId) => {
       // Only send notification if the post owner has notifications enabled
       if (sighting.user.notificationsEnabled !== false) {
         try {
+          const animalSound = getRandomSoundVerb();
           await notificationService.sendNotificationToUser(postOwnerId, {
             type: 'sighting_liked',
             title: 'New Like',
-            subtitle: `${likerUsername} liked your post`,
+            subtitle: `${likerUsername} ${animalSound} you with a like`,
             message: `${likerUsername} liked your sighting: "${sighting.caption?.substring(0, 50) || 'your post'}"`,
             relatedUser: userId,
             relatedSighting: sightingId,

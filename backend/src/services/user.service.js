@@ -34,10 +34,25 @@ const loginUser = async (loginData) => {
   if (!username) {
     throw new ApiError(400, "Username or email is required");
   }
+  
+  const searchValue = username.toLowerCase();
+  console.log('[LOGIN DEBUG] Searching for user:', { 
+    original: username, 
+    lowercase: searchValue,
+    query: { $or: [{ username: searchValue }, { email: searchValue }] }
+  });
+  
+  // Check total users in DB for debugging
+  const totalUsers = await User.countDocuments();
+  console.log('[LOGIN DEBUG] Total users in database:', totalUsers);
+  
   // Allow login with either username or email
   const user = await User.findOne({ 
-    $or: [{ username: username.toLowerCase() }, { email: username.toLowerCase() }] 
+    $or: [{ username: searchValue }, { email: searchValue }] 
   });
+  
+  console.log('[LOGIN DEBUG] User found:', user ? { id: user._id, username: user.username, email: user.email } : null);
+  
   if (!user) {
     throw new ApiError(404, "User not found");
   }

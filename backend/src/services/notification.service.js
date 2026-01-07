@@ -132,6 +132,11 @@ const deleteNotification = async (notificationId, userId, isAdmin = false) => {
   await Notification.findByIdAndDelete(notificationId);
 };
 
+// Named exports for easier importing
+export {
+    deleteNotification, getNotificationsForUser, markAllNotificationsAsRead, markNotificationAsRead, sendGlobalNotification, sendNotificationToUser
+};
+
 export const notificationService = {
   sendNotificationToUser,
   sendGlobalNotification,

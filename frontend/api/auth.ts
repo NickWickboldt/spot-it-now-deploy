@@ -2,10 +2,14 @@
 import { BASE_URL } from './client';
 
 export const apiLoginUser = async (credentials: {email: string, password: string}) => {
+  // Backend expects 'username' field (which can be username OR email)
+  const loginPayload = { username: credentials.email, password: credentials.password };
+  console.log('[AUTH] Login attempt:', { username: loginPayload.username, hasPassword: !!loginPayload.password });
+  
   const response = await fetch(`${BASE_URL}/users/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(credentials),
+    body: JSON.stringify(loginPayload),
   });
   if (!response.ok) {
      const errorData = await response.json();

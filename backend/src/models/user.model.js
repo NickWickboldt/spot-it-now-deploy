@@ -86,6 +86,12 @@ const userSchema = new Schema(
     notificationsEnabled: {
       type: Boolean,
       default: true,
+    },
+    // Messaging privacy: 'everyone' or 'followers'
+    messagingPrivacy: {
+      type: String,
+      enum: ['everyone', 'followers'],
+      default: 'everyone',
     }
   },
   {
