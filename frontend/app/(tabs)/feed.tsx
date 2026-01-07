@@ -1475,7 +1475,7 @@ export default function FeedScreen() {
             <FlatList
               ref={flatListRef}
               data={sightings}
-              keyExtractor={item => item._id}
+              keyExtractor={(item, index) => `${item._id}-${index}`}
               renderItem={renderItem}
               onEndReached={() => { if (hasMore && !loading) loadPage(page + 1); }}
               onEndReachedThreshold={0.5}
@@ -1515,7 +1515,7 @@ export default function FeedScreen() {
             <FlatList
               ref={flatListRef}
               data={sightings}
-              keyExtractor={item => item._id}
+              keyExtractor={(item, index) => `${item._id}-${index}`}
               renderItem={renderItem}
               onViewableItemsChanged={onViewableItemsChanged.current}
               viewabilityConfig={viewabilityConfig}

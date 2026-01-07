@@ -5,7 +5,7 @@ import { ActivityIndicator, Alert, Animated, Dimensions, FlatList, Image, Modal,
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { apiGetMyBadgeProgress, Badge, getBadgeCategoryColor, getBadgeIcon } from '../../api/badge';
 import { getLevelColor, getMyLevelInfo, LevelProgress } from '../../api/experience';
-import { apiGetFollowCounts } from '../../api/follow';
+import { apiGetFollowCounts, apiGetFollowers, apiGetFollowing } from '../../api/follow';
 import { ActivityItem, apiGetUserActivityFeed } from '../../api/like';
 import { apiGetMySightings } from '../../api/sighting';
 import { apiDeleteUserAccount, apiUpdateUserDetails } from '../../api/user';
@@ -114,6 +114,12 @@ export default function ProfileScreen(): React.JSX.Element | null {
   // Follower counts
   const [followersCount, setFollowersCount] = useState<number>(0);
   const [followingCount, setFollowingCount] = useState<number>(0);
+  
+  // Followers/Following modal state
+  const [followModalVisible, setFollowModalVisible] = useState(false);
+  const [followModalType, setFollowModalType] = useState<'followers' | 'following'>('followers');
+  const [followList, setFollowList] = useState<any[]>([]);
+  const [followListLoading, setFollowListLoading] = useState(false);
   
   // Profile/Activity tab state
   const [profileTab, setProfileTab] = useState<'profile' | 'activity'>('profile');
@@ -616,17 +622,55 @@ export default function ProfileScreen(): React.JSX.Element | null {
 
             {/* Followers/Following Stats */}
             <View style={styles.followStatsRow}>
-              <View style={styles.followStatItem}>
+              <Pressable 
+                style={styles.followStatItem}
+                onPress={async () => {
+                  if (!user?._id) return;
+                  setFollowModalType('followers');
+                  setFollowModalVisible(true);
+                  setFollowListLoading(true);
+                  try {
+                    const res = await apiGetFollowers(user._id);
+                    // API returns array of Follow docs with .follower containing user
+                    const followers = (res.data || []).map((f: any) => f.follower).filter(Boolean);
+                    setFollowList(followers);
+                  } catch (e) {
+                    console.error('Failed to load followers:', e);
+                    setFollowList([]);
+                  } finally {
+                    setFollowListLoading(false);
+                  }
+                }}
+              >
                 <Icon name="users" size={18} color="#9C27B0" style={{ marginBottom: 6 }} />
                 <Text style={styles.followStatNumber}>{followersCount}</Text>
                 <Text style={styles.followStatLabel}>Followers</Text>
-              </View>
+              </Pressable>
               <View style={styles.followStatDivider} />
-              <View style={styles.followStatItem}>
+              <Pressable 
+                style={styles.followStatItem}
+                onPress={async () => {
+                  if (!user?._id) return;
+                  setFollowModalType('following');
+                  setFollowModalVisible(true);
+                  setFollowListLoading(true);
+                  try {
+                    const res = await apiGetFollowing(user._id);
+                    // API returns array of Follow docs with .following containing user
+                    const following = (res.data || []).map((f: any) => f.following).filter(Boolean);
+                    setFollowList(following);
+                  } catch (e) {
+                    console.error('Failed to load following:', e);
+                    setFollowList([]);
+                  } finally {
+                    setFollowListLoading(false);
+                  }
+                }}
+              >
                 <Icon name="heart" size={18} color="#FF9800" style={{ marginBottom: 6 }} />
                 <Text style={styles.followStatNumber}>{followingCount}</Text>
                 <Text style={styles.followStatLabel}>Following</Text>
-              </View>
+              </Pressable>
             </View>
 
             {/* Expandable Stats Detail Panel */}
@@ -994,6 +1038,88 @@ export default function ProfileScreen(): React.JSX.Element | null {
                   <Text style={styles.badgeModalCloseText}>Close</Text>
                 </Pressable>
               </>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Followers/Following Modal */}
+      <Modal
+        visible={followModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setFollowModalVisible(false)}
+      >
+        <Pressable 
+          style={styles.followModalOverlay}
+          onPress={() => setFollowModalVisible(false)}
+        >
+          <Pressable style={styles.followModalContent} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.followModalHeader}>
+              <Text style={styles.followModalTitle}>
+                {followModalType === 'followers' ? 'Followers' : 'Following'}
+              </Text>
+              <Pressable onPress={() => setFollowModalVisible(false)}>
+                <Icon name="times" size={20} color="#666" />
+              </Pressable>
+            </View>
+            
+            {followListLoading ? (
+              <View style={styles.followModalLoading}>
+                <ActivityIndicator color="#40743dff" size="large" />
+                <Text style={{ marginTop: 12, color: '#666' }}>Loading...</Text>
+              </View>
+            ) : followList.length === 0 ? (
+              <View style={styles.followModalEmpty}>
+                <Icon name={followModalType === 'followers' ? 'users' : 'heart'} size={40} color="#ccc" />
+                <Text style={styles.followModalEmptyText}>
+                  {followModalType === 'followers' 
+                    ? 'No followers yet' 
+                    : "You're not following anyone yet"}
+                </Text>
+              </View>
+            ) : (
+              <FlatList
+                data={followList}
+                keyExtractor={(item) => item._id}
+                renderItem={({ item }) => (
+                  <Pressable 
+                    style={styles.followListItem}
+                    onPress={() => {
+                      setFollowModalVisible(false);
+                      router.push({
+                        pathname: '/(user)/user_profile',
+                        params: { 
+                          userId: item._id, 
+                          username: item.username || '', 
+                          profilePictureUrl: item.profilePictureUrl || '' 
+                        }
+                      });
+                    }}
+                  >
+                    {item.profilePictureUrl ? (
+                      <Image 
+                        source={{ uri: item.profilePictureUrl }} 
+                        style={styles.followListAvatar} 
+                      />
+                    ) : (
+                      <View style={[styles.followListAvatar, styles.followListAvatarPlaceholder]}>
+                        <Text style={styles.followListAvatarText}>
+                          {(item.username || 'U').charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
+                    <View style={styles.followListInfo}>
+                      <Text style={styles.followListUsername}>{item.username || 'Unknown'}</Text>
+                      {item.bio && (
+                        <Text style={styles.followListBio} numberOfLines={1}>{item.bio}</Text>
+                      )}
+                    </View>
+                    <Icon name="chevron-right" size={14} color="#ccc" />
+                  </Pressable>
+                )}
+                ItemSeparatorComponent={() => <View style={styles.followListSeparator} />}
+              />
             )}
           </Pressable>
         </Pressable>
@@ -1652,5 +1778,89 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#40743dff',
+  },
+  // Followers/Following Modal Styles
+  followModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'flex-end',
+  },
+  followModalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '70%',
+    minHeight: 300,
+  },
+  followModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  followModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333',
+  },
+  followModalLoading: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  followModalEmpty: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  followModalEmptyText: {
+    marginTop: 12,
+    fontSize: 15,
+    color: '#999',
+  },
+  followListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  followListAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+  },
+  followListAvatarPlaceholder: {
+    backgroundColor: '#40743dff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  followListAvatarText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  followListInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  followListUsername: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#333',
+  },
+  followListBio: {
+    fontSize: 13,
+    color: '#666',
+    marginTop: 2,
+  },
+  followListSeparator: {
+    height: 1,
+    backgroundColor: '#f0f0f0',
+    marginLeft: 80,
   },
 });
