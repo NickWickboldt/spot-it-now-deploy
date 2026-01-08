@@ -8,6 +8,7 @@ import React, {
 } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { BASE_URL } from '../api/client';
+import { apiGetUnreadCount } from '../api/message';
 import { useAuth } from './AuthContext';
 
 // Types
@@ -201,6 +202,12 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
   useEffect(() => {
     if (token && user) {
       connect();
+      // Fetch initial unread count
+      apiGetUnreadCount(token).then(count => {
+        setUnreadMessageCount(count);
+      }).catch(err => {
+        console.warn('[Socket] Failed to fetch initial unread count:', err);
+      });
     } else {
       disconnect();
     }

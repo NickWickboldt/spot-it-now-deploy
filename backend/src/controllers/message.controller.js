@@ -7,7 +7,7 @@ import { asyncHandler } from '../utils/asyncHandler.util.js';
  * GET /api/v1/messages/conversations
  */
 export const getConversations = asyncHandler(async (req, res) => {
-  const userId = req.user._id;
+  const userId = req.user._id.toString();
   const conversations = await messageService.getConversationsForUser(userId);
 
   return res
