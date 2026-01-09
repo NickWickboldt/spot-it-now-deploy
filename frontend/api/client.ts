@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 
 // Set to true to use local backend during development
 // Set to false to use production Render backend
-const USE_LOCAL_BACKEND = true;
+const USE_LOCAL_BACKEND = false;
 
 // Dynamically determine backend base URL so same code works on web, iOS, Android, and Expo Go.
 // For iOS Simulator/Android Emulator, we need to use the dev machine's local IP
