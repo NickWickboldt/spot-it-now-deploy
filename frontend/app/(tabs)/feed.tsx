@@ -7,7 +7,7 @@ import { ScrollView } from 'react-native-gesture-handler';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { apiGetPersonalizedFeed, apiGetPersonalizedFollowingFeed, apiGetPersonalizedLocalFeed, apiTrackSightingComment, apiTrackSightingLike, apiTrackSightingView } from '../../api/algorithm';
 import { apiCreateComment, apiDeleteComment, apiGetCommentsForSighting, apiUpdateComment } from '../../api/comment';
-import { apiToggleFollow } from '../../api/follow';
+import { apiGetFollowing, apiToggleFollow } from '../../api/follow';
 import { apiGetLikedSightingsByUser, apiToggleSightingLike } from '../../api/like';
 import { apiGetMyNotifications } from '../../api/notification';
 import { CommunityVoteType, apiAdminDeleteSighting, apiGetCommunitySighting, apiGetRecentSightings, apiGetSightingsNear, apiSubmitCommunityVote } from '../../api/sighting';
@@ -166,6 +166,26 @@ export default function FeedScreen() {
   } catch (e) {
     // Socket context not available yet
   }
+
+  // Load the user's following list on mount to show correct follow/unfollow button state
+  useEffect(() => {
+    const loadFollowingUsers = async () => {
+      if (!user?._id) return;
+      try {
+        const resp = await apiGetFollowing(user._id);
+        const followingList = resp?.data || [];
+        const followingIds = new Set<string>(
+          followingList.map((f: any) => 
+            typeof f.following === 'object' ? f.following._id : f.following
+          ).filter(Boolean)
+        );
+        setCommunityFollowedUsers(followingIds);
+      } catch (err) {
+        console.warn('Failed to load following users:', err);
+      }
+    };
+    loadFollowingUsers();
+  }, [user?._id]);
 
   // Handle follow/unfollow for community page
   const handleCommunityFollow = async (userId: string) => {

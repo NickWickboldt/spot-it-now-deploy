@@ -7,7 +7,9 @@ import {
     Dimensions,
     Easing,
     Image,
+    KeyboardAvoidingView,
     Modal,
+    Platform,
     ScrollView,
     StyleSheet,
     Text,
@@ -27,7 +29,7 @@ const { width, height } = Dimensions.get('window');
 
 interface Comment {
   _id: string;
-  user: {
+  user?: {
     _id: string;
     username: string;
     profilePictureUrl?: string;
@@ -207,11 +209,25 @@ export default function SightingDetailScreen() {
 
     setSubmittingComment(true);
     try {
-      const newComment = await apiCreateComment(token, sightingId, commentText.trim());
-      setComments([newComment, ...comments]);
+      const response = await apiCreateComment(token, sightingId, commentText.trim());
+      const newComment = response.data || response; // Unwrap data if present
+      
+      // Ensure the comment has the current user's data for proper display
+      const commentWithUser = {
+        ...newComment,
+        user: newComment.user && typeof newComment.user === 'object' && newComment.user.username
+          ? newComment.user
+          : {
+              _id: user?._id || '',
+              username: user?.username || 'You',
+              profilePictureUrl: user?.profilePictureUrl || null,
+            },
+      };
+      
+      setComments([commentWithUser, ...comments]);
       setCommentText('');
       if (sighting) {
-        setSighting({ ...sighting, commentCount: sighting.commentCount + 1 });
+        setSighting({ ...sighting, commentCount: (sighting.commentCount || 0) + 1 });
       }
     } catch (error) {
       console.error('Failed to post comment:', error);
@@ -424,82 +440,91 @@ export default function SightingDetailScreen() {
         transparent
         onRequestClose={() => setCommentsVisible(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { paddingTop: insets.top }]}>
-            {/* Modal Header */}
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Comments</Text>
-              <TouchableOpacity onPress={() => setCommentsVisible(false)}>
-                <Icon name="close" size={24} color="#333" />
-              </TouchableOpacity>
-            </View>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { paddingTop: insets.top }]}>
+              {/* Modal Header */}
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Comments</Text>
+                <TouchableOpacity onPress={() => setCommentsVisible(false)}>
+                  <Icon name="close" size={24} color="#333" />
+                </TouchableOpacity>
+              </View>
 
-            {/* Comments List */}
-            <ScrollView style={styles.commentsList}>
-              {loadingComments ? (
-                <ActivityIndicator size="small" color={Colors.light.primaryGreen} />
-              ) : comments.length === 0 ? (
-                <Text style={styles.noCommentsText}>No comments yet</Text>
-              ) : (
-                comments.map((comment) => (
-                  <View key={comment._id} style={styles.commentItem}>
-                    {comment.user.profilePictureUrl ? (
-                      <Image
-                        source={{ uri: comment.user.profilePictureUrl }}
-                        style={styles.commentAvatar}
-                      />
-                    ) : (
-                      <View style={[styles.commentAvatar, styles.avatarPlaceholder]}>
-                        <Icon name="user" size={12} color="#888" />
-                      </View>
-                    )}
-                    <View style={styles.commentContent}>
-                      <View style={styles.commentHeader}>
-                        <Text style={styles.commentUsername}>{comment.user.username}</Text>
-                        <Text style={styles.commentTime}>{getRelativeTime(comment.createdAt)}</Text>
-                      </View>
-                      <Text style={styles.commentText}>{comment.commentText}</Text>
-                    </View>
-                    {user?._id === comment.user._id && (
-                      <TouchableOpacity
-                        onPress={() => handleDeleteComment(comment._id)}
-                        style={styles.deleteCommentBtn}
-                      >
-                        <Icon name="trash-o" size={16} color="#999" />
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                ))
-              )}
-            </ScrollView>
-
-            {/* Comment Input */}
-            <View style={[styles.commentInputContainer, { paddingBottom: insets.bottom || 10 }]}>
-              <TextInput
-                style={styles.commentInput}
-                placeholder="Add a comment..."
-                value={commentText}
-                onChangeText={setCommentText}
-                multiline
-                maxLength={500}
-              />
-              <TouchableOpacity
-                style={[
-                  styles.sendBtn,
-                  (!commentText.trim() || submittingComment) && styles.sendBtnDisabled,
-                ]}
-                onPress={handleSubmitComment}
-                disabled={!commentText.trim() || submittingComment}
+              {/* Comments List */}
+              <ScrollView 
+                style={styles.commentsList}
+                keyboardShouldPersistTaps="handled"
               >
-                {submittingComment ? (
-                  <ActivityIndicator size="small" color="#fff" />
+                {loadingComments ? (
+                  <ActivityIndicator size="small" color={Colors.light.primaryGreen} />
+                ) : comments.length === 0 ? (
+                  <Text style={styles.noCommentsText}>No comments yet</Text>
                 ) : (
-                  <Icon name="send" size={16} color="#fff" />
+                  comments.map((comment, index) => (
+                    <View key={comment._id || `comment-${index}`} style={styles.commentItem}>
+                      {comment.user?.profilePictureUrl ? (
+                        <Image
+                          source={{ uri: comment.user.profilePictureUrl }}
+                          style={styles.commentAvatar}
+                        />
+                      ) : (
+                        <View style={[styles.commentAvatar, styles.avatarPlaceholder]}>
+                          <Icon name="user" size={12} color="#888" />
+                        </View>
+                      )}
+                      <View style={styles.commentContent}>
+                        <View style={styles.commentHeader}>
+                          <Text style={styles.commentUsername}>{comment.user?.username || 'User'}</Text>
+                          <Text style={styles.commentTime}>{getRelativeTime(comment.createdAt)}</Text>
+                        </View>
+                        <Text style={styles.commentText}>{comment.commentText}</Text>
+                      </View>
+                      {user?._id === comment.user?._id && (
+                        <TouchableOpacity
+                          onPress={() => handleDeleteComment(comment._id)}
+                          style={styles.deleteCommentBtn}
+                        >
+                          <Icon name="trash-o" size={16} color="#999" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  ))
                 )}
-              </TouchableOpacity>
+              </ScrollView>
+
+              {/* Comment Input */}
+              <View style={[styles.commentInputContainer, { paddingBottom: insets.bottom || 10 }]}>
+                <TextInput
+                  style={styles.commentInput}
+                  placeholder="Add a comment..."
+                  value={commentText}
+                  onChangeText={setCommentText}
+                  multiline
+                  maxLength={500}
+                />
+                <TouchableOpacity
+                  style={[
+                    styles.sendBtn,
+                    (!commentText.trim() || submittingComment) && styles.sendBtnDisabled,
+                  ]}
+                  onPress={handleSubmitComment}
+                  disabled={!commentText.trim() || submittingComment}
+                >
+                  {submittingComment ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Icon name="send" size={16} color="#fff" />
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );

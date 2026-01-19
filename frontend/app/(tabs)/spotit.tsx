@@ -166,6 +166,9 @@ export default function SpotItScreen() {
   const [showXPPopup, setShowXPPopup] = useState(false);
   const [xpResult, setXpResult] = useState<XPResult | null>(null);
 
+  // EXIF location from uploaded images
+  const [exifLocation, setExifLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+
   const resetManualInputs = () => {
     setManualCommonName('');
     setManualScientificName('');
@@ -196,6 +199,51 @@ export default function SpotItScreen() {
     } catch (error) {
       console.error('Error getting location:', error);
       Alert.alert('Error', 'Could not get your current location');
+      return null;
+    }
+  };
+
+  // Helper function to extract GPS coordinates from EXIF data
+  const extractExifLocation = (exif: Record<string, any> | null | undefined): { latitude: number; longitude: number } | null => {
+    if (!exif) return null;
+    
+    try {
+      // EXIF GPS data can be in different formats depending on the device
+      let latitude = exif.GPSLatitude;
+      let longitude = exif.GPSLongitude;
+      const latRef = exif.GPSLatitudeRef;
+      const lonRef = exif.GPSLongitudeRef;
+
+      // If we have the coordinates as numbers directly
+      if (typeof latitude === 'number' && typeof longitude === 'number') {
+        // Apply reference direction (S = negative, W = negative)
+        if (latRef === 'S') latitude = -Math.abs(latitude);
+        if (lonRef === 'W') longitude = -Math.abs(longitude);
+        
+        console.log('EXIF GPS found (direct numbers):', { latitude, longitude });
+        return { latitude, longitude };
+      }
+
+      // If coordinates are in DMS format (array of [degrees, minutes, seconds])
+      if (Array.isArray(latitude) && Array.isArray(longitude)) {
+        const convertDMSToDecimal = (dms: number[], ref: string) => {
+          const [degrees, minutes, seconds] = dms;
+          let decimal = degrees + minutes / 60 + (seconds || 0) / 3600;
+          if (ref === 'S' || ref === 'W') decimal = -decimal;
+          return decimal;
+        };
+
+        latitude = convertDMSToDecimal(latitude, latRef || 'N');
+        longitude = convertDMSToDecimal(longitude, lonRef || 'E');
+        
+        console.log('EXIF GPS found (DMS format):', { latitude, longitude });
+        return { latitude, longitude };
+      }
+
+      console.log('No valid GPS data in EXIF');
+      return null;
+    } catch (error) {
+      console.error('Error extracting EXIF GPS:', error);
       return null;
     }
   };
@@ -517,16 +565,31 @@ const handleUploadImage = async () => {
   setRecordedVideoUri(null);
   setFrameUri(null);
   setIsVideoMode(false);
+  // Clear any previous EXIF location
+  setExifLocation(null);
+
+    // First, pick the image with EXIF data extraction (no editing to preserve EXIF)
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.9,
-      allowsEditing: true,
+      allowsEditing: true,  // Allow editing for cropping
       aspect: [4, 3],
+      exif: true,  // Extract EXIF data including GPS coordinates
     });
 
     if (!result.canceled && result.assets[0]) {
-      setPhotoUri(result.assets[0].uri);
+      const asset = result.assets[0];
+      setPhotoUri(asset.uri);
       setCaptureMethod('UPLOAD'); // Mark as uploaded image
+      
+      // Try to extract GPS location from EXIF data
+      const exifGps = extractExifLocation(asset.exif);
+      if (exifGps) {
+        setExifLocation(exifGps);
+        console.log('📍 Using EXIF location from photo:', exifGps);
+      } else {
+        console.log('📍 No EXIF GPS data found, will use current location');
+      }
       
       // Admin bypass - skip verification for admin users
       const isAdmin = user?.role === 'admin';
@@ -860,9 +923,17 @@ const handleOverride = useCallback(async (uri?: string) => {
     setModalVisible(false);
     
     if (photoUri) {
-      // Get location when user confirms
-      const location = await getCurrentLocation();
-      if (!location) {
+      // Use EXIF location if available (from uploaded photo), otherwise get current location
+      let locationToUse = exifLocation;
+      
+      if (!locationToUse) {
+        console.log('📍 No EXIF location, getting current location...');
+        locationToUse = await getCurrentLocation();
+      } else {
+        console.log('📍 Using photo EXIF location:', locationToUse);
+      }
+      
+      if (!locationToUse) {
         Alert.alert('Error', 'Location is required to post a sighting');
         return;
       }
@@ -872,8 +943,8 @@ const handleOverride = useCallback(async (uri?: string) => {
   // If a video was recorded in this flow, post the video; otherwise post the still photo
   mediaUrls: [recordedVideoUri ?? photoUri],
         caption: `Spotted a ${analysisResult?.animal}!`,
-        latitude: location.latitude,
-        longitude: location.longitude
+        latitude: locationToUse.latitude,
+        longitude: locationToUse.longitude
       }));
       setShowSightingForm(true);
     }
@@ -994,14 +1065,20 @@ const handleOverride = useCallback(async (uri?: string) => {
     setShowManualInputModal(false);
     // Prepare form with manual caption & image
   if (photoUri) {
-      const location = await getCurrentLocation();
-      if (!location) return;
+      // Use EXIF location if available (from uploaded photo), otherwise get current location
+      let locationToUse = exifLocation;
+      
+      if (!locationToUse) {
+        locationToUse = await getCurrentLocation();
+      }
+      
+      if (!locationToUse) return;
       setSightingForm(prev => ({
         ...prev,
     mediaUrls: [recordedVideoUri ?? photoUri],
         caption: manualCommonName, // free caption; identification stored separately
-        latitude: location.latitude,
-        longitude: location.longitude,
+        latitude: locationToUse.latitude,
+        longitude: locationToUse.longitude,
         identification: {
           source: 'USER',
           commonName: manualCommonName,
@@ -1206,35 +1283,40 @@ return (
       </Modal>
       {/* Manual Input Modal */}
       <Modal visible={showManualInputModal} transparent animationType="slide" onRequestClose={() => setShowManualInputModal(false)}>
-        <View style={manualStyles.backdrop}>
-          <View style={manualStyles.sheet}>
-            <Text style={manualStyles.header}>Manual Identification</Text>
-            <Text style={manualStyles.label}>Common Name</Text>
-            <TextInput
-              value={manualCommonName}
-              onChangeText={setManualCommonName}
-              placeholder="e.g. White-tailed Deer"
-              style={manualStyles.input}
-              autoCapitalize="words"
-            />
-            <Text style={manualStyles.label}>Scientific Name (optional)</Text>
-            <TextInput
-              value={manualScientificName}
-              onChangeText={setManualScientificName}
-              placeholder="e.g. Odocoileus virginianus"
-              style={manualStyles.input}
-              autoCapitalize="none"
-            />
-            <View style={manualStyles.row}>
-              <TouchableOpacity style={[manualStyles.btn, manualStyles.cancel]} onPress={() => setShowManualInputModal(false)}>
-                <Text style={manualStyles.btnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[manualStyles.btn, manualStyles.submit]} onPress={submitManualIdentification}>
-                <Text style={manualStyles.btnText}>Use This</Text>
-              </TouchableOpacity>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+        >
+          <View style={manualStyles.backdrop}>
+            <View style={manualStyles.sheet}>
+              <Text style={manualStyles.header}>Manual Identification</Text>
+              <Text style={manualStyles.label}>Common Name</Text>
+              <TextInput
+                value={manualCommonName}
+                onChangeText={setManualCommonName}
+                placeholder="e.g. White-tailed Deer"
+                style={manualStyles.input}
+                autoCapitalize="words"
+              />
+              <Text style={manualStyles.label}>Scientific Name (optional)</Text>
+              <TextInput
+                value={manualScientificName}
+                onChangeText={setManualScientificName}
+                placeholder="e.g. Odocoileus virginianus"
+                style={manualStyles.input}
+                autoCapitalize="none"
+              />
+              <View style={manualStyles.row}>
+                <TouchableOpacity style={[manualStyles.btn, manualStyles.cancel]} onPress={() => setShowManualInputModal(false)}>
+                  <Text style={manualStyles.btnText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[manualStyles.btn, manualStyles.submit]} onPress={submitManualIdentification}>
+                  <Text style={manualStyles.btnText}>Use This</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
       {/* Crop Modal for video frame */}
       <VideoFramePickerModal

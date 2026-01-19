@@ -3,9 +3,11 @@ import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+    ActivityIndicator,
     Animated,
     Dimensions,
     Image,
+    Keyboard,
     Modal,
     PanResponder,
     Platform,
@@ -14,12 +16,13 @@ import {
     StatusBar,
     StyleSheet,
     Text,
+    TextInput,
     TouchableOpacity,
     View
 } from 'react-native';
 import MapView, { Callout, Circle, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import Icon from 'react-native-vector-icons/FontAwesome';
-import { apiToggleFollow } from '../../api/follow';
+import { apiGetFollowing, apiToggleFollow } from '../../api/follow';
 import { apiGetSightingsNear } from '../../api/sighting';
 import { useAuth } from '../../context/AuthContext';
 
@@ -424,10 +427,17 @@ export default function WildlifeMapScreen() {
   const [selectedCluster, setSelectedCluster] = useState<any[] | null>(null);
   const [mapType, setMapType] = useState<'satellite' | 'standard'>('satellite'); // Default to satellite view
   const [followingUsers, setFollowingUsers] = useState<Set<string>>(new Set());
+  
+  // Location search state
+  const [showSearchBar, setShowSearchBar] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<Location.LocationGeocodedAddress[]>([]);
 
   const mapRef = useRef<MapView>(null);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const panY = useRef(new Animated.Value(0)).current;
+  const clusterPanY = useRef(new Animated.Value(0)).current;
   const radiusSlideAnim = useRef(new Animated.Value(0)).current;
   const listSlideAnim = useRef(new Animated.Value(0)).current;
   const clusterSlideAnim = useRef(new Animated.Value(0)).current;
@@ -460,6 +470,40 @@ export default function WildlifeMapScreen() {
         } else {
           // Snap back
           Animated.spring(panY, {
+            toValue: 0,
+            useNativeDriver: true,
+          }).start();
+        }
+      },
+    })
+  ).current;
+
+  // Pan responder for swipe-to-dismiss cluster modal
+  const clusterPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return gestureState.dy > 5;
+      },
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dy > 0) {
+          clusterPanY.setValue(gestureState.dy);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dy > 80 || gestureState.vy > 0.5) {
+          // Dismiss the cluster modal
+          Animated.timing(clusterPanY, {
+            toValue: 600,
+            duration: 200,
+            useNativeDriver: true,
+          }).start(() => {
+            closeClusterModal();
+            clusterPanY.setValue(0);
+          });
+        } else {
+          // Snap back
+          Animated.spring(clusterPanY, {
             toValue: 0,
             useNativeDriver: true,
           }).start();
@@ -550,6 +594,26 @@ export default function WildlifeMapScreen() {
   useEffect(() => {
     fetchSightings();
   }, [fetchSightings]);
+
+  // Fetch users being followed on mount to show correct follow/unfollow button state
+  useEffect(() => {
+    const loadFollowing = async () => {
+      if (!currentUser?._id) return;
+      try {
+        const resp = await apiGetFollowing(currentUser._id);
+        const followingList = resp?.data || [];
+        const followingIds = new Set(
+          followingList.map((f: any) => 
+            typeof f.following === 'object' ? f.following._id : f.following
+          ).filter(Boolean)
+        );
+        setFollowingUsers(followingIds);
+      } catch (err) {
+        console.warn('Failed to load following users:', err);
+      }
+    };
+    loadFollowing();
+  }, [currentUser?._id]);
 
   // Animate bottom sheet when sighting selected
   useEffect(() => {
@@ -653,6 +717,54 @@ export default function WildlifeMapScreen() {
         },
         500
       );
+    }
+  };
+
+  // Location search functions
+  const handleLocationSearch = async () => {
+    if (!searchQuery.trim()) return;
+    
+    setIsSearching(true);
+    Keyboard.dismiss();
+    
+    try {
+      // Use expo-location's geocoding to search for the location
+      const results = await Location.geocodeAsync(searchQuery);
+      
+      if (results && results.length > 0) {
+        const { latitude, longitude } = results[0];
+        
+        // Animate map to the searched location
+        mapRef.current?.animateToRegion(
+          {
+            latitude,
+            longitude,
+            latitudeDelta: 0.05,  // Zoom level for city view
+            longitudeDelta: 0.05,
+          },
+          800
+        );
+        
+        setShowSearchBar(false);
+        setSearchQuery('');
+        console.log(`📍 Map moved to: ${searchQuery} (${latitude}, ${longitude})`);
+      } else {
+        // No results found - show alert
+        alert(`Could not find location: "${searchQuery}". Try a different search term like "Broken Bow, Oklahoma" or "Dallas, TX".`);
+      }
+    } catch (error) {
+      console.error('Location search error:', error);
+      alert('Error searching for location. Please try again.');
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const toggleSearchBar = () => {
+    setShowSearchBar(!showSearchBar);
+    if (showSearchBar) {
+      setSearchQuery('');
+      Keyboard.dismiss();
     }
   };
 
@@ -929,6 +1041,13 @@ export default function WildlifeMapScreen() {
           </LinearGradient>
         </Pressable>
 
+        {/* Location Search Button */}
+        <Pressable style={styles.fabButton} onPress={toggleSearchBar}>
+          <LinearGradient colors={showSearchBar ? ['#FF9800', '#F57C00'] : ['#9C27B0', '#7B1FA2']} style={styles.fabGradient}>
+            <Icon name={showSearchBar ? 'times' : 'search'} size={24} color="#fff" />
+          </LinearGradient>
+        </Pressable>
+
         {/* Map Type Toggle Button */}
         <Pressable 
           style={styles.fabButton} 
@@ -939,6 +1058,46 @@ export default function WildlifeMapScreen() {
           </LinearGradient>
         </Pressable>
       </View>
+
+      {/* Location Search Bar */}
+      {showSearchBar && (
+        <View style={styles.searchContainer}>
+          <View style={styles.searchInputWrapper}>
+            <Icon name="map-marker" size={18} color="#666" style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search location (e.g., Broken Bow, OK)"
+              placeholderTextColor="#999"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              onSubmitEditing={handleLocationSearch}
+              returnKeyType="search"
+              autoFocus
+              autoCapitalize="words"
+            />
+            {searchQuery.length > 0 && !isSearching && (
+              <Pressable onPress={() => setSearchQuery('')} style={styles.clearButton}>
+                <Icon name="times-circle" size={18} color="#999" />
+              </Pressable>
+            )}
+            {isSearching && (
+              <ActivityIndicator size="small" color="#5a9a55" style={styles.searchSpinner} />
+            )}
+          </View>
+          <Pressable 
+            style={[styles.searchButton, (!searchQuery.trim() || isSearching) && styles.searchButtonDisabled]} 
+            onPress={handleLocationSearch}
+            disabled={!searchQuery.trim() || isSearching}
+          >
+            <LinearGradient 
+              colors={searchQuery.trim() && !isSearching ? ['#5a9a55', '#40743d'] : ['#ccc', '#aaa']} 
+              style={styles.searchButtonGradient}
+            >
+              <Icon name="arrow-right" size={18} color="#fff" />
+            </LinearGradient>
+          </Pressable>
+        </View>
+      )}
 
       {/* Selected sighting bottom card with swipe-to-dismiss */}
       {selectedSighting && (
@@ -1214,21 +1373,26 @@ export default function WildlifeMapScreen() {
             onPress={closeClusterModal}
           />
           <Animated.View
+            {...clusterPanResponder.panHandlers}
             style={[
               styles.listModal,
               {
                 transform: [
                   {
-                    translateY: clusterSlideAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [600, 0],
-                    }),
+                    translateY: Animated.add(
+                      clusterSlideAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [600, 0],
+                      }),
+                      clusterPanY
+                    ),
                   },
                 ],
               },
             ]}
           >
             <View style={styles.modalHandle} />
+            <Text style={styles.swipeHint}>Swipe down to close</Text>
             <View style={styles.clusterModalHeader}>
               <LinearGradient
                 colors={['#5a9a55', '#40743d']}
@@ -1242,6 +1406,9 @@ export default function WildlifeMapScreen() {
                   {selectedCluster?.length || 0} animals spotted in this area
                 </Text>
               </View>
+              <TouchableOpacity onPress={closeClusterModal} style={styles.closeModalButton}>
+                <Icon name="times" size={20} color="#666" />
+              </TouchableOpacity>
             </View>
             <ScrollView 
               style={styles.sightingsList}
@@ -1398,7 +1565,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 6,
+    paddingHorizontal: 2,
   },
   statIconBg: {
     width: 36,
@@ -1412,12 +1580,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
   statNumber: {
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: '700',
     color: '#333',
   },
   statLabel: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#666',
   },
   statDivider: {
@@ -1540,6 +1708,10 @@ const styles = StyleSheet.create({
   clusterModalTitleContainer: {
     flex: 1,
   },
+  closeModalButton: {
+    padding: 8,
+    marginLeft: 8,
+  },
   
   calloutContainer: {
     alignItems: 'center',
@@ -1549,7 +1721,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 12,
-    maxWidth: 180,
+    minWidth: 140,
+    maxWidth: 220,
   },
   calloutText: {
     color: '#fff',
@@ -1884,6 +2057,65 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'center',
     paddingHorizontal: 20,
+  },
+  // Location search styles
+  searchContainer: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 120 : 100,
+    left: 16,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    zIndex: 100,
+  },
+  searchInputWrapper: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 25,
+    paddingHorizontal: 16,
+    paddingVertical: Platform.OS === 'ios' ? 12 : 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  searchIcon: {
+    marginRight: 10,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#333',
+    paddingVertical: 0,
+  },
+  clearButton: {
+    padding: 4,
+  },
+  searchSpinner: {
+    marginLeft: 8,
+  },
+  searchButton: {
+    borderRadius: 25,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  searchButtonDisabled: {
+    opacity: 0.6,
+  },
+  searchButtonGradient: {
+    width: 50,
+    height: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 25,
   },
 });
 
