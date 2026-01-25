@@ -44,6 +44,12 @@ app.use(requestLogger);
 // All API routes will be prefixed with /api/v1
 // For example, the user registration route is now: /api/v1/users/register
 app.use("/api/v1", apiRouter);
+
+// Health check endpoint for Render
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "ok" });
+});
+
 // Global error handler after routes
 app.use(errorHandler);
 
