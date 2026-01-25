@@ -56,24 +56,26 @@ app.use(errorHandler);
 // --- Database Connection and Server Start ---
 const PORT = process.env.PORT || 8000;
 
+// Start server FIRST so Render health check passes immediately
+httpServer.listen(PORT, "0.0.0.0", () => {
+  log.info("backend-server", `Server listening on 0.0.0.0:${PORT}`, {
+    url: `http://localhost:${PORT}/api/v1`,
+    env: process.env.NODE_ENV || "development",
+  });
+});
+
+httpServer.on("error", (error) => {
+  log.error("backend-server", "App server error", {
+    error: error?.message || error,
+  });
+  throw error;
+});
+
+// Connect to MongoDB after server is already listening
 connectDB()
   .then(() => {
-    // Initialize Socket.io with the HTTP server
     initializeSocketIO(httpServer);
-
-    httpServer.listen(PORT, () => {
-      log.info("backend-server", `Server listening on port ${PORT}`, {
-        url: `http://localhost:${PORT}/api/v1`,
-        env: process.env.NODE_ENV || "development",
-      });
-    });
-
-    httpServer.on("error", (error) => {
-      log.error("backend-server", "App server error", {
-        error: error?.message || error,
-      });
-      throw error;
-    });
+    log.info("backend-server", "MongoDB connected and Socket.io initialized");
   })
   .catch((err) => {
     log.fatal("backend-server", "MongoDB connection failed", {
